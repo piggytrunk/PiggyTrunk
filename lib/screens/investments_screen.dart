@@ -39,13 +39,23 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
   Color get _panelBorder => _isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC);
 
   bool _hasCheckedRouteArgs = false;
+  String? _initialViewMode;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == 'partner' ||
+        args == 'PARTNER' ||
+        (args is Map && (args['tab'] == 'partner' || args['tab'] == 'PARTNER' || args['view'] == 'partner' || args['view'] == 'PARTNER'))) {
+      if (_initialViewMode != 'PARTNER') {
+        setState(() {
+          _initialViewMode = 'PARTNER';
+        });
+      }
+    }
     if (!_hasCheckedRouteArgs) {
       _hasCheckedRouteArgs = true;
-      final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map<String, dynamic>) {
         final targetBatchId = args['batch_id']?.toString();
         final targetBatchName = (args['batch_name'] ?? '').toString().toLowerCase();
@@ -406,6 +416,72 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           pMap['batch_name'] = batchName;
           loadedPartnerInv.add(pMap);
         }
+
+        // Fetch supplemental / fallback partner investments from admin_notifications
+        try {
+          final notifsRes = await _supabase
+              .from('admin_notifications')
+              .select('*')
+              .eq('type', 'investment')
+              .order('created_at', ascending: false);
+
+          for (var notif in (notifsRes as List? ?? [])) {
+            if (notif is! Map) continue;
+            final meta = notif['metadata'] as Map<String, dynamic>? ?? {};
+            final nAmt = (meta['amount'] as num?)?.toDouble() ?? 0.0;
+            if (nAmt <= 0) continue;
+
+            final nBatchId = (meta['batch_id'] ?? '').toString();
+            final nPartnerId = (meta['partner_investor_id'] ?? '').toString();
+            final nPartnerName = (meta['partner_name'] ?? 'Partner Investor').toString();
+            final nBatchName = (meta['batch_name'] ?? batchesMap[nBatchId] ?? 'Batch #$nBatchId').toString();
+            final nCreatedAt = notif['created_at']?.toString() ?? DateTime.now().toIso8601String();
+            final nDate = nCreatedAt.split('T').first;
+            final nNotifId = notif['notification_id'];
+
+            // Check if this investment is already in loadedPartnerInv
+            final alreadyLoaded = loadedPartnerInv.any((existing) {
+              final eBatch = (existing['batch_id'] ?? '').toString();
+              final ePartner = (existing['partner_investor_id'] ?? '').toString();
+              final eAmt = (existing['amount'] as num?)?.toDouble() ?? 0.0;
+              final eDate = (existing['date_invested'] ?? existing['created_at'] ?? '').toString().split('T').first;
+              return (eBatch == nBatchId && ePartner == nPartnerId && (eAmt - nAmt).abs() < 0.01 && eDate == nDate);
+            });
+
+            if (!alreadyLoaded) {
+              loadedPartnerInv.add({
+                'investment_id': nNotifId,
+                'notification_id': nNotifId,
+                'is_notification_sourced': true,
+                'partner_investor_id': nPartnerId,
+                'batch_id': nBatchId,
+                'amount': nAmt,
+                'status': 'active',
+                'date_invested': nDate,
+                'created_at': nCreatedAt,
+                'partner_name': nPartnerName,
+                'batch_name': nBatchName,
+              });
+
+              // Attempt background reconciliation into investments table (succeeds once trigger is dropped)
+              try {
+                final pInt = int.tryParse(nPartnerId);
+                final bInt = int.tryParse(nBatchId);
+                if (pInt != null && bInt != null) {
+                  _supabase.from('investments').insert({
+                    'partner_investor_id': pInt,
+                    'batch_id': bInt,
+                    'amount': nAmt,
+                    'status': 'active',
+                    'date_invested': nDate,
+                  }).then((_) {}).catchError((_) {});
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (nErr) {
+          debugPrint('Notice loading investment notifications fallback: $nErr');
+        }
       } catch (pErr) {
         debugPrint('Error loading partner investments: $pErr');
       }
@@ -583,6 +659,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                                           : InvestmentTableView(
                                               investments: investments,
                                               partnerInvestments: partnerInvestments,
+                                              initialViewMode: _initialViewMode,
                                               onRefresh: () => _loadInvestments(isRefresh: true),
                                               isRefreshing: _isTableRefreshing,
                                               onAddInvestment: () => setState(() {

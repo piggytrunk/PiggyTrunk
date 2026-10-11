@@ -163,25 +163,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
 
-      // Also check partner investments in `investments` if admin direct records is zero
-      if (calculatedInitialCapital == 0) {
-        try {
-          final partnerInvRes = await _supabase.from('investments').select('amount, status');
-          double partnerAmt = 0;
-          for (var p in (partnerInvRes as List? ?? [])) {
-            if (p is! Map) continue;
-            final st = (p['status'] ?? '').toString().toLowerCase();
-            if (st == 'archived' || st == 'cancelled') continue;
-            partnerAmt += (p['amount'] as num?)?.toDouble() ?? 0.0;
-          }
-          if (partnerAmt > 0) {
-            calculatedInitialCapital = partnerAmt;
-            calculatedFatteningInitialCapital = partnerAmt * 0.5;
-            calculatedSowInitialCapital = partnerAmt * 0.5;
-          }
-        } catch (piErr) {
-          debugPrint('Notice loading partner investments: $piErr');
+      // Also check partner investments in `investments` (and admin_notifications fallback)
+      try {
+        final partnerInvRes = await _supabase.from('investments').select('amount, status');
+        double partnerAmt = 0;
+        for (var p in (partnerInvRes as List? ?? [])) {
+          if (p is! Map) continue;
+          final st = (p['status'] ?? '').toString().toLowerCase();
+          if (st == 'archived' || st == 'cancelled') continue;
+          partnerAmt += (p['amount'] as num?)?.toDouble() ?? 0.0;
         }
+
+        // If direct investments table returned zero, check investment notifications
+        if (partnerAmt == 0) {
+          try {
+            final notifsRes = await _supabase
+                .from('admin_notifications')
+                .select('metadata')
+                .eq('type', 'investment');
+            for (var n in (notifsRes as List? ?? [])) {
+              if (n is! Map) continue;
+              final meta = n['metadata'] as Map<String, dynamic>? ?? {};
+              partnerAmt += (meta['amount'] as num?)?.toDouble() ?? 0.0;
+            }
+          } catch (_) {}
+        }
+
+        if (calculatedInitialCapital == 0 && partnerAmt > 0) {
+          calculatedInitialCapital = partnerAmt;
+          calculatedFatteningInitialCapital = partnerAmt * 0.5;
+          calculatedSowInitialCapital = partnerAmt * 0.5;
+        }
+      } catch (piErr) {
+        debugPrint('Notice loading partner investments: $piErr');
       }
 
       // 4. Fetch assignments and active hogs to reflect actual active batch and stage

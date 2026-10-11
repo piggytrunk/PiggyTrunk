@@ -702,24 +702,38 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
           ? Image.network(
               avatarUrl!,
               fit: BoxFit.cover,
-              errorBuilder: (ctx, err, stack) => Center(
-                child: Text(
-                  initials,
-                  style: AppTextStyles.jakarta(
-                    size: 15,
-                    weight: FontWeight.w800,
-                    color: textColor,
+              errorBuilder: (ctx, err, stack) => Padding(
+                padding: const EdgeInsets.all(6),
+                child: Image.asset(
+                  'assets/piggytrunk_logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => Center(
+                    child: Text(
+                      initials,
+                      style: AppTextStyles.jakarta(
+                        size: 15,
+                        weight: FontWeight.w800,
+                        color: textColor,
+                      ),
+                    ),
                   ),
                 ),
               ),
             )
-          : Center(
-              child: Text(
-                initials,
-                style: AppTextStyles.jakarta(
-                  size: 15,
-                  weight: FontWeight.w800,
-                  color: textColor,
+          : Padding(
+              padding: const EdgeInsets.all(6),
+              child: Image.asset(
+                'assets/piggytrunk_logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Center(
+                  child: Text(
+                    initials,
+                    style: AppTextStyles.jakarta(
+                      size: 15,
+                      weight: FontWeight.w800,
+                      color: textColor,
+                    ),
+                  ),
                 ),
               ),
             ),

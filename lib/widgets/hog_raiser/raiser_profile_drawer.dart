@@ -100,13 +100,22 @@ class RaiserProfileDrawer {
           ? Image.network(
               avatarUrl,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Center(
-                child: Text(
-                  initials,
-                  style: AppTextStyles.jakarta(
-                    size: fontSize,
-                    weight: FontWeight.w800,
-                    color: textColor,
+              errorBuilder: (context, error, stackTrace) => Padding(
+                padding: EdgeInsets.all(size * 0.14),
+                child: Image.asset(
+                  'assets/piggytrunk_logo.png',
+                  width: size,
+                  height: size,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => Center(
+                    child: Text(
+                      initials,
+                      style: AppTextStyles.jakarta(
+                        size: fontSize,
+                        weight: FontWeight.w800,
+                        color: textColor,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -124,13 +133,22 @@ class RaiserProfileDrawer {
                 );
               },
             )
-          : Center(
-              child: Text(
-                initials,
-                style: AppTextStyles.jakarta(
-                  size: fontSize,
-                  weight: FontWeight.w800,
-                  color: textColor,
+          : Padding(
+              padding: EdgeInsets.all(size * 0.14),
+              child: Image.asset(
+                'assets/piggytrunk_logo.png',
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Center(
+                  child: Text(
+                    initials,
+                    style: AppTextStyles.jakarta(
+                      size: fontSize,
+                      weight: FontWeight.w800,
+                      color: textColor,
+                    ),
+                  ),
                 ),
               ),
             ),

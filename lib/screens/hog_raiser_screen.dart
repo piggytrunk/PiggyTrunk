@@ -693,7 +693,7 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
       userName: name,
       userEmail: email.isNotEmpty ? email : null,
       userRole: 'Hog Raiser',
-      avatarUrl: row['avatar_url']?.toString(),
+      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
       confirmButtonText: 'Yes, Approve',
       cancelButtonText: 'Cancel',
     );
@@ -755,7 +755,7 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
       userName: name,
       userEmail: email.isNotEmpty ? email : null,
       userRole: 'Hog Raiser',
-      avatarUrl: row['avatar_url']?.toString(),
+      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
       confirmButtonText: 'Yes, Reject',
       cancelButtonText: 'Cancel',
     );
@@ -795,7 +795,7 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
       userName: name,
       userEmail: email.isNotEmpty ? email : null,
       userRole: 'Hog Raiser',
-      avatarUrl: row['avatar_url']?.toString(),
+      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
       confirmButtonText: 'Yes, Archive',
       cancelButtonText: 'Cancel',
     );

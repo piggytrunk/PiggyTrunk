@@ -48,6 +48,16 @@ class NotificationItemCard extends StatelessWidget {
     final message = notif.message.toLowerCase();
     final title = notif.title.toLowerCase();
 
+    // 0. Investments & Partner Funding -> /investments (Prioritized before generic user checks)
+    if (type == 'investment' ||
+        type.contains('investment') ||
+        type == 'transaction' ||
+        title.contains('investment') ||
+        message.contains('invested') ||
+        message.contains('investment')) {
+      return '/investments';
+    }
+
     // Admin Profile & Security Notifications -> /settings
     if (type == 'admin_profile' ||
         type.contains('admin') ||
@@ -70,7 +80,7 @@ class NotificationItemCard extends StatelessWidget {
       return '/batches';
     }
 
-    // 0. Stock Requests -> /inventory (Raiser Stock Requests Tab)
+    // Stock Requests -> /inventory (Raiser Stock Requests Tab)
     if (type == 'stock_request' ||
         type.contains('stock') ||
         title.contains('stock request') ||
@@ -81,7 +91,7 @@ class NotificationItemCard extends StatelessWidget {
       return '/inventory';
     }
 
-    // 1. Hog Raiser Registrations & Hog Reports -> /raisers
+    // Hog Raiser Registrations & Hog Reports -> /raisers
     if (role == 'hog_raiser' ||
         role == 'raiser' ||
         message.contains('hog raiser') ||
@@ -91,20 +101,20 @@ class NotificationItemCard extends StatelessWidget {
       return '/raisers';
     }
 
-    // 2. Partner Investor Registrations -> /users
+    // Partner Investor Registrations & Account Approvals -> /users
     if (role == 'partner' ||
         role == 'investor' ||
-        message.contains('partner') ||
-        title.contains('partner')) {
+        (message.contains('partner') && (type.contains('user') || title.contains('registration') || title.contains('account'))) ||
+        (title.contains('partner') && (type.contains('user') || title.contains('registration') || title.contains('account')))) {
       return '/users';
     }
 
-    // 3. Cashier Registrations -> /users
+    // Cashier Registrations -> /users
     if (role == 'cashier' || message.contains('cashier') || title.contains('cashier')) {
       return '/users';
     }
 
-    // 4. Feeds & Supplies Inventory -> /inventory
+    // Feeds & Supplies Inventory -> /inventory
     if (type == 'feed_restock' ||
         type.contains('feed') ||
         type.contains('inventory') ||
@@ -112,13 +122,13 @@ class NotificationItemCard extends StatelessWidget {
       return '/inventory';
     }
 
-    // 5. General User Approvals
+    // General User Approvals
     if (type == 'user_registration' || type.contains('user') || type.contains('approval')) {
       return '/users';
     }
 
-    // 6. Investments & Financial Transactions
-    if (type == 'transaction' || type.contains('investment') || type.contains('sales') || type.contains('pos')) {
+    // Financial Transactions / POS
+    if (type.contains('sales') || type.contains('pos')) {
       return '/investments';
     }
 
@@ -128,6 +138,14 @@ class NotificationItemCard extends StatelessWidget {
   IconData _getCategoryIcon(String type, String message) {
     final lowerType = type.toLowerCase();
     final lowerMsg = message.toLowerCase();
+    // Prioritize investment before batch / hog keywords in message
+    if (lowerType.contains('invest') ||
+        lowerType.contains('transaction') ||
+        lowerMsg.contains('invested') ||
+        lowerMsg.contains('investment') ||
+        lowerMsg.contains('fund')) {
+      return Icons.payments_rounded;
+    }
     if (lowerType.contains('admin') ||
         lowerType.contains('security') ||
         lowerType.contains('profile') ||
@@ -144,15 +162,19 @@ class NotificationItemCard extends StatelessWidget {
     if (lowerType.contains('feed') || lowerType.contains('stock') || lowerType.contains('inventory')) {
       return Icons.inventory_2_rounded;
     }
-    if (lowerType.contains('invest') || lowerType.contains('fund') || lowerType.contains('pay')) {
-      return Icons.payments_rounded;
-    }
     return Icons.notifications_active_rounded;
   }
 
   Color _getCategoryColor(String type, String message, bool isDark) {
     final lowerType = type.toLowerCase();
     final lowerMsg = message.toLowerCase();
+    if (lowerType.contains('invest') ||
+        lowerType.contains('transaction') ||
+        lowerMsg.contains('invested') ||
+        lowerMsg.contains('investment') ||
+        lowerMsg.contains('fund')) {
+      return isDark ? const Color(0xFF43CB89) : const Color(0xFF2FB36F);
+    }
     if (lowerType.contains('admin') ||
         lowerType.contains('security') ||
         lowerType.contains('profile') ||
@@ -169,20 +191,45 @@ class NotificationItemCard extends StatelessWidget {
     if (lowerType.contains('feed') || lowerType.contains('stock')) {
       return isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
     }
-    if (lowerType.contains('invest') || lowerType.contains('fund')) {
-      return isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED);
-    }
     return isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
   }
 
   @override
   Widget build(BuildContext context) {
     final targetRoute = _resolveTargetRoute(notif);
-    final String? routeArg = targetRoute == '/inventory'
-        ? 'stock_request'
-        : ((notif.type == 'user_registration' || notif.message.toLowerCase().contains('pending'))
-            ? 'pending'
-            : null);
+    final meta = notif.metadata ?? <String, dynamic>{};
+    final role = (meta['role'] ?? '').toString().toLowerCase();
+    final message = notif.message.toLowerCase();
+    final title = notif.title.toLowerCase();
+
+    final dynamic routeArg;
+    if (targetRoute == '/inventory') {
+      routeArg = 'stock_request';
+    } else if (targetRoute == '/investments') {
+      routeArg = 'PARTNER';
+    } else if (targetRoute == '/raisers') {
+      routeArg = {
+        'tab': 'pending_raiser',
+        'name': meta['name'],
+        'email': meta['email'],
+        'raiser_id': meta['user_id'] ?? meta['raiser_id'],
+      };
+    } else if (targetRoute == '/users') {
+      final isCashier = role == 'cashier' || message.contains('cashier') || title.contains('cashier');
+      final isPending = notif.type == 'user_registration' || message.contains('pending') || title.contains('pending');
+
+      final String tabName = isCashier
+          ? (isPending ? 'pending_cashier' : 'active_cashier')
+          : (isPending ? 'pending_partner' : 'active_partner');
+
+      routeArg = {
+        'tab': tabName,
+        'email': (meta['email'] ?? '').toString(),
+        'name': (meta['name'] ?? '').toString(),
+      };
+    } else {
+      routeArg = (notif.type == 'user_registration' || message.contains('pending')) ? 'pending' : null;
+    }
 
     final brandPrimary = isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
     final catColor = _getCategoryColor(notif.type, notif.message, isDark);
@@ -236,7 +283,7 @@ class NotificationItemCard extends StatelessWidget {
             children: [
               // Card Main Body
               Padding(
-                padding: const EdgeInsets.all(12),
+                padding: EdgeInsets.fromLTRB(notif.isRead ? 12 : 14, 12, 12, 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -267,6 +314,8 @@ class NotificationItemCard extends StatelessWidget {
                           // Top Row: Title + Time
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
                             children: [
                               Expanded(
                                 child: Text(
@@ -280,7 +329,7 @@ class NotificationItemCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 8),
                               Text(
                                 _formatTimeAgo(notif.createdAt),
                                 style: AppTextStyles.jakarta(

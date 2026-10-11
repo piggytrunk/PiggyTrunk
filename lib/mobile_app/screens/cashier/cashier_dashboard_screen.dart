@@ -19,6 +19,7 @@ import 'widgets/cashier_dashboard_skeleton.dart';
 import '../../services/auth_session_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
+import '../../services/location_service.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import '../../widgets/piggy_toast.dart';
@@ -41,6 +42,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   Timer? _refreshTimer;
 
   // Profile State
+  int? _appUserId;
   String _cashierName = "Cashier Staff";
   String _cashierEmail = "";
   String _cashierPhone = "N/A";
@@ -182,7 +184,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
       _cashierEmail = effectiveEmail;
 
-      // Extract Google Metadata if available
+      // Extract Auth Metadata if available
       final meta = user?.userMetadata;
       String? googleName;
       if (meta != null) {
@@ -196,7 +198,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         try {
           profile = await _supabase
               .from('app_users')
-              .select('user_id, name, email, phone, address, avatar_url')
+              .select('user_id, name, email, role, status, supabase_user_id')
               .eq('supabase_user_id', user.id)
               .maybeSingle();
         } catch (_) {}
@@ -206,7 +208,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         try {
           profile = await _supabase
               .from('app_users')
-              .select('user_id, name, email, phone, address, avatar_url')
+              .select('user_id, name, email, role, status, supabase_user_id')
               .ilike('email', effectiveEmail)
               .maybeSingle();
           if (profile != null && user != null) {
@@ -220,13 +222,17 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         } catch (_) {}
       }
 
+      if (profile != null) {
+        _appUserId = (profile['user_id'] as num?)?.toInt();
+      }
+
       Map<String, dynamic>? cashierRow;
-      if (effectiveEmail.isNotEmpty) {
+      if (_appUserId != null) {
         try {
           cashierRow = await _supabase
               .from('cashiers')
-              .select('cashier_id, name, email, phone, address, avatar_url')
-              .ilike('email', effectiveEmail)
+              .select('cashier_id, user_id, date_hired, avatar_url')
+              .eq('user_id', _appUserId!)
               .maybeSingle();
         } catch (_) {}
       }
@@ -236,53 +242,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       String resolvedAddress = "Not set";
       String? resolvedAvatar;
 
+      // 1. Resolve Name from app_users
       if (profile != null) {
         final dbName = profile['name']?.toString().trim() ?? '';
         if (dbName.isNotEmpty && dbName != 'Cashier Staff' && dbName != 'N/A') {
           resolvedName = dbName;
-        }
-        if (profile['phone']?.toString().trim().isNotEmpty == true &&
-            profile['phone'] != 'N/A') {
-          resolvedPhone = profile['phone'];
-        }
-        if (profile['address']?.toString().trim().isNotEmpty == true &&
-            profile['address'] != 'N/A') {
-          resolvedAddress = profile['address'];
-        }
-        final pAv = profile['avatar_url']?.toString().trim();
-        if (pAv != null &&
-            pAv.isNotEmpty &&
-            !pAv.toLowerCase().contains('googleusercontent.com') &&
-            !pAv.toLowerCase().contains('ggpht.com')) {
-          resolvedAvatar = pAv;
-        }
-      }
-
-      if (cashierRow != null) {
-        final cName = cashierRow['name']?.toString().trim() ?? '';
-        if (resolvedName.isEmpty &&
-            cName.isNotEmpty &&
-            cName != 'Cashier Staff' &&
-            cName != 'N/A') {
-          resolvedName = cName;
-        }
-        if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A') &&
-            cashierRow['phone']?.toString().trim().isNotEmpty == true &&
-            cashierRow['phone'] != 'N/A') {
-          resolvedPhone = cashierRow['phone'];
-        }
-        if ((resolvedAddress == 'Not set' || resolvedAddress == 'N/A') &&
-            cashierRow['address']?.toString().trim().isNotEmpty == true &&
-            cashierRow['address'] != 'N/A') {
-          resolvedAddress = cashierRow['address'];
-        }
-        final cAv = cashierRow['avatar_url']?.toString().trim();
-        if (resolvedAvatar == null &&
-            cAv != null &&
-            cAv.isNotEmpty &&
-            !cAv.toLowerCase().contains('googleusercontent.com') &&
-            !cAv.toLowerCase().contains('ggpht.com')) {
-          resolvedAvatar = cAv;
         }
       }
 
@@ -296,19 +260,94 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         resolvedName = parts.where((p) => p.isNotEmpty).map((p) => p[0].toUpperCase() + p.substring(1)).join(' ');
       }
 
-      // Auto-sync resolved details to database if profile exists
-      if (profile != null &&
+      // 2. Resolve Phone & Address from user metadata
+      final metaPhone = (meta?['phone'] ?? meta?['phone_number'] ?? meta?['contact_number'])?.toString().trim();
+      if (metaPhone != null && metaPhone.isNotEmpty && metaPhone != 'null') {
+        resolvedPhone = metaPhone;
+      }
+      final metaAddress = (meta?['address'] ?? meta?['store_address'] ?? meta?['branch_address'])?.toString().trim();
+      if (metaAddress != null && metaAddress.isNotEmpty && metaAddress != 'null') {
+        resolvedAddress = metaAddress;
+      }
+
+      // 3. Resolve Phone & Address from SharedPreferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final keyPhone = 'cashier_phone_${user?.id ?? effectiveEmail}';
+        final keyAddr = 'cashier_address_${user?.id ?? effectiveEmail}';
+        final localPhone = prefs.getString(keyPhone)?.trim();
+        final localAddr = prefs.getString(keyAddr)?.trim();
+        if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A') && localPhone != null && localPhone.isNotEmpty) {
+          resolvedPhone = localPhone;
+        }
+        if ((resolvedAddress == 'Not set' || resolvedAddress == 'N/A') && localAddr != null && localAddr.isNotEmpty) {
+          resolvedAddress = localAddr;
+        }
+      } catch (_) {}
+
+      // 4. Resolve Phone & Address from admin_notifications if still not set
+      if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A' || resolvedAddress == 'Not set' || resolvedAddress == 'N/A') && effectiveEmail.isNotEmpty) {
+        try {
+          final notifs = await _supabase
+              .from('admin_notifications')
+              .select('metadata')
+              .inFilter('type', ['cashier_profile', 'user_registration'])
+              .order('created_at', ascending: false)
+              .limit(10);
+          for (final n in notifs) {
+            final m = n['metadata'];
+            if (m is Map) {
+              final mEmail = m['email']?.toString().toLowerCase().trim();
+              final mUid = m['user_id']?.toString();
+              if (mEmail == effectiveEmail.toLowerCase() || (_appUserId != null && mUid == _appUserId.toString())) {
+                if (resolvedPhone == 'Not set' || resolvedPhone == 'N/A') {
+                  final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
+                  if (nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
+                    resolvedPhone = nPhone;
+                  }
+                }
+                if (resolvedAddress == 'Not set' || resolvedAddress == 'N/A') {
+                  final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
+                  if (nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
+                    resolvedAddress = nAddr;
+                  }
+                }
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 5. Resolve Avatar
+      final cAv = cashierRow?['avatar_url']?.toString().trim();
+      if (cAv != null &&
+          cAv.isNotEmpty &&
+          cAv != 'null' &&
+          !cAv.toLowerCase().contains('googleusercontent.com') &&
+          !cAv.toLowerCase().contains('ggpht.com')) {
+        resolvedAvatar = cAv;
+      }
+      if (resolvedAvatar == null) {
+        final metaAv = (meta?['avatar_url'] ?? meta?['picture'])?.toString().trim();
+        if (metaAv != null &&
+            metaAv.isNotEmpty &&
+            metaAv != 'null' &&
+            !metaAv.toLowerCase().contains('googleusercontent.com') &&
+            !metaAv.toLowerCase().contains('ggpht.com')) {
+          resolvedAvatar = metaAv;
+        }
+      }
+
+      // Auto-sync resolved name to app_users if needed
+      if (_appUserId != null &&
           resolvedName.isNotEmpty &&
           resolvedName != 'Cashier Staff') {
         try {
           await _supabase
               .from('app_users')
               .update({'name': resolvedName})
-              .eq('user_id', profile['user_id']);
-          await _supabase
-              .from('cashiers')
-              .update({'name': resolvedName})
-              .eq('user_id', profile['user_id']);
+              .eq('user_id', _appUserId!);
         } catch (_) {}
       }
 
@@ -521,26 +560,21 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           .from('profile_pictures')
           .getPublicUrl(path);
 
-      // Sync across Auth User Metadata, app_users, and cashiers table for Admin Web
+      // Sync across Auth User Metadata and cashiers table for Admin Web
       try {
         await _supabase.auth.updateUser(
           UserAttributes(data: {'avatar_url': avatarUrl, 'picture': avatarUrl}),
         );
       } catch (_) {}
 
-      try {
-        await _supabase
-            .from('app_users')
-            .update({'avatar_url': avatarUrl})
-            .or('supabase_user_id.eq.${user.id},email.eq.${user.email}');
-      } catch (_) {}
-
-      try {
-        await _supabase
-            .from('cashiers')
-            .update({'avatar_url': avatarUrl})
-            .eq('email', user.email!);
-      } catch (_) {}
+      if (_appUserId != null) {
+        try {
+          await _supabase
+              .from('cashiers')
+              .update({'avatar_url': avatarUrl})
+              .eq('user_id', _appUserId!);
+        } catch (_) {}
+      }
 
       setState(() => _cashierAvatarUrl = avatarUrl);
       _showSnackBar('Profile picture updated successfully!');
@@ -660,19 +694,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         );
       } catch (_) {}
 
-      try {
-        await _supabase
-            .from('app_users')
-            .update({'avatar_url': null})
-            .or('supabase_user_id.eq.${user.id},email.eq.${user.email}');
-      } catch (_) {}
-
-      try {
-        await _supabase
-            .from('cashiers')
-            .update({'avatar_url': null})
-            .eq('email', user.email!);
-      } catch (_) {}
+      if (_appUserId != null) {
+        try {
+          await _supabase
+              .from('cashiers')
+              .update({'avatar_url': null})
+              .eq('user_id', _appUserId!);
+        } catch (_) {}
+      }
 
       setState(() => _cashierAvatarUrl = null);
       _showSnackBar('Profile picture restored to default successfully!');
@@ -851,32 +880,55 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                 'full_name': defaultName,
                 'name': defaultName,
                 'registered_name': defaultName,
+                'phone': null,
+                'phone_number': null,
+                'address': null,
+                'store_address': null,
                 'avatar_url': null,
                 'picture': null,
               },
             ),
           );
+          await _supabase.auth.refreshSession();
         } catch (_) {}
       }
 
+      // Clear local SharedPreferences
       try {
-        await _supabase
-            .from('app_users')
-            .update({
-              'name': defaultName,
-              'avatar_url': null,
-            })
-            .or('supabase_user_id.eq.${user?.id},email.eq.$emailToUse');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('cashier_phone_${user?.id ?? emailToUse}');
+        await prefs.remove('cashier_address_${user?.id ?? emailToUse}');
       } catch (_) {}
 
+      // Update app_users name
       try {
-        await _supabase
-            .from('cashiers')
-            .update({
-              'avatar_url': null,
-            })
-            .eq('email', emailToUse);
+        if (_appUserId != null) {
+          await _supabase
+              .from('app_users')
+              .update({'name': defaultName})
+              .eq('user_id', _appUserId!);
+        } else if (user != null) {
+          await _supabase
+              .from('app_users')
+              .update({'name': defaultName})
+              .eq('supabase_user_id', user.id);
+        } else if (emailToUse.isNotEmpty) {
+          await _supabase
+              .from('app_users')
+              .update({'name': defaultName})
+              .ilike('email', emailToUse);
+        }
       } catch (_) {}
+
+      // Reset avatar in cashiers table
+      if (_appUserId != null) {
+        try {
+          await _supabase
+              .from('cashiers')
+              .update({'avatar_url': null})
+              .eq('user_id', _appUserId!);
+        } catch (_) {}
+      }
 
       setState(() {
         _cashierName = defaultName;
@@ -885,39 +937,68 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         _cashierAvatarUrl = null;
       });
 
-      _showSnackBar(strings.accountDetailsRestoredSuccess);
+      if (mounted) {
+        PiggyToast.showSuccess(context, strings.accountDetailsRestoredSuccess);
+      }
       await _fetchProfile();
     } catch (e) {
-      _showSnackBar('Error resetting profile: $e', isError: true);
+      if (mounted) {
+        PiggyToast.showError(context, 'Error resetting profile: $e');
+      }
     }
   }
 
   void _showEditProfileDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentName = _cashierName == 'Cashier Staff' ? '' : _cashierName;
-    final currentPhone = _cashierPhone == 'N/A' || _cashierPhone == 'Not set'
-        ? ''
-        : _cashierPhone;
-    final currentAddress =
-        _cashierAddress == 'N/A' || _cashierAddress == 'Not set'
-        ? ''
-        : _cashierAddress;
 
-    final nameController = TextEditingController(text: currentName);
-    final phoneController = TextEditingController(text: currentPhone);
-    final addressController = TextEditingController(text: currentAddress);
+    // Parse First, Middle Initial, and Last Name from the current active _cashierName
+    String prefillFirst = '';
+    String prefillMiddle = '';
+    String prefillLast = '';
+
+    final nameClean = _cashierName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (nameClean.isNotEmpty && nameClean != 'Cashier Staff' && nameClean != 'N/A') {
+      final parts = nameClean.split(' ');
+      if (parts.length == 1) {
+        prefillFirst = parts[0];
+      } else if (parts.length == 2) {
+        prefillFirst = parts[0];
+        prefillLast = parts[1];
+      } else if (parts.length >= 3) {
+        if (parts[1].endsWith('.') || parts[1].length <= 2) {
+          prefillFirst = parts[0];
+          prefillMiddle = parts[1].replaceAll('.', '');
+          prefillLast = parts.sublist(2).join(' ');
+        } else {
+          prefillFirst = parts.sublist(0, parts.length - 1).join(' ');
+          prefillLast = parts.last;
+        }
+      }
+    }
+
+    // Fallback to user metadata only if _cashierName parsing was empty
+    if (prefillFirst.isEmpty && prefillLast.isEmpty) {
+      final userMeta = _supabase.auth.currentUser?.userMetadata ?? {};
+      prefillFirst = (userMeta['first_name'] ?? '').toString().trim();
+      prefillMiddle = (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '').toString().trim();
+      prefillLast = (userMeta['last_name'] ?? '').toString().trim();
+    }
+
+    final firstNameCtrl = TextEditingController(text: prefillFirst);
+    final middleInitialCtrl = TextEditingController(text: prefillMiddle);
+    final lastNameCtrl = TextEditingController(text: prefillLast);
+    final phoneCtrl = TextEditingController(
+      text: (_cashierPhone == 'N/A' || _cashierPhone == 'Not set') ? '' : _cashierPhone,
+    );
+    final addrCtrl = TextEditingController(
+      text: (_cashierAddress == 'N/A' || _cashierAddress == 'Not set') ? '' : _cashierAddress,
+    );
 
     final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-    final titleColor = isDark ? Colors.white : _brandColor;
-    final inputBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-    final borderColor = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFE2E8F0);
-    final hintColor = isDark
-        ? const Color(0xFF94A3B8)
-        : PiggyTrunkTheme.ptMuted;
-    final fieldIconColor = isDark ? Colors.white70 : hintColor;
-    final actionColor = isDark ? Colors.white : _brandColor;
+    final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE6EBF2);
+    final hintColor = isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted;
+    final actionColor = isDark ? Colors.white : const Color(0xFF18314F);
 
     showModalBottomSheet(
       context: context,
@@ -925,323 +1006,700 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final strings = AppStrings.of(ctx);
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: sheetBg,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top Drag Handle
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF475569) : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
+        bool isDetectingGps = false;
+        String? firstNameError;
+        String? lastNameError;
+        String? phoneError;
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            Future<void> autoDetectGps() async {
+              setModalState(() => isDetectingGps = true);
+              final result = await LocationService.instance.getCurrentAddress(requestPermission: true);
+              setModalState(() => isDetectingGps = false);
+
+              if (result.success && result.address != null && result.address!.trim().isNotEmpty) {
+                addrCtrl.text = result.address!.trim();
+                if (ctx.mounted) {
+                  PiggyToast.showSuccess(ctx, '${strings.locationDetectedToast} ${result.address}');
+                }
+              } else if (result.isPermanentlyDenied) {
+                if (ctx.mounted) {
+                  showDialog(
+                    context: ctx,
+                    builder: (dCtx) => AlertDialog(
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      title: Row(
+                        children: [
+                          const Icon(Icons.location_off_rounded, color: Color(0xFFF59E0B), size: 24),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              strings.locationDisabledTitle,
+                              style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Text(
+                        strings.locationDisabledDesc,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13.5,
+                          color: isDark ? Colors.white70 : const Color(0xFF475569),
+                          height: 1.45,
                         ),
                       ),
-                    ),
-
-                    // Sheet Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          strings.editProfileTitle,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: titleColor,
-                          ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dCtx),
+                          child: Text(strings.cancel, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700)),
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.close, size: 20),
-                          color: isDark ? Colors.white70 : hintColor,
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(dCtx);
+                            LocationService.instance.openAppSettings();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF007AFF),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: Text(strings.openSettings, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                  );
+                }
+              } else if (ctx.mounted) {
+                PiggyToast.showWarning(
+                  ctx,
+                  result.errorMessage ?? 'Could not detect location. You can type it manually.',
+                );
+              }
+            }
 
-                    // Full Name Field
-                    Text(
-                      strings.fullName,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: nameController,
-                      textCapitalization: TextCapitalization.words,
-                      inputFormatters: const [CapitalizeWordsInputFormatter()],
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        color: titleColor,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: strings.enterFullNameHint,
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: hintColor,
-                        ),
-                        filled: true,
-                        fillColor: inputBg,
-                        prefixIcon: Icon(
-                          Icons.person_outline,
-                          size: 20,
-                          color: fieldIconColor,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: borderColor),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: actionColor,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Phone Number Field
-                    Text(
-                      '${strings.phoneLabel} (${strings.numbersOnlyNotice})',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: phoneController,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(11),
-                      ],
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        color: titleColor,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '09XXXXXXXXX',
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: hintColor,
-                        ),
-                        filled: true,
-                        fillColor: inputBg,
-                        prefixIcon: Icon(
-                          Icons.phone_iphone,
-                          size: 20,
-                          color: fieldIconColor,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: borderColor),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: actionColor,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Address / Branch Field
-                    Text(
-                      strings.address,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: addressController,
-                      textCapitalization: TextCapitalization.words,
-                      inputFormatters: const [CapitalizeWordsInputFormatter()],
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        color: titleColor,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: strings.enterAddressHint,
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: hintColor,
-                        ),
-                        filled: true,
-                        fillColor: inputBg,
-                        prefixIcon: Icon(
-                          Icons.location_on_outlined,
-                          size: 20,
-                          color: fieldIconColor,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: borderColor),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: actionColor,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Save Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final newName = nameController.text.trim();
-                          final newPhone = phoneController.text.trim();
-                          final newAddress = addressController.text.trim();
-
-                          if (newName.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(strings.pleaseEnterFullName),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (newPhone.isNotEmpty && (newPhone.length != 11 || !newPhone.startsWith('09'))) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(strings.invalidPhoneNumber),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-
-                          Navigator.pop(ctx);
-                          final user = _supabase.auth.currentUser;
-                          if (user == null) return;
-
-                          try {
-                            // 1. Update Auth User Metadata
-                            try {
-                              await _supabase.auth.updateUser(
-                                UserAttributes(
-                                  data: {'full_name': newName, 'name': newName},
-                                ),
-                              );
-                            } catch (_) {}
-
-                            // 2. Update app_users table (visible on Admin Web)
-                            await _supabase
-                                .from('app_users')
-                                .update({
-                                  'name': newName,
-                                  'phone': newPhone.isNotEmpty ? newPhone : null,
-                                  'address': newAddress.isNotEmpty
-                                      ? newAddress
-                                      : null,
-                                })
-                                .or(
-                                  'supabase_user_id.eq.${user.id},email.eq.${user.email}',
-                                );
-
-                            // 3. Update cashiers table if exists (visible on Admin Web)
-                            if (user.email != null) {
-                              try {
-                                await _supabase
-                                    .from('cashiers')
-                                    .update({
-                                      'name': newName,
-                                      'phone': newPhone.isNotEmpty
-                                          ? newPhone
-                                          : null,
-                                      'address': newAddress.isNotEmpty
-                                          ? newAddress
-                                          : null,
-                                    })
-                                    .eq('email', user.email!);
-                              } catch (_) {}
-                            }
-
-                            await _fetchProfile();
-                            _showSnackBar(strings.profileUpdateSuccess);
-                          } catch (e) {
-                            _showSnackBar(
-                              'Error updating profile: $e',
-                              isError: true,
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDark ? Colors.white : _brandColor,
-                          foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          strings.saveChanges,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: sheetBg,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, -4),
                     ),
                   ],
                 ),
+                child: SafeArea(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top Drag Handle Pill
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF475569) : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Header Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.person_outline_rounded,
+                                    color: isDark ? Colors.white : const Color(0xFF18314F),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  strings.editProfileTitle,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                    color: titleColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : hintColor, size: 22),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Divider(color: borderColor, height: 1),
+                        const SizedBox(height: 18),
+
+                        // 1. First Name & Middle Initial Row
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildFieldHeaderRow(
+                                    label: strings.firstNameLabel,
+                                    titleColor: titleColor,
+                                  ),
+                                  _buildDialogInputField(
+                                    context,
+                                    controller: firstNameCtrl,
+                                    hintText: 'e.g. Juan',
+                                    icon: Icons.person_outline_rounded,
+                                    hasError: firstNameError != null,
+                                    inputFormatters: const [NameInputFormatter()],
+                                    onChanged: (_) {
+                                      if (firstNameError != null) setModalState(() => firstNameError = null);
+                                    },
+                                  ),
+                                  _buildInlineErrorText(firstNameError),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildFieldHeaderRow(
+                                    label: strings.middleInitialLabel,
+                                    titleColor: titleColor,
+                                    trailing: Text(
+                                      strings.optionalLabel,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: hintColor,
+                                      ),
+                                    ),
+                                  ),
+                                  _buildDialogInputField(
+                                    context,
+                                    controller: middleInitialCtrl,
+                                    hintText: 'M.',
+                                    maxLength: 2,
+                                    icon: Icons.edit_note_rounded,
+                                    textCapitalization: TextCapitalization.characters,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\u00D1\u00F1]')),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // 2. Last Name Field
+                        _buildFieldHeaderRow(
+                          label: strings.lastNameLabel,
+                          titleColor: titleColor,
+                        ),
+                        _buildDialogInputField(
+                          context,
+                          controller: lastNameCtrl,
+                          hintText: 'e.g. Dela Cruz',
+                          icon: Icons.badge_outlined,
+                          hasError: lastNameError != null,
+                          inputFormatters: const [NameInputFormatter()],
+                          onChanged: (_) {
+                            if (lastNameError != null) setModalState(() => lastNameError = null);
+                          },
+                        ),
+                        _buildInlineErrorText(lastNameError),
+                        const SizedBox(height: 14),
+
+                        // 3. Phone Number Field
+                        _buildFieldHeaderRow(
+                          label: strings.phoneLabel,
+                          titleColor: titleColor,
+                          trailing: Text(
+                            strings.phoneHelperNotice,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: hintColor,
+                            ),
+                          ),
+                        ),
+                        _buildDialogInputField(
+                          context,
+                          controller: phoneCtrl,
+                          hintText: '09XXXXXXXXX',
+                          icon: Icons.phone_iphone_rounded,
+                          keyboardType: TextInputType.phone,
+                          hasError: phoneError != null,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(11),
+                          ],
+                          onChanged: (_) {
+                            if (phoneError != null) setModalState(() => phoneError = null);
+                          },
+                        ),
+                        _buildInlineErrorText(phoneError),
+                        const SizedBox(height: 14),
+
+                        // 4. Address Field with Auto-Detect Action
+                        _buildFieldHeaderRow(
+                          label: strings.address,
+                          titleColor: titleColor,
+                          trailing: InkWell(
+                            onTap: isDetectingGps ? null : autoDetectGps,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isDetectingGps)
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.8,
+                                        color: actionColor,
+                                      ),
+                                    )
+                                  else
+                                    Icon(
+                                      Icons.my_location_rounded,
+                                      size: 14,
+                                      color: actionColor,
+                                    ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isDetectingGps ? strings.detectingGps : strings.autoDetectLocation,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: actionColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        _buildDialogInputField(
+                          context,
+                          controller: addrCtrl,
+                          readOnly: true,
+                          onTap: isDetectingGps ? null : autoDetectGps,
+                          hintText: isDetectingGps ? strings.detectingGps : strings.tapToDetectGpsAddress,
+                          icon: Icons.location_on_outlined,
+                          suffixIcon: isDetectingGps
+                              ? Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: actionColor,
+                                    ),
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (addrCtrl.text.trim().isNotEmpty)
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.close_rounded,
+                                          size: 18,
+                                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                        ),
+                                        tooltip: strings.cancel,
+                                        onPressed: () {
+                                          setModalState(() {
+                                            addrCtrl.clear();
+                                          });
+                                        },
+                                      ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.my_location_rounded,
+                                        size: 20,
+                                        color: actionColor,
+                                      ),
+                                      tooltip: strings.autoDetectLocation,
+                                      onPressed: autoDetectGps,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: isDark ? const Color(0xFF334155) : borderColor, width: 1.2),
+                                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.transparent,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: Text(
+                                  strings.cancel,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    color: isDark ? Colors.white : hintColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  final first = firstNameCtrl.text.trim();
+                                  final middle = middleInitialCtrl.text.trim().replaceAll('.', '').toUpperCase();
+                                  final last = lastNameCtrl.text.trim();
+                                  final newPhone = phoneCtrl.text.trim();
+                                  final newAddr = addrCtrl.text.trim();
+
+                                  // Validate First Name (letters, spaces, accents, ñ/Ñ only)
+                                  String? fErr;
+                                  if (first.isEmpty) {
+                                    fErr = strings.firstNameRequired;
+                                  } else if (!RegExp(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$").hasMatch(first)) {
+                                    fErr = strings.nameInvalidCharacters;
+                                  }
+
+                                  // Validate Last Name (letters, spaces, accents, ñ/Ñ only)
+                                  String? lErr;
+                                  if (last.isEmpty) {
+                                    lErr = strings.lastNameRequired;
+                                  } else if (!RegExp(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$").hasMatch(last)) {
+                                    lErr = strings.nameInvalidCharacters;
+                                  }
+
+                                  // Validate Phone (optional, but if provided must start with 09 and be 11 digits)
+                                  String? pErr;
+                                  if (newPhone.isNotEmpty) {
+                                    if (!newPhone.startsWith('09')) {
+                                      pErr = strings.phoneMustStart09;
+                                    } else if (newPhone.length != 11) {
+                                      pErr = strings.phoneMustBe11Digits;
+                                    }
+                                  }
+
+                                  if (fErr != null || lErr != null || pErr != null) {
+                                    setModalState(() {
+                                      firstNameError = fErr;
+                                      lastNameError = lErr;
+                                      phoneError = pErr;
+                                    });
+                                    return;
+                                  }
+
+                                  final newCombinedName = [
+                                    first,
+                                    if (middle.isNotEmpty) '$middle.',
+                                    last,
+                                  ].where((p) => p.isNotEmpty).join(' ');
+
+                                  setState(() {
+                                    if (newCombinedName.isNotEmpty) _cashierName = newCombinedName;
+                                    _cashierPhone = newPhone.isNotEmpty ? newPhone : 'Not set';
+                                    _cashierAddress = newAddr.isNotEmpty ? newAddr : 'Not set';
+                                  });
+
+                                  Navigator.pop(ctx);
+
+                                  try {
+                                    final user = _supabase.auth.currentUser;
+                                    final emailToUse = _cashierEmail.isNotEmpty ? _cashierEmail : (user?.email ?? '');
+
+                                    // 1. Update Supabase auth user metadata so First, Middle, Last names, phone, address stay synchronized
+                                    if (user != null) {
+                                      try {
+                                        final existingMeta = user.userMetadata ?? {};
+                                        final regName = (existingMeta['registered_name'] ?? existingMeta['original_name'] ?? _cashierName).toString().trim();
+                                        await _supabase.auth.updateUser(
+                                          UserAttributes(
+                                            data: {
+                                              'first_name': first,
+                                              'middle_initial': middle,
+                                              'last_name': last,
+                                              'full_name': newCombinedName,
+                                              'name': newCombinedName,
+                                              'phone': newPhone,
+                                              'phone_number': newPhone,
+                                              'address': newAddr,
+                                              'store_address': newAddr,
+                                              if (regName.isNotEmpty && regName.toLowerCase() != 'cashier staff')
+                                                'registered_name': regName,
+                                            },
+                                          ),
+                                        );
+                                        await _supabase.auth.refreshSession();
+                                      } catch (_) {}
+                                    }
+
+                                    // 2. Persist locally to SharedPreferences for instant local sync
+                                    try {
+                                      final prefs = await SharedPreferences.getInstance();
+                                      final keyPhone = 'cashier_phone_${user?.id ?? emailToUse}';
+                                      final keyAddr = 'cashier_address_${user?.id ?? emailToUse}';
+                                      if (newPhone.isNotEmpty) {
+                                        await prefs.setString(keyPhone, newPhone);
+                                      } else {
+                                        await prefs.remove(keyPhone);
+                                      }
+                                      if (newAddr.isNotEmpty) {
+                                        await prefs.setString(keyAddr, newAddr);
+                                      } else {
+                                        await prefs.remove(keyAddr);
+                                      }
+                                    } catch (_) {}
+
+                                    // 3. Update app_users table with valid column (name)
+                                    try {
+                                      if (_appUserId != null) {
+                                        await _supabase
+                                            .from('app_users')
+                                            .update({'name': newCombinedName})
+                                            .eq('user_id', _appUserId!);
+                                      } else if (user != null) {
+                                        await _supabase
+                                            .from('app_users')
+                                            .update({'name': newCombinedName})
+                                            .eq('supabase_user_id', user.id);
+                                      } else if (emailToUse.isNotEmpty) {
+                                        await _supabase
+                                            .from('app_users')
+                                            .update({'name': newCombinedName})
+                                            .ilike('email', emailToUse);
+                                      }
+                                    } catch (appUserErr) {
+                                      debugPrint('Error updating app_users: $appUserErr');
+                                    }
+
+                                    // 4. Record update in admin_notifications so Admin Web can reflect phone and store address in real time
+                                    try {
+                                      await _supabase.from('admin_notifications').insert({
+                                        'type': 'cashier_profile',
+                                        'title': 'Cashier Profile Updated',
+                                        'message': '$newCombinedName updated their profile details.',
+                                        'metadata': {
+                                          'user_id': _appUserId,
+                                          'supabase_user_id': user?.id,
+                                          'email': emailToUse,
+                                          'name': newCombinedName,
+                                          'first_name': first,
+                                          'middle_initial': middle,
+                                          'last_name': last,
+                                          'phone': newPhone,
+                                          'contact_number': newPhone,
+                                          'address': newAddr,
+                                          'store_address': newAddr,
+                                          'updated_at': DateTime.now().toIso8601String(),
+                                        },
+                                      });
+                                    } catch (notifErr) {
+                                      debugPrint('Notice inserting admin notification: $notifErr');
+                                    }
+
+                                    await _fetchProfile();
+                                    if (mounted) {
+                                      PiggyToast.showSuccess(
+                                        context,
+                                        strings.profileUpdateSuccess,
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      PiggyToast.showError(
+                                        context,
+                                        'Error updating profile: $e',
+                                      );
+                                    }
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.white : const Color(0xFF18314F),
+                                  foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: Text(
+                                  strings.saveChanges,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFieldHeaderRow({
+    required String label,
+    required Color titleColor,
+    Widget? trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: titleColor,
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineErrorText(String? errorText) {
+    if (errorText == null || errorText.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, size: 13, color: Color(0xFFEF4444)),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              errorText,
+              style: GoogleFonts.plusJakartaSans(
+                color: const Color(0xFFEF4444),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDialogInputField(
+    BuildContext context, {
+    required TextEditingController controller,
+    required String hintText,
+    IconData? icon,
+    Widget? suffixIcon,
+    bool hasError = false,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    int? maxLength,
+    ValueChanged<String>? onChanged,
+    TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.words,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final effectiveFormatters = inputFormatters ??
+        (keyboardType == TextInputType.phone ? null : const [CapitalizeWordsInputFormatter()]);
+    final errorBorderColor = const Color(0xFFEF4444);
+    final normalBorderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE6EBF2);
+
+    return TextField(
+      controller: controller,
+      readOnly: readOnly,
+      enableInteractiveSelection: !readOnly,
+      showCursor: !readOnly,
+      onTap: onTap,
+      keyboardType: readOnly ? TextInputType.none : keyboardType,
+      textCapitalization: textCapitalization,
+      maxLength: maxLength,
+      inputFormatters: effectiveFormatters,
+      onChanged: onChanged,
+      style: GoogleFonts.plusJakartaSans(
+        color: isDark ? Colors.white : const Color(0xFF18314F),
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+      ),
+      decoration: InputDecoration(
+        counterText: '',
+        hintText: hintText,
+        hintStyle: GoogleFonts.plusJakartaSans(
+          color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+          fontWeight: FontWeight.w500,
+          fontSize: 13.5,
+        ),
+        prefixIcon: icon != null
+            ? Icon(icon, size: 20, color: hasError ? errorBorderColor : (isDark ? Colors.white70 : const Color(0xFF18314F)))
+            : null,
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+        contentPadding: EdgeInsets.symmetric(horizontal: icon != null ? 14 : 16, vertical: 13),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: hasError ? errorBorderColor : normalBorderColor,
+            width: hasError ? 1.4 : 1.0,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: hasError ? errorBorderColor : (isDark ? Colors.white : const Color(0xFF18314F)),
+            width: 1.5,
+          ),
+        ),
+      ),
     );
   }
 

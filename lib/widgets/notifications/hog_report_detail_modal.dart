@@ -497,15 +497,33 @@ class _HogReportDetailModalState extends State<HogReportDetailModal> {
                   ),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.15),
-                        child: Text(
-                          initials,
-                          style: AppTextStyles.jakarta(
-                            size: 13,
-                            weight: FontWeight.w800,
-                            color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark ? Colors.white : const Color(0xFF18314F),
+                            width: 1.5,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: Image.asset(
+                            'assets/piggytrunk_logo.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Center(
+                              child: Text(
+                                initials,
+                                style: AppTextStyles.jakarta(
+                                  size: 13,
+                                  weight: FontWeight.w800,
+                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),

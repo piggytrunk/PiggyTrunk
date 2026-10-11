@@ -48,7 +48,7 @@ class AdminNotificationDrawer extends ConsumerStatefulWidget {
 }
 
 class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawer> {
-  String _selectedFilter = 'unread'; // 'unread', 'registrations', 'history'
+  String _selectedFilter = 'unread'; // 'unread', 'investments', 'registrations', 'history'
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +57,14 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
     final unreadCount = allNotifications.where((n) => !n.isRead).length;
 
     final filteredNotifications = allNotifications.where((n) {
+      final t = n.title.toLowerCase();
+      final m = n.message.toLowerCase();
+      final ty = n.type.toLowerCase();
+      if (t.contains('password reset') || m.contains('reset their password') || ty.contains('password_reset') || ty == 'cashier_profile') {
+        return false;
+      }
       if (_selectedFilter == 'unread') return !n.isRead;
+      if (_selectedFilter == 'investments') return NotificationFilterBar.isPartnerInvestment(n);
       if (_selectedFilter == 'registrations') return n.type == 'user_registration';
       if (_selectedFilter == 'history') return true;
       return !n.isRead;
@@ -74,6 +81,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
     final drawerWidth = isMobile ? screenWidth : 420.0;
+    final horizontalPadding = isMobile ? 16.0 : 20.0;
 
     return Material(
       color: Colors.transparent,
@@ -100,7 +108,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
             children: [
               // Branded Header
               Container(
-                padding: EdgeInsets.fromLTRB(isMobile ? 16 : 20, 16, isMobile ? 12 : 16, 14),
+                padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 14),
                 decoration: BoxDecoration(
                   color: surfaceColor,
                   border: Border(bottom: BorderSide(color: borderColor, width: 1)),
@@ -163,12 +171,54 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
                             ],
                           ],
                         ),
-                        IconButton(
-                          icon: Icon(Icons.close_rounded, color: mutedColor, size: 20),
-                          tooltip: 'Close',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () => Navigator.pop(context),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (unreadCount > 0) ...[
+                              InkWell(
+                                onTap: () => AdminNotificationService.markAllAsRead(),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: brandPrimary.withValues(alpha: isDark ? 0.12 : 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: brandPrimary.withValues(alpha: 0.25),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.done_all_rounded,
+                                        size: 13,
+                                        color: brandPrimary,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Mark all read',
+                                        style: AppTextStyles.jakarta(
+                                          size: 11,
+                                          weight: FontWeight.w700,
+                                          color: brandPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            IconButton(
+                              icon: Icon(Icons.close_rounded, color: mutedColor, size: 20),
+                              tooltip: 'Close',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -190,7 +240,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
                     ? _buildEmptyState(isDark, mutedColor, textColor, borderColor, allNotifications.isNotEmpty)
                     : ListView.separated(
                         padding: EdgeInsets.symmetric(
-                          horizontal: isMobile ? 12 : 16,
+                          horizontal: horizontalPadding,
                           vertical: 12,
                         ),
                         itemCount: filteredNotifications.length,
@@ -215,7 +265,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
               if (allNotifications.isNotEmpty)
                 Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 16 : 20,
+                    horizontal: horizontalPadding,
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
@@ -233,7 +283,9 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
                           border: Border.all(color: borderColor),
                         ),
                         child: Text(
-                          'Total: ${allNotifications.length} items',
+                          filteredNotifications.length == allNotifications.length
+                              ? 'Total: ${allNotifications.length} items'
+                              : 'Showing ${filteredNotifications.length} of ${allNotifications.length}',
                           style: AppTextStyles.jakarta(
                             size: 11.5,
                             weight: FontWeight.w600,
@@ -349,7 +401,9 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
             ),
             const SizedBox(height: 20),
             Text(
-              'All Caught Up!',
+              _selectedFilter == 'investments'
+                  ? 'No Investment Notifications'
+                  : (_selectedFilter == 'registrations' ? 'No User Registrations' : 'All Caught Up!'),
               style: AppTextStyles.jakarta(
                 size: 16,
                 weight: FontWeight.w800,
@@ -358,7 +412,11 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
             ),
             const SizedBox(height: 6),
             Text(
-              'No new registrations, farm alerts, or stock requests at the moment.',
+              _selectedFilter == 'investments'
+                  ? 'No partner investor funding activities found at the moment.'
+                  : (_selectedFilter == 'registrations'
+                      ? 'No pending user registrations found at the moment.'
+                      : 'No new registrations, farm alerts, or stock requests at the moment.'),
               textAlign: TextAlign.center,
               style: AppTextStyles.jakarta(
                 size: 13.5,

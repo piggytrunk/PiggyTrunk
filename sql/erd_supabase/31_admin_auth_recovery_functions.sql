@@ -293,30 +293,7 @@ begin
   where supabase_user_id = target_user_id
      or lower(email) = cleaned_email;
 
-  -- Fetch user info for quiet history logging without creating false admin security alarms
-  select role, name into user_role, user_fullname
-  from public.app_users
-  where supabase_user_id = target_user_id
-     or lower(email) = cleaned_email
-  limit 1;
-
-  role_display := initcap(replace(coalesce(user_role, 'User'), '_', ' '));
-
-  -- Record as user_registration / history log marked as read (is_read = true)
-  -- so it never rings the Admin 'Active' alarm or falsely labels the user as an Administrator
-  insert into public.admin_notifications (title, message, type, is_read, metadata)
-  values (
-    'User Password Reset',
-    role_display || ' (' || coalesce(user_fullname, cleaned_email) || ') reset their password via mobile verification.',
-    'user_registration',
-    true,
-    jsonb_build_object(
-      'email', cleaned_email,
-      'role', user_role,
-      'name', user_fullname,
-      'updated_at', now()
-    )
-  );
+  -- Note: User password reset is private authentication activity and is not broadcast to admin_notifications.
 
   return jsonb_build_object(
     'success', true,

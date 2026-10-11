@@ -166,7 +166,7 @@ class GoogleAuthService {
 
       // If user does not exist in database yet
       if (existingUser == null) {
-        if (targetRole != null && targetRole.isNotEmpty) {
+        if (isSignUpMode && targetRole != null && targetRole.isNotEmpty) {
           // Pre-selected role (from Sign Up screen)
           return await completeGoogleRegistration(
             email: email,
@@ -175,7 +175,7 @@ class GoogleAuthService {
           );
         }
 
-        // Universal Login: user is new, trigger role selection modal
+        // On Sign In mode: user is not registered in database, return as new user
         return {
           'success': true,
           'is_new_user': true,

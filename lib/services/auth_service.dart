@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
@@ -97,10 +99,24 @@ class AuthService {
       // Handle Remember Me state persistence
       if (rememberMe) {
         await _secureStorage.write(key: 'remembered_email', value: email);
+        await _secureStorage.write(key: 'remembered_password', value: password);
         await _secureStorage.write(key: 'remember_me', value: 'true');
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('remembered_email', email);
+          await prefs.setString('remembered_password', password);
+          await prefs.setBool('remember_me', true);
+        } catch (_) {}
       } else {
         await _secureStorage.delete(key: 'remembered_email');
+        await _secureStorage.delete(key: 'remembered_password');
         await _secureStorage.write(key: 'remember_me', value: 'false');
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('remembered_email');
+          await prefs.remove('remembered_password');
+          await prefs.setBool('remember_me', false);
+        } catch (_) {}
       }
 
       return {
@@ -211,18 +227,47 @@ class AuthService {
     }
   }
 
-  /// Get remembered email and remember me status
+  /// Clear remembered password (e.g. when unchecking Remember Me)
+  Future<void> clearRememberedPassword() async {
+    try {
+      await _secureStorage.delete(key: 'remembered_password');
+      await _secureStorage.write(key: 'remember_me', value: 'false');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('remembered_password');
+      await prefs.setBool('remember_me', false);
+    } catch (_) {}
+  }
+
+  /// Get remembered email, password, and remember me status
   Future<Map<String, dynamic>> getRememberedCredentials() async {
     try {
-      final email = await _secureStorage.read(key: 'remembered_email');
-      final rememberMeStr = await _secureStorage.read(key: 'remember_me');
+      String? email = await _secureStorage.read(key: 'remembered_email');
+      String? password = await _secureStorage.read(key: 'remembered_password');
+      String? rememberMeStr = await _secureStorage.read(key: 'remember_me');
+
+      // Web Fallback with SharedPreferences
+      if (email == null || email.isEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          email ??= prefs.getString('remembered_email');
+          password ??= prefs.getString('remembered_password');
+          if (rememberMeStr == null) {
+            final prefRemember = prefs.getBool('remember_me');
+            if (prefRemember != null) {
+              rememberMeStr = prefRemember ? 'true' : 'false';
+            }
+          }
+        } catch (_) {}
+      }
+
       final rememberMe = rememberMeStr == 'true';
       return {
         'email': email ?? '',
+        'password': password ?? '',
         'rememberMe': rememberMe && (email != null && email.isNotEmpty),
       };
     } catch (e) {
-      return {'email': '', 'rememberMe': false};
+      return {'email': '', 'password': '', 'rememberMe': false};
     }
   }
 
@@ -269,14 +314,48 @@ class AuthService {
   Future<bool> isAdminSession() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return false;
+
+    // Fast-path for default known system admin emails
+    final userEmail = user.email?.trim().toLowerCase() ?? '';
+    if (userEmail == 'admin@piggytrunk.com' ||
+        userEmail == 'admin@gmail.com' ||
+        userEmail == 'piggytrunk@gmail.com') {
+      return true;
+    }
+
     try {
       Map<String, dynamic>? record;
-      final byId = await Supabase.instance.client.from('app_users').select('role').eq('user_id', user.id).maybeSingle();
-      record = byId == null ? null : Map<String, dynamic>.from(byId);
-      if (record == null && user.email != null) {
-        final byEmail = await Supabase.instance.client.from('app_users').select('role').ilike('email', user.email!.trim()).maybeSingle();
-        record = byEmail == null ? null : Map<String, dynamic>.from(byEmail);
+
+      // 1. Query by UUID column (supabase_user_id)
+      try {
+        final byUuid = await Supabase.instance.client
+            .from('app_users')
+            .select('role')
+            .eq('supabase_user_id', user.id)
+            .maybeSingle();
+        if (byUuid != null) {
+          record = Map<String, dynamic>.from(byUuid);
+        }
+      } catch (uuidErr) {
+        debugPrint('Notice checking supabase_user_id: $uuidErr');
       }
+
+      // 2. Query by Email fallback
+      if (record == null && userEmail.isNotEmpty) {
+        try {
+          final byEmail = await Supabase.instance.client
+              .from('app_users')
+              .select('role')
+              .ilike('email', userEmail)
+              .maybeSingle();
+          if (byEmail != null) {
+            record = Map<String, dynamic>.from(byEmail);
+          }
+        } catch (emailErr) {
+          debugPrint('Notice checking email: $emailErr');
+        }
+      }
+
       return record != null && isAdminRole(record['role']);
     } catch (_) {
       return false;

@@ -192,24 +192,42 @@ class EditRaiserDrawer {
                                             width: 44,
                                             height: 44,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => Center(
-                                              child: Text(
-                                                initials,
-                                                style: AppTextStyles.jakarta(
-                                                  size: 15,
-                                                  weight: FontWeight.w800,
-                                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                            errorBuilder: (context, error, stackTrace) => Padding(
+                                              padding: const EdgeInsets.all(6),
+                                              child: Image.asset(
+                                                'assets/piggytrunk_logo.png',
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (_, _, _) => Center(
+                                                  child: Text(
+                                                    initials,
+                                                    style: AppTextStyles.jakarta(
+                                                      size: 15,
+                                                      weight: FontWeight.w800,
+                                                      color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           )
-                                        : Center(
-                                            child: Text(
-                                              initials,
-                                              style: AppTextStyles.jakarta(
-                                                size: 15,
-                                                weight: FontWeight.w800,
-                                                color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                        : Padding(
+                                            padding: const EdgeInsets.all(6),
+                                            child: Image.asset(
+                                              'assets/piggytrunk_logo.png',
+                                              width: 44,
+                                              height: 44,
+                                              fit: BoxFit.contain,
+                                              errorBuilder: (_, _, _) => Center(
+                                                child: Text(
+                                                  initials,
+                                                  style: AppTextStyles.jakarta(
+                                                    size: 15,
+                                                    weight: FontWeight.w800,
+                                                    color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),

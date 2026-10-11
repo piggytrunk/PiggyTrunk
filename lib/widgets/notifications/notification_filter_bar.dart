@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../models/admin_notification_model.dart';
-import '../../providers/admin_notifications_provider.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 
@@ -37,7 +36,7 @@ class NotificationFilterBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(16),
@@ -64,68 +63,39 @@ class NotificationFilterBar extends StatelessWidget {
     );
   }
 
+  static bool isPartnerInvestment(AdminNotification n) {
+    final type = n.type.toLowerCase();
+    final title = n.title.toLowerCase();
+    final msg = n.message.toLowerCase();
+    return type == 'investment' ||
+        type.contains('investment') ||
+        title.contains('partner investment') ||
+        (title.contains('investment') && (msg.contains('invested') || msg.contains('partner'))) ||
+        (n.metadata != null &&
+            (n.metadata!['partner_investor_id'] != null ||
+                (n.metadata!['amount'] != null && n.metadata!['batch_id'] != null)));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final brandColor = isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
+    final investmentCount = allNotifications.where(isPartnerInvestment).length;
+    final usersCount = allNotifications.where((n) => n.type == 'user_registration').length;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterPill('unread', 'Active ($unreadCount)'),
-                const SizedBox(width: 6),
-                _buildFilterPill(
-                  'registrations',
-                  'Users (${allNotifications.where((n) => n.type == 'user_registration').length})',
-                ),
-                const SizedBox(width: 6),
-                _buildFilterPill('history', 'History (${allNotifications.length})'),
-              ],
-            ),
-          ),
-        ),
-        if (unreadCount > 0) ...[
-          const SizedBox(width: 8),
-          InkWell(
-            onTap: () => AdminNotificationService.markAllAsRead(),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-              decoration: BoxDecoration(
-                color: brandColor.withValues(alpha: isDark ? 0.12 : 0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: brandColor.withValues(alpha: 0.25),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.done_all_rounded,
-                    size: 14,
-                    color: brandColor,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Mark all read',
-                    style: AppTextStyles.jakarta(
-                      size: 11.5,
-                      weight: FontWeight.w700,
-                      color: brandColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFilterPill('unread', 'Active ($unreadCount)'),
+          const SizedBox(width: 6),
+          _buildFilterPill('investments', 'Investments ($investmentCount)'),
+          const SizedBox(width: 6),
+          _buildFilterPill('registrations', 'Users ($usersCount)'),
+          const SizedBox(width: 6),
+          _buildFilterPill('history', 'History (${allNotifications.length})'),
         ],
-      ],
+      ),
     );
   }
 }

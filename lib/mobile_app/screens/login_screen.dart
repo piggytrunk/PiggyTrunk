@@ -220,29 +220,11 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('Invalid account credentials.');
       }
 
-      final userData = await Supabase.instance.client
-          .from('app_users')
-          .select('role, status')
-          .or('supabase_user_id.eq.${user.id},email.eq.${user.email}')
-          .maybeSingle();
-
-      final String rawStatus = (userData?['status'] ?? 'Pending').toString();
-      final String statusLower = rawStatus.toLowerCase();
-      final String role = (userData?['role'] ?? 'hog_raiser').toString();
-
-      if (statusLower == 'pending' || statusLower == 'inactive') {
-        await Supabase.instance.client.auth.signOut();
-        await AuthSessionService().clearSession();
-        if (mounted) _showPendingDialog();
-      } else {
-        await AuthSessionService().saveSession(
-          email: user.email ?? emailToUse,
-          role: role,
-          loginMethod: 'password',
-          userId: user.id,
-        );
-        if (mounted) _navigateToDashboard(role);
-      }
+      await _verifyAndProcessAuthSession(
+        email: user.email ?? emailToUse,
+        userId: user.id,
+        loginMethod: 'password',
+      );
     } on AuthException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('email not confirmed')) {
@@ -288,6 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final result = await _googleAuthService.signInWithGoogle(
+        targetRole: _targetRole,
         isSignUpMode: false,
       );
 
@@ -319,55 +302,13 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Returning user: read detected role and status
-      final String rawStatus = (result['status'] ?? 'pending').toString();
-      final String statusLower = rawStatus.toLowerCase();
-      final String role = (result['role'] ?? 'hog_raiser').toString();
-      final bool isActuallyActive = statusLower == 'active' || statusLower == 'approved';
-
-      if (!isActuallyActive) {
-        // Double-check database directly in case of stale status
-        bool dbActive = false;
-        if (googleEmail != null && googleEmail.isNotEmpty) {
-          try {
-            final freshUser = await Supabase.instance.client
-                .from('app_users')
-                .select('status, role')
-                .eq('email', googleEmail)
-                .maybeSingle();
-            if (freshUser != null) {
-              final st = (freshUser['status'] ?? '').toString().toLowerCase();
-              if (st == 'active' || st == 'approved') {
-                dbActive = true;
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (dbActive) {
-          if (googleEmail != null) {
-            await AuthSessionService().saveSession(
-              email: googleEmail,
-              role: role,
-              loginMethod: 'google',
-            );
-          }
-          if (mounted) _navigateToDashboard(role);
-          return;
-        }
-
-        await Supabase.instance.client.auth.signOut();
-        await AuthSessionService().clearSession();
-        if (mounted) _showPendingDialog();
-      } else {
-        if (googleEmail != null && googleEmail.isNotEmpty) {
-          await AuthSessionService().saveSession(
-            email: googleEmail,
-            role: role,
-            loginMethod: 'google',
-          );
-        }
-        if (mounted) _navigateToDashboard(role);
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (googleEmail != null && googleEmail.isNotEmpty) {
+        await _verifyAndProcessAuthSession(
+          email: googleEmail,
+          userId: currentUser?.id,
+          loginMethod: 'google',
+        );
       }
     } else if (result['message'] != null && result['message'] != 'Canceled Google sign-in.' && result['message'] != 'Google Sign-In was canceled.') {
       final rawMsg = result['message'].toString();
@@ -381,6 +322,269 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  bool _isRoleMatching(String actualRole, String targetRole) {
+    final a = actualRole.trim().toLowerCase();
+    final t = targetRole.trim().toLowerCase();
+
+    if (t == 'hog_raiser' || t == 'raiser') {
+      return a == 'hog_raiser' || a == 'raiser';
+    } else if (t == 'partner' || t == 'investor') {
+      return a == 'partner' || a == 'investor';
+    } else if (t == 'cashier') {
+      return a == 'cashier';
+    } else if (t == 'admin') {
+      return a == 'admin';
+    }
+    return a == t;
+  }
+
+  String _getRoleDisplayName(String role) {
+    final r = role.trim().toLowerCase();
+    if (r.contains('raiser')) return 'Hog Raiser';
+    if (r.contains('partner') || r.contains('investor')) return 'Partner Investor';
+    if (r.contains('cashier')) return 'Cashier';
+    if (r.contains('admin')) return 'Admin';
+    return role;
+  }
+
+  void _showRoleMismatchDialog({
+    required String actualRole,
+    required String targetRole,
+  }) {
+    final actualDisplayName = _getRoleDisplayName(actualRole);
+    final targetDisplayName = _getRoleDisplayName(targetRole);
+    final normalizedActualRoleKey = actualRole.toLowerCase().contains('raiser')
+        ? 'hog_raiser'
+        : (actualRole.toLowerCase().contains('partner') || actualRole.toLowerCase().contains('investor')
+            ? 'partner'
+            : (actualRole.toLowerCase().contains('cashier') ? 'cashier' : actualRole.toLowerCase()));
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF4FD),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFFD7E3F3),
+                  width: 1,
+                ),
+              ),
+              child: const Icon(
+                Icons.swap_horiz_rounded,
+                color: Color(0xFF18314F),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Role Mismatch',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Color(0xFF18314F),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'This account is registered as a $actualDisplayName, but you are signing in under the $targetDisplayName portal.\n\nPlease switch to the $actualDisplayName tab to continue.',
+          style: const TextStyle(
+            fontSize: 14,
+            color: Color(0xFF334155),
+            height: 1.45,
+          ),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF18314F),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(dialogCtx);
+                    setState(() {
+                      _targetRole = normalizedActualRoleKey;
+                      _clearErrors();
+                    });
+                  },
+                  child: Text(
+                    'Switch to $actualDisplayName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _verifyAndProcessAuthSession({
+    required String email,
+    required String? userId,
+    required String loginMethod,
+  }) async {
+    final cleanTarget = _targetRole ?? 'hog_raiser';
+
+    // 1. Fetch user profile from app_users
+    Map<String, dynamic>? userData;
+    try {
+      if (userId != null && userId.isNotEmpty) {
+        userData = await Supabase.instance.client
+            .from('app_users')
+            .select('user_id, email, name, role, status')
+            .or('supabase_user_id.eq.$userId,email.ilike.$email')
+            .maybeSingle();
+      } else {
+        userData = await Supabase.instance.client
+            .from('app_users')
+            .select('user_id, email, name, role, status')
+            .ilike('email', email)
+            .maybeSingle();
+      }
+    } catch (e) {
+      debugPrint('Error querying app_users: $e');
+    }
+
+    // 2. Fallback check on hog_raisers table
+    if (userData == null) {
+      try {
+        final raiser = await Supabase.instance.client
+            .from('hog_raisers')
+            .select('account_status, status, name')
+            .ilike('email', email)
+            .maybeSingle();
+        if (raiser != null) {
+          userData = {
+            'role': 'hog_raiser',
+            'status': raiser['account_status'] ?? raiser['status'] ?? 'Pending',
+            'name': raiser['name'],
+          };
+        }
+      } catch (_) {}
+    }
+
+    // 3. User does not exist in backend database
+    if (userData == null) {
+      await Supabase.instance.client.auth.signOut();
+      await AuthSessionService().clearSession();
+      if (mounted) {
+        setState(() {
+          _identifierError = 'No registered account found for this email. Please sign up first.';
+        });
+      }
+      return false;
+    }
+
+    final String actualRole = (userData['role'] ?? '').toString();
+    final String rawStatus = (userData['status'] ?? 'Pending').toString();
+    final String statusLower = rawStatus.toLowerCase();
+
+    // 4. Role Mismatch Verification
+    if (!_isRoleMatching(actualRole, cleanTarget)) {
+      await Supabase.instance.client.auth.signOut();
+      await AuthSessionService().clearSession();
+      if (mounted) {
+        _showRoleMismatchDialog(
+          actualRole: actualRole,
+          targetRole: cleanTarget,
+        );
+      }
+      return false;
+    }
+
+    // 5. Account Status Verification (Pending / Inactive / Suspended)
+    bool isApproved = statusLower == 'active' || statusLower == 'approved';
+
+    // Deep check role-specific table for Hog Raisers
+    if (actualRole.toLowerCase().contains('raiser')) {
+      try {
+        final raiser = await Supabase.instance.client
+            .from('hog_raisers')
+            .select('account_status, status')
+            .or('email.ilike.$email${userId != null ? ",user_id.eq.${userData['user_id']}" : ""}')
+            .maybeSingle();
+        if (raiser != null) {
+          final accStatus = (raiser['account_status'] ?? '').toString().toLowerCase();
+          final rStatus = (raiser['status'] ?? '').toString().toLowerCase();
+          if (accStatus == 'pending' || rStatus == 'pending' || accStatus == 'inactive') {
+            isApproved = false;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!isApproved) {
+      await Supabase.instance.client.auth.signOut();
+      await AuthSessionService().clearSession();
+      if (mounted) {
+        _showPendingDialog();
+      }
+      return false;
+    }
+
+    // 6. Verification Passed! Save session & Navigate
+    await AuthSessionService().saveSession(
+      email: email,
+      role: actualRole,
+      loginMethod: loginMethod,
+      userId: userId ?? userData['user_id']?.toString(),
+    );
+
+    if (mounted) {
+      await _navigateToDashboard(actualRole);
+    }
+    return true;
   }
 
   void _showPendingDialog() {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -44,6 +45,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
   Color get _hintText => _isDark ? const Color(0xFF8FA7C4) : const Color(0xFF5D7391);
 
   RealtimeChannel? _appUsersChannel;
+  RealtimeChannel? _notifsChannel;
   bool _hasCheckedRouteArgs = false;
 
   @override
@@ -73,10 +75,44 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     if (!_hasCheckedRouteArgs) {
       _hasCheckedRouteArgs = true;
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args == 'pending_partner' || args == 'pending') {
-        setState(() => _currentTab = 1);
-      } else if (args == 'pending_cashier') {
+      String? targetTab;
+      String? searchKeyword;
+
+      if (args is String) {
+        targetTab = args;
+      } else if (args is Map) {
+        targetTab = args['tab']?.toString();
+        searchKeyword = (args['search'] ?? args['email'] ?? args['name'])?.toString();
+      }
+
+      // Also support direct query parameters on Flutter Web
+      if (kIsWeb && targetTab == null) {
+        final uri = Uri.base;
+        if (uri.queryParameters.containsKey('tab')) {
+          targetTab = uri.queryParameters['tab'];
+        } else if (uri.queryParameters['role'] == 'cashier') {
+          targetTab = uri.queryParameters['status'] == 'active' ? 'active_cashier' : 'pending_cashier';
+        } else if (uri.queryParameters['role'] == 'partner') {
+          targetTab = uri.queryParameters['status'] == 'active' ? 'active_partner' : 'pending_partner';
+        }
+        if (uri.queryParameters.containsKey('search')) {
+          searchKeyword = uri.queryParameters['search'];
+        }
+      }
+
+      if (targetTab == 'pending_cashier') {
         setState(() => _currentTab = 3);
+      } else if (targetTab == 'active_cashier' || targetTab == 'cashier') {
+        setState(() => _currentTab = 2);
+      } else if (targetTab == 'pending_partner' || targetTab == 'pending') {
+        setState(() => _currentTab = 1);
+      } else if (targetTab == 'active_partner' || targetTab == 'partner') {
+        setState(() => _currentTab = 0);
+      }
+
+      if (searchKeyword != null && searchKeyword.trim().isNotEmpty) {
+        _searchCtrl.text = searchKeyword.trim();
+        _loadUsers(keyword: searchKeyword.trim());
       }
     }
   }
@@ -95,11 +131,26 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
           },
         )
         .subscribe();
+
+    _notifsChannel = _supabase
+        .channel('public:user_approvals_notifs_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'admin_notifications',
+          callback: (payload) {
+            if (mounted) {
+              _loadUsers(keyword: _searchCtrl.text);
+            }
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
     _appUsersChannel?.unsubscribe();
+    _notifsChannel?.unsubscribe();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -153,8 +204,44 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
           }
         }
 
+        final dynamic cashiersRes = await _supabase.from('cashiers').select('*');
+        final Map<int, Map<String, dynamic>> cashierMap = {};
+        if (cashiersRes is List) {
+          for (var c in cashiersRes) {
+            if (c is Map) {
+              final uid = (c['user_id'] as num?)?.toInt();
+              if (uid != null) cashierMap[uid] = Map<String, dynamic>.from(c);
+            }
+          }
+        }
+
+        // Fetch admin_notifications for cashier_profile and user_registration to enrich cashier profile phone & address
+        final Map<dynamic, Map<String, dynamic>> notifMap = {};
+        try {
+          final dynamic notifsRes = await _supabase
+              .from('admin_notifications')
+              .select('metadata, created_at')
+              .inFilter('type', ['cashier_profile', 'user_registration'])
+              .order('created_at', ascending: true);
+          if (notifsRes is List) {
+            for (var n in notifsRes) {
+              if (n is Map && n['metadata'] is Map) {
+                final m = Map<String, dynamic>.from(n['metadata'] as Map);
+                final uid = (m['user_id'] as num?)?.toInt();
+                final email = m['email']?.toString().toLowerCase().trim();
+                if (uid != null) notifMap[uid] = m;
+                if (email != null && email.isNotEmpty) notifMap[email] = m;
+              }
+            }
+          }
+        } catch (notifErr) {
+          debugPrint('Notice enriching user from admin_notifications: $notifErr');
+        }
+
         for (var u in list) {
           final uid = (u['user_id'] as num?)?.toInt();
+          final email = u['email']?.toString().toLowerCase().trim() ?? '';
+          final role = u['role']?.toString().toLowerCase() ?? '';
           if (uid != null) {
             if (partnerMap.containsKey(uid)) {
               u['contact_number'] = partnerMap[uid]?['contact_number'];
@@ -169,6 +256,27 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
               final rAvatar = raiserMap[uid]?['avatar_url']?.toString().trim();
               if (rAvatar != null && rAvatar.isNotEmpty && rAvatar != 'null') {
                 u['avatar_url'] = rAvatar;
+              }
+            } else if (cashierMap.containsKey(uid) || role.contains('cashier')) {
+              final cAvatar = cashierMap[uid]?['avatar_url']?.toString().trim();
+              if (cAvatar != null && cAvatar.isNotEmpty && cAvatar != 'null') {
+                u['avatar_url'] = cAvatar;
+              }
+              final meta = notifMap[uid] ?? (email.isNotEmpty ? notifMap[email] : null);
+              if (meta != null) {
+                final nPhone = (meta['phone'] ?? meta['contact_number'] ?? meta['phone_number'])?.toString().trim();
+                if (nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
+                  u['phone'] = nPhone;
+                  u['contact_number'] = nPhone;
+                }
+                final nAddr = (meta['address'] ?? meta['store_address'] ?? meta['branch_address'])?.toString().trim();
+                if (nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
+                  u['address'] = nAddr;
+                }
+                final nAv = meta['avatar_url']?.toString().trim();
+                if (u['avatar_url'] == null && nAv != null && nAv.isNotEmpty && nAv != 'null') {
+                  u['avatar_url'] = nAv;
+                }
               }
             }
           }
@@ -209,7 +317,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser) ??
+        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
 
     final confirm = await SlideOverConfirmationDrawer.show(
       context: context,
@@ -296,7 +405,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser) ??
+        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
 
     final confirm = await SlideOverConfirmationDrawer.show(
       context: context,
@@ -347,7 +457,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser) ??
+        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
 
     final confirm = await SlideOverConfirmationDrawer.show(
       context: context,
@@ -961,12 +1072,12 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     );
   }
 
-  void _showUserDetails(Map<String, dynamic> row) {
+  Future<void> _showUserDetails(Map<String, dynamic> row) async {
     final isMobile = MediaQuery.of(context).size.width < 720;
     if (isMobile) {
-      _showUserBottomSheet(row);
+      await _showUserBottomSheet(row);
     } else {
-      _showUserSideDrawer(row);
+      await _showUserSideDrawer(row);
     }
   }
 
@@ -1072,7 +1183,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     );
   }
 
-  void _showUserBottomSheet(Map<String, dynamic> row) {
+  Future<void> _showUserBottomSheet(Map<String, dynamic> row) async {
     final userId = int.tryParse(row['user_id'].toString()) ?? 0;
     final name = (row['name'] ?? 'User').toString();
     final email = (row['email'] ?? 'N/A').toString();
@@ -1096,8 +1207,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
         ? name.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase()
         : 'US';
 
-    String phone = (row['phone'] ?? row['contact_number'] ?? '').toString().trim();
-    String address = (row['address'] ?? row['farm_location'] ?? '').toString().trim();
+    String phone = (row['phone'] ?? row['contact_number'] ?? row['phone_number'] ?? '').toString().trim();
+    String address = (row['address'] ?? row['farm_location'] ?? row['store_address'] ?? row['branch_address'] ?? '').toString().trim();
 
     final partnerList = row['partner_investors'];
     if (partnerList is List && partnerList.isNotEmpty) {
@@ -1135,9 +1246,64 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
       }
     }
 
+    final cashierList = row['cashiers'];
+    if (cashierList is List && cashierList.isNotEmpty) {
+      final c = cashierList.first;
+      if ((phone.isEmpty || phone == 'null') && c['phone'] != null && c['phone'].toString().trim().isNotEmpty) {
+        phone = c['phone'].toString().trim();
+      }
+      if ((address.isEmpty || address == 'null') && (c['address'] ?? c['store_address']) != null && (c['address'] ?? c['store_address']).toString().trim().isNotEmpty) {
+        address = (c['address'] ?? c['store_address']).toString().trim();
+      }
+    } else if (cashierList is Map) {
+      if ((phone.isEmpty || phone == 'null') && cashierList['phone'] != null && cashierList['phone'].toString().trim().isNotEmpty) {
+        phone = cashierList['phone'].toString().trim();
+      }
+      if ((address.isEmpty || address == 'null') && (cashierList['address'] ?? cashierList['store_address']) != null && (cashierList['address'] ?? cashierList['store_address']).toString().trim().isNotEmpty) {
+        address = (cashierList['address'] ?? cashierList['store_address']).toString().trim();
+      }
+    }
+
+    // On-demand live query for Cashier if phone or address are still not set
+    if ((roleDisplay == 'Cashier' || roleRaw.toLowerCase().contains('cashier')) &&
+        (phone == 'Not set' || phone.isEmpty || address == 'Not set' || address.isEmpty)) {
+      try {
+        final notif = await _supabase
+            .from('admin_notifications')
+            .select('metadata')
+            .inFilter('type', ['cashier_profile', 'user_registration'])
+            .order('created_at', ascending: false)
+            .limit(15);
+        for (final n in notif) {
+          final m = n['metadata'];
+          if (m is Map) {
+            final mEmail = m['email']?.toString().toLowerCase().trim();
+            final mUid = (m['user_id'] as num?)?.toInt();
+            if ((userId > 0 && mUid == userId) || (email.isNotEmpty && mEmail == email.toLowerCase().trim())) {
+              final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
+              if ((phone == 'Not set' || phone.isEmpty) && nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
+                phone = nPhone;
+                row['phone'] = nPhone;
+                row['contact_number'] = nPhone;
+              }
+              final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
+              if ((address == 'Not set' || address.isEmpty) && nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
+                address = nAddr;
+                row['address'] = nAddr;
+              }
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        debugPrint('Notice on-demand bottom sheet cashier enrichment: $err');
+      }
+    }
+
     if (phone.isEmpty || phone == 'null') phone = 'Not set';
     if (address.isEmpty || address == 'null') address = 'Not set';
 
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1385,7 +1551,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     );
   }
 
-  void _showUserSideDrawer(Map<String, dynamic> row) {
+  Future<void> _showUserSideDrawer(Map<String, dynamic> row) async {
     final userId = int.tryParse(row['user_id'].toString()) ?? 0;
     final name = (row['name'] ?? 'User').toString();
     final email = (row['email'] ?? 'N/A').toString();
@@ -1409,8 +1575,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
         ? name.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase()
         : 'US';
 
-    String phone = (row['phone'] ?? row['contact_number'] ?? '').toString().trim();
-    String address = (row['address'] ?? row['farm_location'] ?? '').toString().trim();
+    String phone = (row['phone'] ?? row['contact_number'] ?? row['phone_number'] ?? '').toString().trim();
+    String address = (row['address'] ?? row['farm_location'] ?? row['store_address'] ?? row['branch_address'] ?? '').toString().trim();
 
     final partnerList = row['partner_investors'];
     if (partnerList is List && partnerList.isNotEmpty) {
@@ -1448,9 +1614,64 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
       }
     }
 
+    final cashierList = row['cashiers'];
+    if (cashierList is List && cashierList.isNotEmpty) {
+      final c = cashierList.first;
+      if ((phone.isEmpty || phone == 'null') && c['phone'] != null && c['phone'].toString().trim().isNotEmpty) {
+        phone = c['phone'].toString().trim();
+      }
+      if ((address.isEmpty || address == 'null') && (c['address'] ?? c['store_address']) != null && (c['address'] ?? c['store_address']).toString().trim().isNotEmpty) {
+        address = (c['address'] ?? c['store_address']).toString().trim();
+      }
+    } else if (cashierList is Map) {
+      if ((phone.isEmpty || phone == 'null') && cashierList['phone'] != null && cashierList['phone'].toString().trim().isNotEmpty) {
+        phone = cashierList['phone'].toString().trim();
+      }
+      if ((address.isEmpty || address == 'null') && (cashierList['address'] ?? cashierList['store_address']) != null && (cashierList['address'] ?? cashierList['store_address']).toString().trim().isNotEmpty) {
+        address = (cashierList['address'] ?? cashierList['store_address']).toString().trim();
+      }
+    }
+
+    // On-demand live query for Cashier if phone or address are still not set
+    if ((roleDisplay == 'Cashier' || roleRaw.toLowerCase().contains('cashier')) &&
+        (phone == 'Not set' || phone.isEmpty || address == 'Not set' || address.isEmpty)) {
+      try {
+        final notif = await _supabase
+            .from('admin_notifications')
+            .select('metadata')
+            .inFilter('type', ['cashier_profile', 'user_registration'])
+            .order('created_at', ascending: false)
+            .limit(15);
+        for (final n in notif) {
+          final m = n['metadata'];
+          if (m is Map) {
+            final mEmail = m['email']?.toString().toLowerCase().trim();
+            final mUid = (m['user_id'] as num?)?.toInt();
+            if ((userId > 0 && mUid == userId) || (email.isNotEmpty && mEmail == email.toLowerCase().trim())) {
+              final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
+              if ((phone == 'Not set' || phone.isEmpty) && nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
+                phone = nPhone;
+                row['phone'] = nPhone;
+                row['contact_number'] = nPhone;
+              }
+              final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
+              if ((address == 'Not set' || address.isEmpty) && nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
+                address = nAddr;
+                row['address'] = nAddr;
+              }
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        debugPrint('Notice on-demand side drawer cashier enrichment: $err');
+      }
+    }
+
     if (phone.isEmpty || phone == 'null') phone = 'Not set';
     if (address.isEmpty || address == 'null') address = 'Not set';
 
+    if (!mounted) return;
     showGeneralDialog(
       context: context,
       barrierDismissible: true,

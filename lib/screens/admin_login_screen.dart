@@ -84,14 +84,33 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
   }
 
   Future<void> _redirectIfAdminSession() async {
+    final credentials = await _authService.getRememberedCredentials();
+    final rememberMe = credentials['rememberMe'] as bool? ?? false;
+
     final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) return;
-    final isAdmin = await _authService.isAdminSession();
-    if (!mounted) return;
-    if (isAdmin) {
-      Navigator.of(context).pushReplacementNamed('/dashboard');
-    } else {
-      await Supabase.instance.client.auth.signOut();
+    if (session != null) {
+      final isAdmin = await _authService.isAdminSession();
+      if (!mounted) return;
+      if (isAdmin) {
+        if (rememberMe) {
+          Navigator.of(context).pushReplacementNamed('/dashboard');
+          return;
+        }
+      } else {
+        await Supabase.instance.client.auth.signOut();
+        return;
+      }
+    }
+
+    // Auto-login fallback if rememberMe is enabled and saved credentials exist
+    if (rememberMe && !_isLoading) {
+      final savedEmail = credentials['email'] as String? ?? '';
+      final savedPassword = credentials['password'] as String? ?? '';
+      if (savedEmail.isNotEmpty && savedPassword.isNotEmpty) {
+        _emailController.text = savedEmail;
+        _passwordController.text = savedPassword;
+        _handleLogin();
+      }
     }
   }
 
@@ -168,11 +187,15 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
   Future<void> _loadRememberedCredentials() async {
     final credentials = await _authService.getRememberedCredentials();
     final savedEmail = credentials['email'] as String? ?? '';
+    final savedPassword = credentials['password'] as String? ?? '';
     final rememberMeStatus = credentials['rememberMe'] as bool? ?? false;
 
     if (mounted && savedEmail.isNotEmpty) {
       setState(() {
         _emailController.text = savedEmail;
+        if (rememberMeStatus && savedPassword.isNotEmpty) {
+          _passwordController.text = savedPassword;
+        }
         _rememberMe = rememberMeStatus;
       });
       _onEmailChanged();
@@ -873,10 +896,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
           height: 20,
           child: Checkbox(
             value: _rememberMe,
-            onChanged: (value) {
+            onChanged: (value) async {
+              final newValue = value ?? false;
               setState(() {
-                _rememberMe = value ?? false;
+                _rememberMe = newValue;
               });
+              if (!newValue) {
+                await _authService.clearRememberedPassword();
+              }
             },
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,

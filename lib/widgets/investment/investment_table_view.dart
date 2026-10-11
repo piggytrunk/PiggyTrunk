@@ -57,6 +57,9 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
         (widget.partnerInvestments.any((p) => (p['status'] ?? '').toString().toLowerCase() == 'pending')
             ? 'PARTNER'
             : 'DIRECT');
+    if (_viewMode == 'PARTNER') {
+      _selectedStageFilter = 'ALL';
+    }
   }
 
   @override
@@ -64,6 +67,9 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
     super.didUpdateWidget(oldWidget);
     if (widget.initialViewMode != null && widget.initialViewMode != oldWidget.initialViewMode) {
       _viewMode = widget.initialViewMode!;
+      if (_viewMode == 'PARTNER') {
+        _selectedStageFilter = 'ALL';
+      }
     }
   }
 

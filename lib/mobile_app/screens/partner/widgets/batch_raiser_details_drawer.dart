@@ -599,7 +599,7 @@ class _BatchRaiserDetailsContent extends StatelessWidget {
                         icon: Icon(
                           Icons.timeline_rounded,
                           size: fit.dp(18),
-                          color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                          color: isDark ? Colors.white : _brandNavy,
                         ),
                         label: Text(
                           'Lifecycle',

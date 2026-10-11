@@ -13,15 +13,31 @@ final adminNotificationsProvider = StreamProvider<List<AdminNotification>>((ref)
         // Sort descending by created_at so newest notifications are first
         rawList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-        // Deduplicate by notification_id and title+message signature to eliminate redundant notifications
+        // Deduplicate and filter out sensitive personal actions (password resets) and internal sync records
         final seenIds = <int>{};
         final seenSignatures = <String>{};
         final uniqueList = <AdminNotification>[];
 
         for (final notif in rawList) {
+          final titleLower = notif.title.trim().toLowerCase();
+          final msgLower = notif.message.trim().toLowerCase();
+          final typeLower = notif.type.trim().toLowerCase();
+
+          // 1. Exclude personal user password resets (sensitive personal credential events)
+          if (titleLower.contains('password reset') ||
+              msgLower.contains('reset their password') ||
+              typeLower.contains('password_reset')) {
+            continue;
+          }
+
+          // 2. Exclude internal backend synchronization records (e.g. cashier profile sync)
+          if (typeLower == 'cashier_profile') {
+            continue;
+          }
+
           if (seenIds.contains(notif.notificationId)) continue;
 
-          final sig = '${notif.title.trim().toLowerCase()}_${notif.message.trim().toLowerCase()}';
+          final sig = '${titleLower}_$msgLower';
           if (seenSignatures.contains(sig)) continue;
 
           seenIds.add(notif.notificationId);

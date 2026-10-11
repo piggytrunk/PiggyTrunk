@@ -559,15 +559,33 @@ class _CashierRequestsTabState extends State<CashierRequestsTab> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                  child: Text(
-                    raiserName.isNotEmpty ? raiserName[0].toUpperCase() : 'R',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: isDark ? const Color(0xFF93C5FD) : _brandBlue,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isDark ? Colors.white.withValues(alpha: 0.25) : const Color(0xFFE2E8F0),
+                      width: 1.2,
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: Image.asset(
+                      'assets/piggytrunk_logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Center(
+                        child: Text(
+                          raiserName.isNotEmpty ? raiserName[0].toUpperCase() : 'R',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? const Color(0xFF93C5FD) : _brandBlue,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

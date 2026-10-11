@@ -213,14 +213,14 @@ class AuthSessionService {
           if (raiser != null) {
             userData = {
               'role': 'hog_raiser',
-              'status': raiser['account_status'] ?? raiser['status'] ?? 'Active',
+              'status': raiser['account_status'] ?? raiser['status'] ?? 'Pending',
             };
           }
         } catch (_) {}
       }
 
       if (userData != null) {
-        final String rawStatus = (userData['status'] ?? 'Active').toString().toLowerCase();
+        final String rawStatus = (userData['status'] ?? 'Pending').toString().toLowerCase();
         final String role = (userData['role'] ?? 'hog_raiser').toString().toLowerCase();
 
         final bool isActive = rawStatus == 'active' || rawStatus == 'approved';

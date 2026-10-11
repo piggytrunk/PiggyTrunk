@@ -704,7 +704,7 @@ class PartnerHomeTab extends StatelessWidget {
                                       child: Icon(
                                         Icons.pets_rounded,
                                         size: fit.dp(18),
-                                        color: isDark ? const Color(0xFF93C5FD) : _brandColor,
+                                        color: isDark ? const Color(0xFF9CB0C9) : _brandColor,
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -882,14 +882,44 @@ class PartnerHomeTab extends StatelessWidget {
                     SizedBox(height: fit.dp(4)),
                     Text(
                       strings.isFilipino
-                          ? 'Ang mga aktibidad at update mula sa iyong mga tagapag-alaga ay lalabas dito.'
-                          : 'Activities & updates from your hog raisers will appear here in real-time.',
+                          ? 'Ang mga ulat at update mula sa iyong mga pinondohang tagapag-alaga ay lalabas dito.'
+                          : 'Activities & updates from your funded hog raisers will appear here in real-time.',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: fit.sp(12.0),
                         fontWeight: FontWeight.w500,
                         color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: fit.dp(14)),
+                    OutlinedButton.icon(
+                      onPressed: onViewProjects,
+                      icon: Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: fit.dp(16),
+                        color: _brandAccent,
+                      ),
+                      label: Text(
+                        strings.isFilipino ? 'Tingnan ang mga Batch' : 'Explore Batches',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(12.5),
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : _brandColor,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: isDark ? const Color(0xff28354a) : const Color(0xffcbd5e1),
+                          width: 1.2,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: fit.dp(16),
+                          vertical: fit.dp(9),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(fit.dp(12)),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -910,18 +940,24 @@ class PartnerHomeTab extends StatelessWidget {
                     ? act['icon'] as IconData
                     : Icons.assignment_outlined;
 
+                final style = _resolveActivityStyle(
+                  type: act['type']?.toString(),
+                  title: title,
+                  isDark: isDark,
+                );
+
                 return Container(
                   margin: EdgeInsets.only(bottom: fit.dp(10)),
-                  padding: EdgeInsets.all(fit.dp(14.0)),
+                  padding: EdgeInsets.all(fit.dp(16.0)),
                   decoration: BoxDecoration(
                     color: cardBgColor,
                     borderRadius: BorderRadius.circular(fit.dp(18)),
                     border: Border.all(color: cardBorderColor, width: 1),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.02),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -932,12 +968,16 @@ class PartnerHomeTab extends StatelessWidget {
                         width: fit.dp(40.0),
                         height: fit.dp(40.0),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1),
+                          color: style.bgColor,
                           borderRadius: BorderRadius.circular(fit.dp(12)),
+                          border: Border.all(
+                            color: style.borderColor,
+                            width: 1,
+                          ),
                         ),
                         child: Icon(
                           icon,
-                          color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                          color: style.iconColor,
                           size: fit.dp(20.0),
                         ),
                       ),
@@ -967,15 +1007,17 @@ class PartnerHomeTab extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                            const SizedBox(height: 3),
-                            Text(
-                              date,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: fit.sp(10.5),
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                            if (date.isNotEmpty && !date.toLowerCase().contains('milestone')) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                date,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: fit.sp(10.5),
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
@@ -1125,4 +1167,91 @@ class PartnerHomeTab extends StatelessWidget {
       ),
     );
   }
+
+  _ActivityThemeStyle _resolveActivityStyle({
+    required String? type,
+    required String title,
+    required bool isDark,
+  }) {
+    final lowerType = (type ?? '').toLowerCase();
+    final lowerTitle = title.toLowerCase();
+
+    // 1. Mortality / Critical Alert
+    if (lowerType.contains('mortality') ||
+        lowerTitle.contains('mortality') ||
+        lowerTitle.contains('death') ||
+        lowerTitle.contains('fever')) {
+      return _ActivityThemeStyle(
+        iconColor: isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent,
+        bgColor: isDark ? const Color(0xFF2F1B22) : const Color(0xFFFEF2F2),
+        borderColor: isDark ? const Color(0xFF4D2531) : const Color(0xFFFCDADF),
+      );
+    }
+
+    // 2. Investment / Funding (Financial Success)
+    if (lowerType.contains('invest') ||
+        lowerTitle.contains('invest') ||
+        lowerTitle.contains('fund') ||
+        lowerTitle.contains('puhu')) {
+      return _ActivityThemeStyle(
+        iconColor: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+        bgColor: isDark ? const Color(0xFF1B2F2B) : const Color(0xFFE8F7EE),
+        borderColor: isDark ? const Color(0xFF264A3E) : const Color(0xFFC6F0D8),
+      );
+    }
+
+    // 3. Health & Veterinary Care
+    if (lowerType.contains('health') ||
+        lowerType.contains('vaccin') ||
+        lowerTitle.contains('health') ||
+        lowerTitle.contains('gamot')) {
+      return _ActivityThemeStyle(
+        iconColor: isDark ? const Color(0xFF34D399) : const Color(0xFF10B981),
+        bgColor: isDark ? const Color(0xFF132E27) : const Color(0xFFECFDF5),
+        borderColor: isDark ? const Color(0xFF1F453B) : const Color(0xFFA7F3D0),
+      );
+    }
+
+    // 4. Feeding & Restock
+    if (lowerType.contains('feed') ||
+        lowerTitle.contains('feed') ||
+        lowerTitle.contains('pakain')) {
+      return _ActivityThemeStyle(
+        iconColor: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+        bgColor: isDark ? const Color(0xFF2E2415) : const Color(0xFFFEF3C7),
+        borderColor: isDark ? const Color(0xFF4B3A20) : const Color(0xFFFDE68A),
+      );
+    }
+
+    // 5. Lifecycle / Milestone / Stage
+    if (lowerType.contains('lifecycle') ||
+        lowerType.contains('stage') ||
+        lowerType.contains('milestone') ||
+        lowerTitle.contains('stage')) {
+      return _ActivityThemeStyle(
+        iconColor: isDark ? const Color(0xFF9CB0C9) : _brandColor,
+        bgColor: isDark ? const Color(0xFF1B2638) : const Color(0xFFEEF4FD),
+        borderColor: isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0),
+      );
+    }
+
+    // 6. Default / General Activity
+    return _ActivityThemeStyle(
+      iconColor: isDark ? const Color(0xFF9CB0C9) : const Color(0xFF243B53),
+      bgColor: isDark ? const Color(0xFF1B2638) : const Color(0xFFF1F5F9),
+      borderColor: isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0),
+    );
+  }
+}
+
+class _ActivityThemeStyle {
+  final Color iconColor;
+  final Color bgColor;
+  final Color borderColor;
+
+  const _ActivityThemeStyle({
+    required this.iconColor,
+    required this.bgColor,
+    required this.borderColor,
+  });
 }

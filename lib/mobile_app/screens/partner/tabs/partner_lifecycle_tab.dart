@@ -34,9 +34,9 @@ class PartnerLifecycleTab extends StatefulWidget {
 }
 
 class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
-  static const Color _brandColor = Color(0xFF18314F);
-  static const Color _successGreen = Color(0xFF10B981);
-  static const Color _dangerRed = Color(0xFFEF4444);
+  static const Color _brandColor = PiggyTrunkTheme.ptPrimary;
+  static const Color _successGreen = PiggyTrunkTheme.ptSuccess;
+  static const Color _dangerRed = PiggyTrunkTheme.ptAccent;
 
   static const List<String> _fatteningStages = [
     'Booster',
@@ -109,20 +109,19 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
   }
 
   List<Map<String, dynamic>> get _effectiveHogs {
+    List<Map<String, dynamic>> hogs = [];
     final proj = _currentProject;
     if (proj != null && proj['hogs'] is List && (proj['hogs'] as List).isNotEmpty) {
-      return List<Map<String, dynamic>>.from(proj['hogs']);
-    }
-    if (widget.hogsList.isNotEmpty) {
-      return widget.hogsList;
-    }
-    if (proj != null) {
+      hogs = List<Map<String, dynamic>>.from(proj['hogs']);
+    } else if (widget.hogsList.isNotEmpty) {
+      hogs = List<Map<String, dynamic>>.from(widget.hogsList);
+    } else if (proj != null) {
       final int count = (proj['total_hogs'] as num?)?.toInt() ?? 15;
       if (count > 0) {
         final isSow = (proj['hog_type'] ?? '').toString().toLowerCase().contains('sow');
         final stage = (proj['stage'] ?? proj['lifecycle_stage'] ?? 'Grower').toString();
         final half = (count / 2).ceil();
-        return List.generate(count, (i) {
+        hogs = List.generate(count, (i) {
           final hogIsSow = (isSow && i >= half) || (proj['hog_type'] ?? '').toString().toLowerCase() == 'sow';
           final sName = hogIsSow ? 'Booster' : stage;
           return {
@@ -137,7 +136,21 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
         });
       }
     }
-    return [];
+
+    if (hogs.isNotEmpty) {
+      hogs.sort((a, b) {
+        final isSowA = _getHogPigType(a, widget.hogType) == 'Sow';
+        final isSowB = _getHogPigType(b, widget.hogType) == 'Sow';
+        if (isSowA != isSowB) {
+          return isSowA ? 1 : -1; // Fattening comes first (false), Sow/Breeding comes second (true)
+        }
+        final tagA = (a['tag_number'] ?? a['hog_id'] ?? '').toString();
+        final tagB = (b['tag_number'] ?? b['hog_id'] ?? '').toString();
+        return tagA.compareTo(tagB);
+      });
+    }
+
+    return hogs;
   }
 
   bool get _hasAnyActiveBatch {
@@ -173,86 +186,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     return fallbackStage.isNotEmpty ? fallbackStage : 'Booster';
   }
 
-  Map<String, String> _getStageInfo(String stageName, bool isSow) {
-    final s = stageName.trim().toLowerCase();
-    if (isSow) {
-      if (s.contains('boost')) {
-        return {
-          'duration': 'Day 1 - 30',
-          'purpose': 'Early nutrition and immune defense development for replacement breeding prospects.',
-          'feed': 'Booster Micro-pellets (20-22% CP)',
-        };
-      } else if (s.contains('pre')) {
-        return {
-          'duration': 'Day 31 - 60',
-          'purpose': 'Skeletal structure foundation and reproductive organ health initialization.',
-          'feed': 'Pre-Starter Pellets (18-20% CP)',
-        };
-      } else if (s.contains('start')) {
-        return {
-          'duration': 'Day 61 - 90',
-          'purpose': 'Gilt selection, bone density development, and daily growth rate optimization.',
-          'feed': 'Starter Mash / Pellets',
-        };
-      } else if (s.contains('grow')) {
-        return {
-          'duration': 'Day 91 - 150',
-          'purpose': 'Targeted body conditioning, frame expansion, and reproductive maturity priming.',
-          'feed': 'Grower Conditioning Feeds',
-        };
-      } else if (s.contains('breed')) {
-        return {
-          'duration': 'Day 151 - 210',
-          'purpose': 'Active breeding cycle management, ovulation tracking, and gestation support.',
-          'feed': 'Gestation & Breeder Mash',
-        };
-      } else {
-        return {
-          'duration': 'Day 211 - 270',
-          'purpose': 'Post-farrowing maternal nourishment, high-yield milk production, and piglet weaning.',
-          'feed': 'Lactation High-Energy Ration',
-        };
-      }
-    } else {
-      if (s.contains('boost')) {
-        return {
-          'duration': 'Day 1 - 30',
-          'purpose': 'Post-weaning gut health preservation, rapid digestive tract enzyme development.',
-          'feed': 'Booster Micro-pellets (20-22% CP)',
-        };
-      } else if (s.contains('pre')) {
-        return {
-          'duration': 'Day 31 - 60',
-          'purpose': 'Smooth transition from milk boosters to solid cereal feeds with high digestibility.',
-          'feed': 'Pre-Starter Crumble',
-        };
-      } else if (s.contains('start')) {
-        return {
-          'duration': 'Day 61 - 90',
-          'purpose': 'Accelerating muscle development, lean tissue deposition, and frame scaling.',
-          'feed': 'Starter Pellets (16-18% CP)',
-        };
-      } else if (s.contains('grow')) {
-        return {
-          'duration': 'Day 91 - 120',
-          'purpose': 'Maximum average daily weight gain (ADG) and efficient feed conversion ratio (FCR).',
-          'feed': 'Grower Mash / Pellets',
-        };
-      } else if (s.contains('finish')) {
-        return {
-          'duration': 'Day 121 - 150',
-          'purpose': 'Target market weight accumulation (95-110 kg) and optimal carcass meat quality.',
-          'feed': 'Finisher Feed (13-14% CP)',
-        };
-      } else {
-        return {
-          'duration': 'Day 151+',
-          'purpose': 'Final pre-market evaluation, commercial dispatch, and revenue liquidation.',
-          'feed': 'Maintenance Ration / Market Prep',
-        };
-      }
-    }
-  }
+
 
   void _showBatchPickerModal(BuildContext parentContext) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -273,6 +207,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
           decoration: BoxDecoration(
             color: surfaceBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: borderColor, width: 1.2),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.25),
@@ -305,6 +240,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                         decoration: BoxDecoration(
                           color: _brandColor.withValues(alpha: isDark ? 0.25 : 0.08),
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 0.8),
                         ),
                         child: Icon(Icons.inventory_2_rounded, size: 20, color: isDark ? Colors.white : _brandColor),
                       ),
@@ -341,103 +277,133 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 ),
                 const SizedBox(height: 12),
                 Divider(height: 1, color: borderColor),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: widget.projectsList.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final p = widget.projectsList[index];
-                      final isSelected = _selectedProjectIndex == index;
-                      final bName = p['batch_name'] ?? 'Batch #${index + 1}';
-                      final rName = (p['assigned_raiser'] ?? p['raiser_name'] ?? 'Assigned Raiser').toString();
-                      final pType = (p['hog_type'] ?? 'Fattening').toString();
-                      final hogs = (p['hogs'] as List?)?.length ?? p['total_hogs'] ?? 0;
+                Builder(
+                  builder: (_) {
+                    final uniqueProjects = <Map<String, dynamic>>[];
+                    final seenBatchKeys = <String>{};
+                    for (final p in widget.projectsList) {
+                      final r = (p['assigned_raiser'] ?? p['raiser_name'] ?? '').toString().trim().toLowerCase();
+                      if (r.isEmpty || r == 'unassigned' || r == 'null') {
+                        continue;
+                      }
+                      final key = (p['batch_id'] ?? p['id'] ?? p['batch_name'] ?? '').toString();
+                      if (key.isNotEmpty && !seenBatchKeys.contains(key)) {
+                        seenBatchKeys.add(key);
+                        uniqueProjects.add(p);
+                      } else if (key.isEmpty) {
+                        uniqueProjects.add(p);
+                      }
+                    }
 
-                      return InkWell(
-                        onTap: () {
-                          setState(() {
-                            _selectedProjectIndex = index;
-                            _selectedHogIndex = 0;
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? (isDark ? const Color(0xFF1E2D42) : const Color(0xFFF1F5F9))
-                                : Colors.transparent,
+                    return Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        itemCount: uniqueProjects.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        itemBuilder: (_, index) {
+                          final p = uniqueProjects[index];
+                          final origIdx = widget.projectsList.indexOf(p);
+                          final isSelected = _selectedProjectIndex == (origIdx >= 0 ? origIdx : index) ||
+                              (_currentProject != null &&
+                                  _currentProject!['batch_id'] != null &&
+                                  _currentProject!['batch_id'] == p['batch_id']);
+                          final bName = p['batch_name'] ?? 'Batch #${index + 1}';
+                          final rName = (p['assigned_raiser'] ?? p['raiser_name'] ?? 'Assigned Raiser').toString();
+                          final pType = (p['hog_type'] ?? 'Fattening').toString();
+                          final hogs = (p['hogs'] as List?)?.length ?? p['total_hogs'] ?? 0;
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedProjectIndex = origIdx >= 0 ? origIdx : index;
+                                _selectedHogIndex = 0;
+                              });
+                              Navigator.pop(ctx);
+                            },
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isSelected
-                                  ? (isDark ? const Color(0xFF3B82F6) : _brandColor)
-                                  : borderColor,
-                              width: isSelected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9))
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
                                   color: isSelected
                                       ? (isDark ? Colors.white : _brandColor)
-                                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.pets_rounded,
-                                    size: 18,
-                                    color: isSelected
-                                        ? (isDark ? _brandColor : Colors.white)
-                                        : mutedColor,
-                                  ),
+                                      : borderColor,
+                                  width: isSelected ? 1.5 : 1,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      bName,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w800,
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? (isDark ? const Color(0xFF1E2D42) : _brandColor)
+                                          : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF8FAFC)),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
                                         color: isSelected
-                                            ? (isDark ? Colors.white : _brandColor)
-                                            : textColor,
+                                            ? (isDark ? Colors.white.withValues(alpha: 0.5) : _brandColor)
+                                            : borderColor,
+                                        width: 0.8,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Raiser: $rName • $hogs Hogs ($pType)',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 11.5,
-                                        color: mutedColor,
-                                        fontWeight: FontWeight.w500,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.pets_rounded,
+                                        size: 18,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : mutedColor,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          bName,
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w800,
+                                            color: isSelected
+                                                ? (isDark ? Colors.white : _brandColor)
+                                                : textColor,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Raiser: $rName • $hogs Hogs ($pType)',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11.5,
+                                            color: mutedColor,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: isDark ? Colors.white : _brandColor,
+                                      size: 20,
+                                    ),
+                                ],
                               ),
-                              if (isSelected)
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  color: isDark ? const Color(0xFF38BDF8) : _brandColor,
-                                  size: 20,
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -461,7 +427,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
-    final tagNumber = hog['tag_number'] ?? '#${index + 1}';
     final rawStatus = (hog['health_status'] ?? 'Healthy').toString();
     final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
     final weight = hog['current_weight'] != null
@@ -470,7 +435,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     final hogType = _getHogPigType(hog, fallbackType);
     final isSow = hogType == 'Sow';
     final currentStage = _getHogStage(hog, fallbackStage, isSow);
-    final stageInfo = _getStageInfo(currentStage, isSow);
     final isHogCompleted = currentStage.toLowerCase() == 'selling' || currentStage.toLowerCase() == 'lactation';
 
     showModalBottomSheet(
@@ -482,6 +446,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: borderColor, width: 1.2),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.15),
@@ -515,10 +480,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                      color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        color: borderColor,
                         width: 1,
                       ),
                     ),
@@ -536,13 +501,14 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${strings.isFilipino ? "Baboy" : "Hog"} $tagNumber',
+                          '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
                             color: textColor,
                           ),
                         ),
+
                         if (weight != null && weight.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(
@@ -616,10 +582,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                              color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                                color: borderColor,
                                 width: 0.8,
                               ),
                             ),
@@ -666,57 +632,23 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
               ),
               const SizedBox(height: 14),
 
-              // Stage Guidance Details
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: borderColor),
-                ),
-                child: Column(
-                  children: [
-                    _buildDetailRow(
-                      icon: Icons.access_time_rounded,
-                      label: 'Typical Timeline',
-                      value: stageInfo['duration'] ?? 'Standard Phase',
-                      textColor: textColor,
-                      mutedColor: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                    ),
-                    Divider(height: 16, color: borderColor),
-                    _buildDetailRow(
-                      icon: Icons.restaurant_rounded,
-                      label: 'Recommended Feed',
-                      value: stageInfo['feed'] ?? 'Standard Ration',
-                      textColor: textColor,
-                      mutedColor: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                    ),
-                    Divider(height: 16, color: borderColor),
-                    _buildDetailRow(
-                      icon: Icons.track_changes_rounded,
-                      label: 'Growth Objective',
-                      value: stageInfo['purpose'] ?? 'Healthy daily development',
-                      textColor: textColor,
-                      mutedColor: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-
               // Raiser info
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF142032) : const Color(0xFFF1F5F9),
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: borderColor,
+                    width: 0.8,
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.person_pin_circle_rounded,
                       size: 18,
-                      color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                      color: isDark ? Colors.white70 : _brandColor,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -763,140 +695,9 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     );
   }
 
-  Widget _buildDetailRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color textColor,
-    required Color mutedColor,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: mutedColor),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: mutedColor,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: textColor,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
-  void _showStageInfoDialog(BuildContext context, String stageName, bool isSow) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final info = _getStageInfo(stageName, isSow);
 
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _brandColor.withValues(alpha: isDark ? 0.25 : 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.timeline_rounded, color: isDark ? Colors.white : _brandColor, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '$stageName Stage',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16.5,
-                    color: isDark ? Colors.white : _brandColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isSow ? 'Sow / Breeding Track' : 'Fattening Track',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : _brandColor,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Duration: ${info['duration']}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Recommended Feed: ${info['feed']}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12.5,
-                  color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                info['purpose'] ?? '',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                'Close',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? const Color(0xFF38BDF8) : _brandColor,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -1011,8 +812,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
         ? _getHogStage(selectedHog, widget.currentStage, isCurrentSow)
         : (widget.currentStage.isNotEmpty ? widget.currentStage : 'Booster');
 
-    final stageInfo = _getStageInfo(selectedHogStage, isCurrentSow);
-
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
       color: _brandColor,
@@ -1050,6 +849,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       decoration: BoxDecoration(
                         color: _brandColor.withValues(alpha: isDark ? 0.25 : 0.08),
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: borderColor, width: 0.8),
                       ),
                       child: Icon(Icons.pets_rounded, size: 16, color: isDark ? Colors.white : _brandColor),
                     ),
@@ -1100,8 +900,12 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                          borderRadius: BorderRadius.circular(6),
+                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: borderColor,
+                            width: 0.8,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1111,14 +915,14 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                                color: isDark ? Colors.white : _brandColor,
                               ),
                             ),
                             const SizedBox(width: 3),
                             Icon(
                               Icons.unfold_more_rounded,
                               size: 14,
-                              color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                              color: isDark ? Colors.white : _brandColor,
                             ),
                           ],
                         ),
@@ -1163,10 +967,11 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                            color: borderColor,
+                            width: 0.8,
                           ),
                         ),
                         child: Text(
@@ -1188,18 +993,22 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                            width: 0.8,
+                          ),
                         ),
                         child: Row(
                           children: visibleHogs.asMap().entries.map((entry) {
                             final idx = entry.key;
                             final h = entry.value;
                             final isSelected = _selectedHogIndex == idx;
-                            final tag = h['tag_number'] ?? '#${idx + 1}';
                             final hIsSow = _getHogPigType(h, widget.hogType) == 'Sow';
                             final hStage = _getHogStage(h, widget.currentStage, hIsSow);
                             final isHogDone = hStage.toLowerCase() == 'selling' || hStage.toLowerCase() == 'lactation';
+                            final hogDisplayName = '${strings.isFilipino ? "Baboy" : "Hog"} ${idx + 1}';
 
                             return Expanded(
                               child: GestureDetector(
@@ -1213,6 +1022,15 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                         ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(9),
+                                    border: isSelected
+                                        ? Border.all(
+                                            color: isDark ? Colors.white : _brandColor,
+                                            width: 1.6,
+                                          )
+                                        : Border.all(
+                                            color: Colors.transparent,
+                                            width: 1.6,
+                                          ),
                                     boxShadow: isSelected
                                         ? [
                                             BoxShadow(
@@ -1233,18 +1051,18 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                             Icons.pets_rounded,
                                             size: 12,
                                             color: isSelected
-                                                ? (isDark ? Colors.white : _brandColor)
+                                                ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                                                 : mutedColor,
                                           ),
                                           const SizedBox(width: 3),
                                           Flexible(
                                             child: Text(
-                                              '$tag',
+                                              hogDisplayName,
                                               style: GoogleFonts.plusJakartaSans(
                                                 fontSize: 11.5,
                                                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                                                 color: isSelected
-                                                    ? (isDark ? Colors.white : _brandColor)
+                                                    ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                                                     : mutedColor,
                                               ),
                                               maxLines: 1,
@@ -1258,7 +1076,11 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
                                           if (isHogDone) ...[
-                                            const Icon(Icons.check_rounded, size: 10, color: _successGreen),
+                                            Icon(
+                                              Icons.check_rounded,
+                                              size: 10,
+                                              color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                                            ),
                                             const SizedBox(width: 2),
                                           ],
                                           Flexible(
@@ -1268,10 +1090,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                                 fontSize: 10.5,
                                                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                                                 color: isHogDone
-                                                    ? _successGreen
+                                                    ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
                                                     : (isSelected
-                                                        ? (isDark ? const Color(0xFFF1F5F9) : _brandColor)
-                                                        : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                                                        ? (isDark ? const Color(0xFFF1F5F9) : PiggyTrunkTheme.ptPrimary)
+                                                        : (isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF94A3B8))),
                                               ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
@@ -1300,69 +1122,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                     isDark: isDark,
                   ),
 
-                  const SizedBox(height: 20),
 
-                  // ==================== ACTIVE STAGE GUIDANCE PILL ====================
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF142032) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isDark ? const Color(0xFF24334A) : const Color(0xFFE2E8F0),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: _brandColor.withValues(alpha: isDark ? 0.3 : 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Icon(
-                                Icons.restaurant_rounded,
-                                size: 14,
-                                color: isDark ? Colors.white : _brandColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '$selectedHogStage: ${stageInfo['feed']}',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: textColor,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              stageInfo['duration'] ?? '',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: mutedColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          stageInfo['purpose'] ?? '',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11.5,
-                            color: mutedColor,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1418,7 +1178,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 final hog = entry.value;
                 final rawStatus = (hog['health_status'] ?? 'Healthy').toString();
                 final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
-                final tagNumber = hog['tag_number'] ?? '#${index + 1}';
                 final weight = hog['current_weight'] != null
                     ? '${hog['current_weight']} kg'
                     : (hog['weight'] != null ? '${hog['weight']} kg' : null);
@@ -1440,14 +1199,18 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: _selectedHogIndex == index
-                            ? (isDark ? const Color(0xFF3B82F6) : _brandColor)
+                            ? (isDark ? Colors.white : _brandColor)
                             : borderColor,
-                        width: _selectedHogIndex == index ? 1.5 : 1,
+                        width: _selectedHogIndex == index ? 1.8 : 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                          blurRadius: 8,
+                          color: _selectedHogIndex == index
+                              ? (isDark
+                                  ? Colors.white.withValues(alpha: 0.12)
+                                  : _brandColor.withValues(alpha: 0.12))
+                              : Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                          blurRadius: _selectedHogIndex == index ? 10 : 8,
                           offset: const Offset(0, 3),
                         ),
                       ],
@@ -1458,10 +1221,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                            color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                              color: borderColor,
                               width: 1,
                             ),
                           ),
@@ -1479,7 +1242,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${strings.isFilipino ? "Baboy" : "Hog"} $tagNumber',
+                                '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
@@ -1495,10 +1258,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                     decoration: BoxDecoration(
-                                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                      color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
-                                        color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                                        color: borderColor,
                                         width: 0.8,
                                       ),
                                     ),
@@ -1517,12 +1280,12 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                     decoration: BoxDecoration(
                                       color: isHogCompleted
                                           ? _successGreen.withValues(alpha: isDark ? 0.22 : 0.12)
-                                          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                                          : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF8FAFC)),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
                                         color: isHogCompleted
                                             ? _successGreen.withValues(alpha: isDark ? 0.6 : 0.4)
-                                            : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                                            : borderColor,
                                         width: 0.8,
                                       ),
                                     ),
@@ -1573,6 +1336,12 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                     ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F5E9))
                                     : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFEBEE)),
                                 borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isHealthy
+                                      ? _successGreen.withValues(alpha: isDark ? 0.5 : 0.3)
+                                      : _dangerRed.withValues(alpha: isDark ? 0.5 : 0.3),
+                                  width: 0.8,
+                                ),
                               ),
                               child: Text(
                                 isHealthy ? strings.healthy : rawStatus,
@@ -1619,6 +1388,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                     decoration: BoxDecoration(
                       color: _brandColor.withValues(alpha: isDark ? 0.25 : 0.08),
                       borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: borderColor,
+                        width: 1,
+                      ),
                     ),
                     child: Center(
                       child: Icon(
@@ -1698,17 +1471,24 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     if (activeIndex == -1) activeIndex = 0;
     final bool isLastStageReached = activeIndex >= 0 && activeIndex == stages.length - 1;
 
+    final Color successColor = isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess;
+    final Color pendingBorderColor = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final Color inactiveBgColor = isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft;
+    final Color inactiveTextColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final totalWidth = constraints.maxWidth;
         final stepWidth = totalWidth / stages.length;
+        const double nodeSlotHeight = 36.0;
+        const double lineHeight = 3.0;
 
         return Stack(
           alignment: Alignment.topCenter,
           children: [
-            // Connecting line
+            // Connecting line: mathematically centered with nodeSlotHeight at (36.0 - 3.0) / 2 = 16.5
             Positioned(
-              top: 16,
+              top: (nodeSlotHeight - lineHeight) / 2,
               left: stepWidth / 2,
               right: stepWidth / 2,
               child: Row(
@@ -1716,11 +1496,9 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                   final isPassed = index < activeIndex || isLastStageReached;
                   return Expanded(
                     child: Container(
-                      height: 3,
+                      height: lineHeight,
                       decoration: BoxDecoration(
-                        color: isPassed
-                            ? _successGreen
-                            : (isDark ? const Color(0xFF334A66) : const Color(0xFFE2E8F0)),
+                        color: isPassed ? successColor : pendingBorderColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1742,79 +1520,84 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 BoxBorder? nodeBorder;
 
                 if (isPassed) {
-                  circleColor = _successGreen;
+                  circleColor = successColor;
                   iconWidget = const Icon(Icons.check_rounded, size: 16, color: Colors.white);
                 } else if (isActive) {
-                  circleColor = isDark ? Colors.white : _brandColor;
+                  circleColor = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptPrimary;
+                  nodeBorder = isDark
+                      ? Border.all(color: Colors.white, width: 2)
+                      : Border.all(color: PiggyTrunkTheme.ptPrimary, width: 2);
                   iconWidget = Center(
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
                         shape: BoxShape.circle,
                       ),
                     ),
                   );
                 } else {
-                  circleColor = isDark ? const Color(0xFF1E2D42) : const Color(0xFFF1F5F9);
-                  nodeBorder = isDark ? Border.all(color: const Color(0xFF3B506D), width: 1.2) : null;
+                  circleColor = inactiveBgColor;
+                  nodeBorder = Border.all(color: pendingBorderColor, width: 1.2);
                   iconWidget = Icon(
                     Icons.lock_outline_rounded,
                     size: 13,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFFA0AEC0),
+                    color: inactiveTextColor,
                   );
                 }
 
-                return GestureDetector(
-                  onTap: () => _showStageInfoDialog(context, stages[index], isSow),
-                  child: SizedBox(
-                    width: stepWidth,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: (isActive || isLastNodeAndCompleted) ? 34 : 30,
-                          height: (isActive || isLastNodeAndCompleted) ? 34 : 30,
-                          decoration: BoxDecoration(
-                            color: circleColor,
-                            shape: BoxShape.circle,
-                            border: nodeBorder,
-                            boxShadow: (isActive || isLastNodeAndCompleted)
-                                ? [
-                                    BoxShadow(
-                                      color: (isLastNodeAndCompleted
-                                              ? _successGreen
-                                              : (isDark ? Colors.white : _brandColor))
-                                          .withValues(alpha: isDark ? 0.35 : 0.3),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : null,
+                return SizedBox(
+                  width: stepWidth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: nodeSlotHeight,
+                        child: Center(
+                          child: Container(
+                            width: (isActive || isLastNodeAndCompleted) ? 34 : 30,
+                            height: (isActive || isLastNodeAndCompleted) ? 34 : 30,
+                            decoration: BoxDecoration(
+                              color: circleColor,
+                              shape: BoxShape.circle,
+                              border: nodeBorder,
+                              boxShadow: (isActive || isLastNodeAndCompleted)
+                                  ? [
+                                      BoxShadow(
+                                        color: (isLastNodeAndCompleted
+                                                ? successColor
+                                                : (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary))
+                                            .withValues(alpha: isDark ? 0.25 : 0.3),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Center(child: iconWidget),
                           ),
-                          child: Center(child: iconWidget),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          stages[index],
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10.5,
-                            fontWeight: (isActive || isLastNodeAndCompleted)
-                                ? FontWeight.w800
-                                : (isPassed ? FontWeight.w700 : FontWeight.w600),
-                            color: isActive
-                                ? (isDark ? Colors.white : _brandColor)
-                                : (isPassed
-                                    ? _successGreen
-                                    : (isDark ? const Color(0xFF94A3B8) : const Color(0xFFA0AEC0))),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        stages[index],
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10.5,
+                          fontWeight: (isActive || isLastNodeAndCompleted)
+                              ? FontWeight.w800
+                              : (isPassed ? FontWeight.w700 : FontWeight.w600),
+                          color: isActive
+                              ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                              : (isPassed
+                                  ? successColor
+                                  : inactiveTextColor),
                         ),
-                      ],
-                    ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 );
               }),

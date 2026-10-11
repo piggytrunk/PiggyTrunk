@@ -550,6 +550,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       final emailToUse = _partnerEmail.isNotEmpty ? _partnerEmail : (user?.email ?? '');
 
+      // 1. Update Supabase Auth user metadata and refresh the session
       if (user != null) {
         try {
           await Supabase.instance.client.auth.updateUser(
@@ -566,6 +567,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               },
             ),
           );
+          await Supabase.instance.client.auth.refreshSession();
         } catch (e) {
           debugPrint('Notice updating auth user metadata on reset: $e');
         }
@@ -587,29 +589,33 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         } catch (_) {}
       }
 
-      // 1. Update app_users
+      // 2. Update app_users (reset name and clear custom address)
       try {
+        final updateMap = {
+          'name': defaultName,
+          'address': null,
+        };
         if (targetUserId != null) {
           await Supabase.instance.client
               .from('app_users')
-              .update({'name': defaultName})
+              .update(updateMap)
               .eq('user_id', targetUserId);
         } else if (user != null) {
           await Supabase.instance.client
               .from('app_users')
-              .update({'name': defaultName})
+              .update(updateMap)
               .eq('supabase_user_id', user.id);
         } else if (emailToUse.isNotEmpty) {
           await Supabase.instance.client
               .from('app_users')
-              .update({'name': defaultName})
+              .update(updateMap)
               .eq('email', emailToUse);
         }
       } catch (e) {
-        debugPrint('Notice updating app_users name on reset: $e');
+        debugPrint('Notice updating app_users on reset: $e');
       }
 
-      // 2. Update partner_investors
+      // 3. Update partner_investors (clear contact_number, address, avatar)
       try {
         if (targetUserId != null) {
           await Supabase.instance.client
@@ -647,6 +653,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           strings.accountDetailsRestoredSuccess,
         );
       }
+
+      // 4. Re-fetch partner data to ensure all UI states & DB records are fully in sync
+      await _fetchPartnerData();
     } catch (e) {
       debugPrint('Error resetting profile to default: $e');
       if (mounted) {
@@ -662,14 +671,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   void _showEditProfileDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Parse First, Middle Initial, and Last Name from auth metadata or _partnerName
-    final userMeta = Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
-    String prefillFirst = (userMeta['first_name'] ?? '').toString().trim();
-    String prefillMiddle = (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '').toString().trim();
-    String prefillLast = (userMeta['last_name'] ?? '').toString().trim();
+    // Parse First, Middle Initial, and Last Name from the current active _partnerName
+    String prefillFirst = '';
+    String prefillMiddle = '';
+    String prefillLast = '';
 
-    if (prefillFirst.isEmpty && prefillLast.isEmpty && _partnerName.isNotEmpty && _partnerName != 'Partner Investor' && _partnerName != 'N/A') {
-      final nameClean = _partnerName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final nameClean = _partnerName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (nameClean.isNotEmpty && nameClean != 'Partner Investor' && nameClean != 'N/A') {
       final parts = nameClean.split(' ');
       if (parts.length == 1) {
         prefillFirst = parts[0];
@@ -688,11 +696,23 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       }
     }
 
+    // Fallback to user metadata only if _partnerName parsing was empty
+    if (prefillFirst.isEmpty && prefillLast.isEmpty) {
+      final userMeta = Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
+      prefillFirst = (userMeta['first_name'] ?? '').toString().trim();
+      prefillMiddle = (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '').toString().trim();
+      prefillLast = (userMeta['last_name'] ?? '').toString().trim();
+    }
+
     final firstNameCtrl = TextEditingController(text: prefillFirst);
     final middleInitialCtrl = TextEditingController(text: prefillMiddle);
     final lastNameCtrl = TextEditingController(text: prefillLast);
-    final phoneCtrl = TextEditingController(text: _partnerPhone == 'N/A' ? '' : _partnerPhone);
-    final addrCtrl = TextEditingController(text: _partnerAddress == 'N/A' ? '' : _partnerAddress);
+    final phoneCtrl = TextEditingController(
+      text: (_partnerPhone == 'N/A' || _partnerPhone == 'Not set') ? '' : _partnerPhone,
+    );
+    final addrCtrl = TextEditingController(
+      text: (_partnerAddress == 'N/A' || _partnerAddress == 'Not set') ? '' : _partnerAddress,
+    );
 
     final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
@@ -1576,13 +1596,19 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           try {
             final List<dynamic> raisersRes = await Supabase.instance.client
                 .from('hog_raisers')
-                .select('hog_raiser_id, name, address, phone, pig_type, lifecycle_stage, user_id, app_users!hog_raisers_user_id_fkey(name, email, address, phone)');
+                .select('hog_raiser_id, name, address, phone, pig_type, lifecycle_stage, user_id, status, account_status, app_users!hog_raisers_user_id_fkey(name, email, address, phone)');
 
             for (var r in raisersRes) {
               if (r is! Map) continue;
               final rMap = Map<String, dynamic>.from(r);
               final rId = (rMap['hog_raiser_id'] ?? '').toString();
               if (rId.isEmpty) continue;
+
+              final rStatus = (rMap['status'] ?? '').toString().toLowerCase();
+              final rAccountStatus = (rMap['account_status'] ?? '').toString().toLowerCase();
+              if (rStatus == 'inactive' || rAccountStatus == 'pending' || rAccountStatus == 'deleted' || rAccountStatus == 'rejected') {
+                continue;
+              }
 
               dynamic appUsersRaw = rMap['app_users'];
               Map<String, dynamic>? appUsers;
@@ -1624,12 +1650,18 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             try {
               final List<dynamic> raisersSimple = await Supabase.instance.client
                   .from('hog_raisers')
-                  .select('hog_raiser_id, name, address, phone, pig_type, lifecycle_stage');
+                  .select('hog_raiser_id, name, address, phone, pig_type, lifecycle_stage, status, account_status');
               for (var r in raisersSimple) {
                 if (r is! Map) continue;
                 final rMap = Map<String, dynamic>.from(r);
                 final rId = (rMap['hog_raiser_id'] ?? '').toString();
                 if (rId.isNotEmpty) {
+                  final rStatus = (rMap['status'] ?? '').toString().toLowerCase();
+                  final rAccountStatus = (rMap['account_status'] ?? '').toString().toLowerCase();
+                  if (rStatus == 'inactive' || rAccountStatus == 'pending' || rAccountStatus == 'deleted' || rAccountStatus == 'rejected') {
+                    continue;
+                  }
+
                   final raiserAddress = (rMap['address'] ?? '').toString().trim();
                   final raiserPhone = (rMap['phone'] ?? '').toString().trim();
 
@@ -1714,7 +1746,6 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
             if (matchingAssign != null) {
               final rawRaiserId = (matchingAssign['hog_raiser_id'] ?? '').toString();
-              raiserIdStr = rawRaiserId;
               if (rawRaiserId.isNotEmpty && raiserMap.containsKey(rawRaiserId)) {
                 final rData = raiserMap[rawRaiserId]!;
                 raiserName = rData['name'] ?? 'Hog Raiser';
@@ -1722,8 +1753,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 raiserPhone = rData['phone'] ?? 'N/A';
                 stage = rData['lifecycle_stage'] ?? 'Grower';
                 hogType = rData['pig_type'] ?? 'Fattening';
-              } else if (rawRaiserId.isNotEmpty) {
-                raiserName = 'Raiser #$rawRaiserId';
+                raiserIdStr = rawRaiserId;
+              } else {
+                // Raiser was deleted or no longer exists in hog_raisers table
+                raiserName = 'Unassigned';
+                raiserIdStr = null;
               }
 
               final rawTypeId = (matchingAssign['hog_type_id'] ?? '').toString();
@@ -1731,16 +1765,18 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 hogType = hogTypeMap[rawTypeId]!;
               }
             } else {
-              // If unassigned directly in batch, check if there are raisers in raiserMap
-              if (raiserMap.isNotEmpty) {
-                final firstRaiser = raiserMap.values.first;
-                raiserName = firstRaiser['name'] ?? 'Hog Raiser';
-                raiserAddress = firstRaiser['address'] ?? 'Farm Location Not Set';
-                raiserPhone = firstRaiser['phone'] ?? 'N/A';
-                stage = firstRaiser['lifecycle_stage'] ?? 'Grower';
-                hogType = firstRaiser['pig_type'] ?? 'Fattening';
-                raiserIdStr = firstRaiser['hog_raiser_id']?.toString();
-              }
+              // Unassigned batch
+              raiserName = 'Unassigned';
+              raiserAddress = 'Farm Location Not Set';
+              raiserPhone = 'N/A';
+              stage = 'Grower';
+              hogType = 'Fattening';
+              raiserIdStr = null;
+            }
+
+            // Exclude batches that do not have an active registered hog raiser account
+            if (raiserIdStr == null || !raiserMap.containsKey(raiserIdStr) || raiserName.trim().isEmpty || raiserName.trim().toLowerCase() == 'unassigned') {
+              continue;
             }
 
             // Fattening batches should not inherit 'Gilt' (breeding stage)
@@ -1754,12 +1790,12 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 .where((id) => id != null && id.isNotEmpty)
                 .toSet();
 
-            final rawBatchHogs = hogsRes.where((h) {
+            List<dynamic> rawBatchHogs = hogsRes.where((h) {
               final aId = h['assignment_id']?.toString();
               return aId != null && batchAssignIds.contains(aId);
             }).toList();
 
-            if (rawBatchHogs.isEmpty && raiserIdStr != null) {
+            if (rawBatchHogs.isEmpty) {
               final raiserAssignIds = assignmentsRes
                   .where((a) => (a['hog_raiser_id'] ?? '').toString() == raiserIdStr)
                   .map((a) => (a['assignment_id'] ?? a['id'])?.toString())
@@ -1770,27 +1806,46 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 return aId != null && raiserAssignIds.contains(aId);
               }).toList();
               if (matchingHogs.isNotEmpty) {
-                rawBatchHogs.addAll(matchingHogs);
+                // Sort descending to isolate the active cycle hogs for the latest batch
+                matchingHogs.sort((a, b) => ((b['hog_id'] as num?) ?? 0).compareTo((a['hog_id'] as num?) ?? 0));
+                final targetCount = raiserHogCountMap[raiserIdStr] ?? 3;
+                final selected = matchingHogs.take(targetCount).toList();
+                selected.sort((a, b) => ((a['hog_id'] as num?) ?? 0).compareTo((b['hog_id'] as num?) ?? 0));
+                rawBatchHogs.addAll(selected);
               }
             }
 
             // Map each individual hog with its exact pig type and stage
             final mappedBatchHogs = <Map<String, dynamic>>[];
-            for (int i = 0; i < rawBatchHogs.length; i++) {
-              final h = rawBatchHogs[i];
+            // Filter out dead or inactive hogs before assigning sequential batch numbers
+            final aliveBatchHogs = rawBatchHogs.where((h) {
+              final st = (h['status'] ?? '').toString().toLowerCase();
+              final hs = (h['health_status'] ?? '').toString().toLowerCase();
+              return st != 'dead' && hs != 'dead' && st != 'completed';
+            }).toList();
+
+            final isMixedBatch = hogType.toLowerCase().contains('sow') && hogType.toLowerCase().contains('fatten');
+            final half = (aliveBatchHogs.length / 2).ceil();
+
+            for (int i = 0; i < aliveBatchHogs.length; i++) {
+              final h = aliveBatchHogs[i];
               final aId = h['assignment_id']?.toString();
-              final assign = batchAssigns.firstWhere(
+              final assign = assignmentsRes.firstWhere(
                 (a) => (a['assignment_id'] ?? a['id'])?.toString() == aId,
                 orElse: () => matchingAssign ?? {},
               );
               final rawTypeId = (assign['hog_type_id'] ?? '').toString();
-              String typeName = hogTypeMap[rawTypeId] ?? (assign['pig_type'] ?? 'Fattening').toString();
-              if (typeName.toLowerCase().contains('sow') || typeName.toLowerCase().contains('breed')) {
-                typeName = 'Sow';
+              String typeName = hogTypeMap[rawTypeId] ?? (assign['pig_type'] ?? h['pig_type'] ?? '').toString().trim();
+
+              if (typeName.isEmpty || isMixedBatch || typeName.toLowerCase().contains('and')) {
+                typeName = (i < half) ? 'Fattening' : 'Sow / Breeding';
+              } else if (typeName.toLowerCase().contains('sow') || typeName.toLowerCase().contains('breed')) {
+                typeName = 'Sow / Breeding';
               } else {
                 typeName = 'Fattening';
               }
-              final isSow = typeName == 'Sow';
+
+              final isSow = typeName.toLowerCase().contains('sow') || typeName.toLowerCase().contains('breed');
               final sId = int.tryParse(h['stage_id']?.toString() ?? '');
               final stageList = isSow
                   ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
@@ -1804,7 +1859,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
               mappedBatchHogs.add({
                 'hog_id': h['hog_id'] ?? (i + 1),
-                'tag_number': h['tag_number'] ?? 'HOG-${h['hog_id'] ?? (i + 1)}',
+                'tag_number': 'HOG-${i + 1}',
                 'index': i + 1,
                 'pig_type': typeName,
                 'stage_id': sId ?? 1,
@@ -1817,27 +1872,47 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
             // Read actual hog count from hogs table; if 0, check investment_records allocation
             int hogsCount = mappedBatchHogs.isNotEmpty ? mappedBatchHogs.length : rawBatchHogs.length;
-            if (hogsCount == 0 && raiserIdStr != null && raiserHogCountMap.containsKey(raiserIdStr)) {
+            if (hogsCount == 0 && raiserHogCountMap.containsKey(raiserIdStr)) {
               hogsCount = raiserHogCountMap[raiserIdStr]!;
             }
 
-            // If hogs table had no rows but count is known (e.g. 4 active hogs), synthesize individual hogs
+            // If hogs table had no rows but count is known (e.g. 3 active hogs), synthesize individual hogs
             if (mappedBatchHogs.isEmpty && hogsCount > 0) {
-              final half = (hogsCount / 2).ceil();
+              final halfCount = (hogsCount / 2).ceil();
               for (int i = 0; i < hogsCount; i++) {
-                final isSow = (hogType.toLowerCase().contains('sow') && i >= half) || hogType.toLowerCase() == 'sow';
-                final stageName = isSow ? 'Booster' : stage;
+                final isSow = i >= halfCount && (hogType.toLowerCase().contains('sow') || hogType.toLowerCase().contains('breed'));
+                final typeLabel = isSow ? 'Sow / Breeding' : 'Fattening';
+                final stageName = 'Booster';
                 mappedBatchHogs.add({
                   'hog_id': i + 1,
                   'tag_number': 'HOG-${i + 1}',
                   'index': i + 1,
-                  'pig_type': isSow ? 'Sow' : 'Fattening',
-                  'stage_id': isSow ? 1 : 1,
+                  'pig_type': typeLabel,
+                  'stage_id': 1,
                   'stage': stageName,
                   'health_status': 'Healthy',
                   'status': 'active',
                 });
               }
+            }
+
+            // Strictly sort mappedBatchHogs so Fattening hogs come first, Sow/Breeding hogs come last!
+            mappedBatchHogs.sort((a, b) {
+              final aType = (a['pig_type'] ?? '').toString().toLowerCase();
+              final bType = (b['pig_type'] ?? '').toString().toLowerCase();
+              final aIsFat = aType.contains('fatten');
+              final bIsFat = bType.contains('fatten');
+              if (aIsFat && !bIsFat) return -1;
+              if (!aIsFat && bIsFat) return 1;
+              final aId = (a['hog_id'] as num?)?.toInt() ?? 0;
+              final bId = (b['hog_id'] as num?)?.toInt() ?? 0;
+              return aId.compareTo(bId);
+            });
+
+            // Re-index tag numbers sequentially to match Raiser App (HOG-1, HOG-2 Fattening; HOG-3 Sow)
+            for (int idx = 0; idx < mappedBatchHogs.length; idx++) {
+              mappedBatchHogs[idx]['tag_number'] = 'HOG-${idx + 1}';
+              mappedBatchHogs[idx]['index'] = idx + 1;
             }
 
             final int mortality = mappedBatchHogs.where((h) => (h['health_status'] ?? '').toString().toLowerCase() == 'dead').length;
@@ -1863,7 +1938,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               'stage': stage,
               'hogs': mappedBatchHogs,
               'date_created': b['date_created'],
-              'hog_raiser_id': int.tryParse(raiserIdStr ?? '') ?? matchingAssign?['hog_raiser_id'],
+              'hog_raiser_id': int.tryParse(raiserIdStr),
               'status': 'Active',
             });
           }
@@ -1965,31 +2040,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
               final bId = inv['batch_id']?.toString();
               final matchingBatches = allBatches.where((b) => b['batch_id']?.toString() == bId).toList();
-              final matchingBatch = matchingBatches.isNotEmpty
-                  ? matchingBatches.first
-                  : {
-                      'batch_id': inv['batch_id'],
-                      'batch_name': 'Batch #${inv['batch_id']}',
-                      'assigned_raiser': 'Farm Raiser',
-                      'raiser_name': 'Farm Raiser',
-                      'hog_type': 'Fattening',
-                      'total_hogs': 15,
-                      'mortality': 0,
-                      'stage': 'Booster',
-                      'hogs': List.generate(
-                        15,
-                        (idx) => {
-                          'hog_id': idx + 1,
-                          'tag_number': 'HOG-${idx + 1}',
-                          'index': idx + 1,
-                          'pig_type': 'Fattening',
-                          'stage': 'Booster',
-                          'health_status': 'Healthy',
-                          'status': 'active',
-                        },
-                      ),
-                      'status': 'Active',
-                    };
+              if (matchingBatches.isEmpty) {
+                // Defunct or non-existent batch with no registered raiser - do not include in partnerProjects
+                continue;
+              }
+              final matchingBatch = matchingBatches.first;
 
               partnerProjects.add({
                 'investment_id': inv['investment_id'],
@@ -2019,7 +2074,10 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               }
               final bId = lInv['batch_id']?.toString();
               final matchingBatches = allBatches.where((b) => b['batch_id']?.toString() == bId).toList();
-              final matchingBatch = matchingBatches.isNotEmpty ? matchingBatches.first : lInv;
+              if (matchingBatches.isEmpty) {
+                continue;
+              }
+              final matchingBatch = matchingBatches.first;
 
               partnerProjects.add({
                 ...matchingBatch,
@@ -2044,94 +2102,106 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         _projectsList.clear();
         _projectsList.addAll(partnerProjects);
 
-        // 4. Fetch Live Hog Raiser Activities from `hog_reports`
+        // 4. Fetch Live Hog Raiser Activities strictly for this Partner's funded batches & active investment cycle
         List<Map<String, dynamic>> liveActivities = [];
-        try {
-          final reportsRes = await Supabase.instance.client
-              .from('hog_reports')
-              .select('report_id, report_type, description, created_at, hog_raiser_id, hog_id')
-              .order('created_at', ascending: false)
-              .limit(30);
 
-          for (var rep in reportsRes) {
-            final rType = (rep['report_type'] ?? 'Health Check').toString();
-            final desc = (rep['description'] ?? '').toString();
-            final rId = rep['hog_raiser_id']?.toString() ?? '';
-            final raiserName = raiserMap[rId]?['name'] ?? 'Hog Raiser';
-            final createdAt = rep['created_at'] != null
-                ? DateTime.tryParse(rep['created_at'].toString()) ?? DateTime.now()
-                : DateTime.now();
-
-            IconData icon = Icons.assignment_outlined;
-            final lower = rType.toLowerCase();
-            String titleEn = '$rType Alert';
-            String titleFil = 'Alerto: $rType';
-
-            if (lower.contains('dead') || lower.contains('mortality')) {
-              icon = Icons.error_outline_rounded;
-              titleEn = 'Mortality Report';
-              titleFil = 'Ulat ng Pagkamatay';
-            } else if (lower.contains('sick') || lower.contains('fever') || lower.contains('swine') || lower.contains('poison') || lower.contains('diarrhea') || lower.contains('injur')) {
-              icon = Icons.health_and_safety_rounded;
-              titleEn = 'Health Observation: $rType';
-              titleFil = 'Pagsusuri sa Kalusugan: $rType';
-            } else if (lower.contains('vaccin') || lower.contains('med') || lower.contains('deworm')) {
-              icon = Icons.medication_rounded;
-              titleEn = 'Vaccine & Medication';
-              titleFil = 'Bakuna at Gamot';
-            } else if (lower.contains('feed') || lower.contains('weight')) {
-              icon = Icons.monitor_weight_rounded;
-              titleEn = 'Feeding & Nutrition';
-              titleFil = 'Pagpapakain at Nutrisyon';
-            } else if (lower.contains('stage') || lower.contains('growth')) {
-              icon = Icons.trending_up_rounded;
-              titleEn = 'Lifecycle Milestone';
-              titleFil = 'Yugto ng Paglaki';
+        // Collect mapping of funded batch_id -> earliest investment date for this partner
+        final Map<String, DateTime> fundedBatchInvestmentDates = {};
+        for (var p in partnerProjects) {
+          final st = (p['status'] ?? '').toString().toLowerCase();
+          if (st == 'active' || st == 'approved') {
+            final bId = p['batch_id']?.toString();
+            if (bId != null && bId.isNotEmpty) {
+              final rawDate = (p['created_at'] ?? p['date_invested'] ?? '').toString();
+              final invDate = DateTime.tryParse(rawDate);
+              if (invDate != null) {
+                if (!fundedBatchInvestmentDates.containsKey(bId) || invDate.isBefore(fundedBatchInvestmentDates[bId]!)) {
+                  fundedBatchInvestmentDates[bId] = invDate;
+                }
+              } else {
+                fundedBatchInvestmentDates.putIfAbsent(bId, () => DateTime(2000));
+              }
             }
-
-            liveActivities.add({
-              'report_id': rep['report_id'],
-              'title': titleEn,
-              'title_en': titleEn,
-              'title_fil': titleFil,
-              'description': desc.isNotEmpty ? desc : 'Health update submitted by $raiserName',
-              'desc_en': desc.isNotEmpty ? desc : 'Health update submitted by $raiserName',
-              'desc_fil': desc.isNotEmpty ? desc : 'Ulat pangkalusugan mula kay $raiserName',
-              'date': _formatRelativeTime(createdAt),
-              'created_at': rep['created_at'],
-              'icon': icon,
-              'raiser_name': raiserName,
-              'type': rType,
-            });
           }
-        } catch (e) {
-          debugPrint('Notice fetching hog reports: $e');
         }
 
-        // Include individual hog stage milestones in Activities
-        if (partnerProjects.isNotEmpty) {
-          final pBatch = partnerProjects.first;
-          final batchHogsList = List<Map<String, dynamic>>.from(pBatch['hogs'] ?? []);
-          final bRaiser = pBatch['assigned_raiser'] ?? pBatch['raiser_name'] ?? 'Hog Raiser';
+        // Only query hog_reports if this partner investor has active funded batches
+        if (fundedBatchInvestmentDates.isNotEmpty) {
+          try {
+            final reportsRes = await Supabase.instance.client
+                .from('hog_reports')
+                .select('report_id, report_type, description, created_at, hog_raiser_id, hog_id, batch_id')
+                .order('created_at', ascending: false)
+                .limit(50);
 
-          for (var hog in batchHogsList) {
-            final hTag = hog['tag_number'] ?? 'Hog #${hog['hog_id']}';
-            final hType = hog['pig_type'] ?? 'Fattening';
-            final hStage = hog['stage'] ?? 'Booster';
-            liveActivities.add({
-              'report_id': 'stage_${hog['hog_id']}',
-              'title': '$hTag ($hType) • $hStage Stage',
-              'title_en': '$hTag ($hType) • $hStage Stage',
-              'title_fil': '$hTag ($hType) • Yugtong $hStage',
-              'description': '$bRaiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
-              'desc_en': '$bRaiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
-              'desc_fil': 'Kasalukuyang inaalagaan ni $bRaiser ang $hTag ($hType) sa yugtong $hStage.',
-              'date': 'Active Milestone',
-              'created_at': DateTime.now().toIso8601String(),
-              'icon': Icons.trending_up_rounded,
-              'raiser_name': bRaiser,
-              'type': 'Lifecycle',
-            });
+            for (var rep in reportsRes) {
+              final repBatchId = rep['batch_id']?.toString();
+              // Filter 1: Must match one of the partner's funded batches
+              if (repBatchId == null || !fundedBatchInvestmentDates.containsKey(repBatchId)) {
+                continue;
+              }
+
+              final createdAt = rep['created_at'] != null
+                  ? DateTime.tryParse(rep['created_at'].toString()) ?? DateTime.now()
+                  : DateTime.now();
+
+              // Filter 2: Must have occurred ON OR AFTER the partner's investment date
+              // (Historical reports prior to the partner's investment date are excluded)
+              final invDate = fundedBatchInvestmentDates[repBatchId]!;
+              final invDayStart = DateTime(invDate.year, invDate.month, invDate.day);
+              if (createdAt.isBefore(invDayStart)) {
+                continue;
+              }
+
+              final rType = (rep['report_type'] ?? 'Health Check').toString();
+              final desc = (rep['description'] ?? '').toString();
+              final rId = rep['hog_raiser_id']?.toString() ?? '';
+              final raiserName = raiserMap[rId]?['name'] ?? 'Hog Raiser';
+
+              IconData icon = Icons.assignment_outlined;
+              final lower = rType.toLowerCase();
+              String titleEn = '$rType Alert';
+              String titleFil = 'Alerto: $rType';
+
+              if (lower.contains('dead') || lower.contains('mortality')) {
+                icon = Icons.error_outline_rounded;
+                titleEn = 'Mortality Report';
+                titleFil = 'Ulat ng Pagkamatay';
+              } else if (lower.contains('sick') || lower.contains('fever') || lower.contains('swine') || lower.contains('poison') || lower.contains('diarrhea') || lower.contains('injur')) {
+                icon = Icons.health_and_safety_rounded;
+                titleEn = 'Health Observation: $rType';
+                titleFil = 'Pagsusuri sa Kalusugan: $rType';
+              } else if (lower.contains('vaccin') || lower.contains('med') || lower.contains('deworm')) {
+                icon = Icons.medication_rounded;
+                titleEn = 'Vaccine & Medication';
+                titleFil = 'Bakuna at Gamot';
+              } else if (lower.contains('feed') || lower.contains('weight')) {
+                icon = Icons.monitor_weight_rounded;
+                titleEn = 'Feeding & Nutrition';
+                titleFil = 'Pagpapakain at Nutrisyon';
+              } else if (lower.contains('stage') || lower.contains('growth')) {
+                icon = Icons.trending_up_rounded;
+                titleEn = 'Lifecycle Milestone';
+                titleFil = 'Yugto ng Paglaki';
+              }
+
+              liveActivities.add({
+                'report_id': rep['report_id'],
+                'title': titleEn,
+                'title_en': titleEn,
+                'title_fil': titleFil,
+                'description': desc.isNotEmpty ? desc : 'Health update submitted by $raiserName',
+                'desc_en': desc.isNotEmpty ? desc : 'Health update submitted by $raiserName',
+                'desc_fil': desc.isNotEmpty ? desc : 'Ulat pangkalusugan mula kay $raiserName',
+                'date': _formatRelativeTime(createdAt),
+                'created_at': rep['created_at'],
+                'icon': icon,
+                'raiser_name': raiserName,
+                'type': rType,
+              });
+            }
+          } catch (e) {
+            debugPrint('Notice fetching hog reports for funded raisers: $e');
           }
         }
 
@@ -2158,7 +2228,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
           final descTarget = cleanBatch.toLowerCase().startsWith('batch') ? cleanBatch : 'Batch $cleanBatch';
 
-          liveActivities.insert(0, {
+          liveActivities.add({
             'report_id': 'inv_${p['investment_id']}',
             'title': 'Active Investment',
             'title_en': 'Active Investment',
@@ -2168,12 +2238,87 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             'desc_fil': 'Naglaan ng ₱$formattedAmt para sa $descTarget.',
             'date': _formatRelativeTime(invDate, false, hasTime),
             'date_fil': _formatRelativeTime(invDate, true, hasTime),
-            'created_at': rawTime,
+            'created_at': rawTime.isNotEmpty ? rawTime : invDate.toIso8601String(),
             'icon': Icons.assignment_rounded,
             'raiser_name': cleanRaiser,
             'type': 'Investment',
           });
         }
+
+        // Include individual hog stage milestones for ALL active batches funded by the Partner Investor
+        for (var pBatch in partnerProjects) {
+          final pStatus = (pBatch['status'] ?? '').toString().toLowerCase();
+          if (pStatus != 'active' && pStatus != 'approved') {
+            continue;
+          }
+
+          final rId = (pBatch['hog_raiser_id'] ?? '').toString();
+          final rawRaiserName = (pBatch['assigned_raiser'] ?? pBatch['raiser_name'] ?? '').toString().trim();
+
+          // 1. STRICT VERIFICATION: If the raiser was deleted from the database or is unassigned,
+          // do NOT display ghost milestone feeds for them!
+          final bool isRaiserActiveInDb = rId.isNotEmpty && raiserMap.containsKey(rId);
+          if (!isRaiserActiveInDb ||
+              rawRaiserName.isEmpty ||
+              rawRaiserName.toLowerCase() == 'unassigned' ||
+              rawRaiserName.toLowerCase().startsWith('raiser #') ||
+              rawRaiserName.toLowerCase() == 'n/a') {
+            continue;
+          }
+
+          final bRaiser = rawRaiserName;
+          final batchHogsList = List<Map<String, dynamic>>.from(pBatch['hogs'] ?? []);
+          final batchCreatedTime = (pBatch['created_at'] ?? pBatch['date_invested'] ?? '').toString();
+
+          // 2. Only include active hogs (exclude dead or completed hogs)
+          final activeHogs = batchHogsList.where((h) {
+            final st = (h['status'] ?? '').toString().toLowerCase();
+            final hs = (h['health_status'] ?? '').toString().toLowerCase();
+            return st != 'dead' && hs != 'dead' && st != 'completed';
+          }).toList();
+
+          for (int idx = 0; idx < activeHogs.length; idx++) {
+            final hog = activeHogs[idx];
+            final hTag = hog['tag_number'] ?? 'HOG-${idx + 1}';
+            final hType = hog['pig_type'] ?? (pBatch['hog_type'] ?? 'Fattening');
+            final hStage = hog['stage'] ?? (pBatch['stage'] ?? 'Booster');
+            liveActivities.add({
+              'report_id': 'stage_${pBatch['batch_id']}_${hog['hog_id'] ?? (idx + 1)}',
+              'title': '$hTag ($hType) • $hStage Stage',
+              'title_en': '$hTag ($hType) • $hStage Stage',
+              'title_fil': '$hTag ($hType) • Yugtong $hStage',
+              'description': 'Assigned raiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
+              'desc_en': 'Assigned raiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
+              'desc_fil': 'Kasalukuyang inaalagaan ng nakatalagang raiser ang $hTag ($hType) sa yugtong $hStage.',
+              'date': '',
+              'date_fil': '',
+              'created_at': batchCreatedTime.isNotEmpty ? batchCreatedTime : DateTime.now().toIso8601String(),
+              'icon': Icons.trending_up_rounded,
+              'raiser_name': bRaiser,
+              'type': 'Lifecycle',
+            });
+          }
+        }
+
+        // Sort liveActivities chronologically (newest updates first)
+        liveActivities.sort((a, b) {
+          final aTimeStr = (a['created_at'] ?? '').toString();
+          final bTimeStr = (b['created_at'] ?? '').toString();
+          final aTime = DateTime.tryParse(aTimeStr) ?? DateTime(2000);
+          final bTime = DateTime.tryParse(bTimeStr) ?? DateTime(2000);
+          final timeComp = bTime.compareTo(aTime);
+          if (timeComp != 0) return timeComp;
+
+          // If identical timestamp, keep Investment first, then HOG-1, HOG-2, HOG-3 in order
+          final aType = (a['type'] ?? '').toString();
+          final bType = (b['type'] ?? '').toString();
+          if (aType == 'Investment' && bType != 'Investment') return -1;
+          if (bType == 'Investment' && aType != 'Investment') return 1;
+
+          final aTitle = (a['title'] ?? '').toString();
+          final bTitle = (b['title'] ?? '').toString();
+          return aTitle.compareTo(bTitle);
+        });
 
         _activitiesList.clear();
         _activitiesList.addAll(liveActivities);
