@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -56,6 +57,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   List<POSProduct> _lowStockProducts = [];
   List<Map<String, dynamic>> _pendingRequests = [];
   final Set<String> _readNotificationIds = {};
+  DateTime? _lastMarkAllReadTime;
 
   // Sales History State
   final bool _showSalesHistory = false;
@@ -148,20 +150,58 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   Future<void> _loadReadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final savedList = prefs.getStringList('cashier_read_notifications') ?? [];
+      final savedList = prefs.getStringList('cashier_read_notifications');
+      final savedTimeStr = prefs.getString('cashier_last_mark_all_read_time');
+
+      final secureTimeStr = await AuthSessionService().readKey('cashier_last_mark_all_read_time');
+      final secureIdsStr = await AuthSessionService().readKey('cashier_read_notifications');
+
+      final effectiveTimeStr = savedTimeStr ?? secureTimeStr;
+      DateTime? parsedTime;
+      if (effectiveTimeStr != null && effectiveTimeStr.isNotEmpty) {
+        parsedTime = DateTime.tryParse(effectiveTimeStr);
+      }
+
+      final Set<String> loadedIds = {};
+      if (savedList != null) {
+        loadedIds.addAll(savedList);
+      }
+      if (secureIdsStr != null && secureIdsStr.isNotEmpty) {
+        try {
+          final List<dynamic> decoded = jsonDecode(secureIdsStr);
+          loadedIds.addAll(decoded.map((e) => e.toString()));
+        } catch (_) {
+          loadedIds.addAll(secureIdsStr.split(',').where((s) => s.isNotEmpty));
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _readNotificationIds.addAll(savedList);
+          _readNotificationIds.addAll(loadedIds);
+          if (parsedTime != null) {
+            _lastMarkAllReadTime = parsedTime;
+          }
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error loading cashier read notifications: $e');
+    }
   }
 
   Future<void> _saveReadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('cashier_read_notifications', _readNotificationIds.toList());
-    } catch (_) {}
+      final idList = _readNotificationIds.toList();
+      await prefs.setStringList('cashier_read_notifications', idList);
+      await AuthSessionService().writeKey('cashier_read_notifications', jsonEncode(idList));
+      if (_lastMarkAllReadTime != null) {
+        final iso = _lastMarkAllReadTime!.toIso8601String();
+        await prefs.setString('cashier_last_mark_all_read_time', iso);
+        await AuthSessionService().writeKey('cashier_last_mark_all_read_time', iso);
+      }
+    } catch (e) {
+      debugPrint('Error saving cashier read notifications: $e');
+    }
   }
 
   Future<void> _fetchProfile() async {
@@ -2201,6 +2241,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                       pendingRequests: _pendingRequests,
                       salesLogs: _salesLogs,
                       readNotificationIds: _readNotificationIds,
+                      lastMarkAllReadTime: _lastMarkAllReadTime,
                       onNavigateToPOS: () => setState(() => _currentIndex = 3),
                       onNavigateToInventory: () =>
                           setState(() => _currentIndex = 2),
@@ -2208,25 +2249,32 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                           setState(() => _currentIndex = 1),
                       onShowRequestsDialog: _showRequestsDialog,
                       onShowSalesHistory: _openSalesHistoryModal,
-                      onMarkAllAsRead: () {
+                      onMarkAllAsRead: () async {
                         setState(() {
+                          _lastMarkAllReadTime = DateTime.now();
                           for (final req in _pendingRequests) {
-                            _readNotificationIds.add('req_${req['id'] ?? req['request_id']}');
+                            final raw = req['request_id'] ?? req['id'];
+                            if (raw != null) _readNotificationIds.add('req_$raw');
+                            if (req['id'] != null) _readNotificationIds.add('req_${req['id']}');
+                            if (req['request_id'] != null) _readNotificationIds.add('req_${req['request_id']}');
                           }
                           for (final p in _lowStockProducts) {
                             _readNotificationIds.add('stock_${p.id}');
                           }
                           for (final sale in _salesLogs) {
-                            _readNotificationIds.add('sale_${sale['id']}');
+                            final raw = sale['sale_id'] ?? sale['id'];
+                            if (raw != null) _readNotificationIds.add('sale_$raw');
+                            if (sale['id'] != null) _readNotificationIds.add('sale_${sale['id']}');
+                            if (sale['sale_id'] != null) _readNotificationIds.add('sale_${sale['sale_id']}');
                           }
                         });
-                        _saveReadNotifications();
+                        await _saveReadNotifications();
                       },
-                      onMarkAsRead: (id) {
+                      onMarkAsRead: (id) async {
                         setState(() {
                           _readNotificationIds.add(id);
                         });
-                        _saveReadNotifications();
+                        await _saveReadNotifications();
                       },
                       onAddToCart: (product) {
                         _onAddToCart(product);

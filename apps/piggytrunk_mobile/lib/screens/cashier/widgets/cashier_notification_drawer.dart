@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/models/pos_model.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../utils/app_strings.dart';
+import '../../../widgets/piggy_toast.dart';
 
 void showCashierNotificationDrawer({
   required BuildContext context,
@@ -10,6 +11,7 @@ void showCashierNotificationDrawer({
   required List<POSProduct> lowStockProducts,
   required List<Map<String, dynamic>> salesLogs,
   required Set<String> readNotificationIds,
+  DateTime? lastMarkAllReadTime,
   required VoidCallback onNavigateToRequests,
   required VoidCallback onNavigateToInventory,
   required VoidCallback onShowSalesHistory,
@@ -25,6 +27,7 @@ void showCashierNotificationDrawer({
       lowStockProducts: lowStockProducts,
       salesLogs: salesLogs,
       readNotificationIds: readNotificationIds,
+      lastMarkAllReadTime: lastMarkAllReadTime,
       onNavigateToRequests: onNavigateToRequests,
       onNavigateToInventory: onNavigateToInventory,
       onShowSalesHistory: onShowSalesHistory,
@@ -39,6 +42,7 @@ class _CashierNotificationDrawerContent extends StatefulWidget {
   final List<POSProduct> lowStockProducts;
   final List<Map<String, dynamic>> salesLogs;
   final Set<String> readNotificationIds;
+  final DateTime? lastMarkAllReadTime;
   final VoidCallback onNavigateToRequests;
   final VoidCallback onNavigateToInventory;
   final VoidCallback onShowSalesHistory;
@@ -50,6 +54,7 @@ class _CashierNotificationDrawerContent extends StatefulWidget {
     required this.lowStockProducts,
     required this.salesLogs,
     required this.readNotificationIds,
+    this.lastMarkAllReadTime,
     required this.onNavigateToRequests,
     required this.onNavigateToInventory,
     required this.onShowSalesHistory,
@@ -67,58 +72,64 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
 
   String _selectedFilter = 'Active'; // 'Active', 'Requests', 'Stock', 'History'
   late Set<String> _localReadIds;
+  DateTime? _localLastMarkAllReadTime;
 
   @override
   void initState() {
     super.initState();
     _localReadIds = Set<String>.from(widget.readNotificationIds);
+    _localLastMarkAllReadTime = widget.lastMarkAllReadTime;
   }
 
-  String _formatTime(String? dateStr) {
-    if (dateStr == null) return 'Recent';
+  bool _isItemRead(String id, dynamic dateValue) {
+    if (_localReadIds.contains(id)) return true;
+    if (_localLastMarkAllReadTime != null && dateValue != null) {
+      try {
+        final dt = DateTime.parse(dateValue.toString()).toLocal();
+        if (!dt.isAfter(_localLastMarkAllReadTime!)) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  String _formatTime(dynamic dateValue) {
+    if (dateValue == null) return 'Recent';
     try {
-      final dt = DateTime.parse(dateStr.toString()).toLocal();
+      final dt = DateTime.parse(dateValue.toString()).toLocal();
       final diff = DateTime.now().difference(dt);
       if (diff.inMinutes < 1) return 'Just now';
       if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
       if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.month}/${dt.day}/${dt.year}';
     } catch (_) {
       return 'Recent';
     }
   }
 
   void _handleMarkAllAsRead() {
+    final now = DateTime.now();
     setState(() {
+      _localLastMarkAllReadTime = now;
       for (final req in widget.pendingRequests) {
-        _localReadIds.add('req_${req['id'] ?? req['request_id']}');
+        final raw = req['request_id'] ?? req['id'];
+        if (raw != null) _localReadIds.add('req_$raw');
       }
       for (final p in widget.lowStockProducts) {
         _localReadIds.add('stock_${p.id}');
       }
       for (final sale in widget.salesLogs) {
-        _localReadIds.add('sale_${sale['id']}');
+        final raw = sale['id'] ?? sale['sale_id'];
+        if (raw != null) _localReadIds.add('sale_$raw');
       }
     });
     widget.onMarkAllAsRead();
     final strings = AppStrings.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.done_all_rounded, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              strings.allNotificationsMarkedRead,
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF047857),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ),
+    PiggyToast.showSuccess(
+      context,
+      strings.allNotificationsMarkedRead,
     );
   }
 
@@ -140,8 +151,10 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
     // Calculate unread counts
     int unreadRequests = 0;
     for (final req in activeRequests) {
-      final id = 'req_${req['id'] ?? req['request_id']}';
-      if (!_localReadIds.contains(id)) unreadRequests++;
+      final raw = req['request_id'] ?? req['id'];
+      final id = 'req_${raw ?? ''}';
+      final date = req['created_at'] ?? req['request_date'];
+      if (!_isItemRead(id, date)) unreadRequests++;
     }
 
     int unreadStock = 0;
@@ -152,8 +165,10 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
 
     int unreadSales = 0;
     for (final sale in widget.salesLogs.take(5)) {
-      final id = 'sale_${sale['id']}';
-      if (!_localReadIds.contains(id)) unreadSales++;
+      final raw = sale['id'] ?? sale['sale_id'];
+      final id = 'sale_${raw ?? ''}';
+      final date = sale['sale_date'] ?? sale['created_at'];
+      if (!_isItemRead(id, date)) unreadSales++;
     }
 
     final totalUnread = unreadRequests + unreadStock + unreadSales;
@@ -176,7 +191,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
         ),
         child: Column(
           children: [
-            // Drag handle
+            // Drag handle pill
             Container(
               margin: const EdgeInsets.only(top: 12, bottom: 6),
               width: 44,
@@ -187,18 +202,22 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
               ),
             ),
 
-            // Drawer Header
+            // Drawer Header - Clean & Aligned with Hog Raiser & PI
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 12, 8),
+              padding: const EdgeInsets.fromLTRB(20, 8, 16, 12),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.notifications_active_rounded, color: _brandBlue, size: 20),
+                    child: Icon(
+                      Icons.notifications_active_rounded,
+                      color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -234,70 +253,94 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                               ),
                           ],
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              strings.notificationsSubtitle,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                color: subtitleColor,
-                              ),
-                            ),
-                            if (totalUnread > 0)
-                              GestureDetector(
-                                onTap: _handleMarkAllAsRead,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isDark ? const Color(0xFF2563EB) : const Color(0xFFDBEAFE),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.done_all_rounded, color: _brandBlue, size: 13),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        strings.markAllRead,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: isDark ? const Color(0xFF93C5FD) : _brandBlue,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
+                        Text(
+                          strings.notificationsSubtitle,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: subtitleColor,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  if (totalUnread > 0)
+                    GestureDetector(
+                      onTap: _handleMarkAllAsRead,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.done_all_rounded,
+                              color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              strings.markAllRead,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 6),
                   IconButton(
-                    icon: Icon(Icons.close_rounded, color: subtitleColor),
+                    icon: Icon(Icons.close_rounded, color: subtitleColor, size: 20),
                     onPressed: () => Navigator.pop(context),
+                    visualDensity: VisualDensity.compact,
                   ),
                 ],
               ),
             ),
 
-            // Balanced & Centered Filter Pills Row
+            // Balanced Filter Tabs Bar (Active, Requests, Stock, History) - Matches Hog Raiser & PI
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               child: Row(
                 children: [
-                  Expanded(child: _buildFilterChip('Active', totalUnread, label: strings.tabActive, isDark: isDark)),
+                  Expanded(
+                    child: _buildFilterTab(
+                      'Active',
+                      '${strings.tabActive} ($totalUnread)',
+                    ),
+                  ),
                   const SizedBox(width: 6),
-                  Expanded(child: _buildFilterChip('Requests', unreadRequests, label: strings.tabRequests, color: const Color(0xFFF59E0B), isDark: isDark)),
+                  Expanded(
+                    child: _buildFilterTab(
+                      'Requests',
+                      unreadRequests > 0 ? '${strings.tabRequests} ($unreadRequests)' : strings.tabRequests,
+                    ),
+                  ),
                   const SizedBox(width: 6),
-                  Expanded(child: _buildFilterChip('Stock', unreadStock, label: strings.tabStock, color: const Color(0xFFEF4444), isDark: isDark)),
-                  const SizedBox(width: 6),
-                  Expanded(child: _buildFilterChip('History', 0, label: strings.tabHistory, color: const Color(0xFF64748B), isDark: isDark)),
+                  Expanded(
+                    child: _buildFilterTab(
+                      'Stock',
+                      unreadStock > 0 ? '${strings.tabStock} ($unreadStock)' : strings.tabStock,
+                    ),
+                  ),
+                  const SizedBox(
+                    width: 6,
+                  ),
+                  Expanded(
+                    child: _buildFilterTab(
+                      'History',
+                      strings.tabHistory,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -306,7 +349,12 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
 
             // Notification Items List
             Expanded(
-              child: _buildNotificationList(scrollController, activeRequests, strings: strings, isDark: isDark),
+              child: _buildNotificationList(
+                scrollController,
+                activeRequests,
+                strings: strings,
+                isDark: isDark,
+              ),
             ),
           ],
         ),
@@ -314,75 +362,34 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
     );
   }
 
-  Widget _buildFilterChip(String filter, int unreadCount, {String? label, Color color = _brandColor, required bool isDark}) {
-    final isSelected = _selectedFilter == filter;
-    final displayLabel = label ?? filter;
+  Widget _buildFilterTab(String key, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isSelected = _selectedFilter == key;
+    final selectedBg = isDark ? Colors.white : _brandColor;
+    final selectedText = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final inactiveBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final inactiveText = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = filter),
+      onTap: () => setState(() => _selectedFilter = key),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-        alignment: Alignment.center,
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
         decoration: BoxDecoration(
-          color: isSelected
-              ? (isDark ? Colors.white : _brandColor)
-              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected
-                ? (isDark ? Colors.white : _brandColor)
-                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
-            width: isSelected ? 1.4 : 1.1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.15 : 0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
+          color: isSelected ? selectedBg : inactiveBg,
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                displayLabel,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-                  color: isSelected
-                      ? (isDark ? const Color(0xFF0F172A) : Colors.white)
-                      : (isDark ? const Color(0xFFECF2FF) : const Color(0xFF1E293B)),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected ? selectedText : inactiveText,
             ),
-            if (unreadCount > 0) ...[
-              const SizedBox(width: 5),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? (isDark ? const Color(0xFF0F172A).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.25))
-                      : color.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$unreadCount',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: isSelected ? (isDark ? const Color(0xFF0F172A) : Colors.white) : color,
-                  ),
-                ),
-              ),
-            ],
-          ],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -399,9 +406,12 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
     // 1. Pending Stock Requests
     if (_selectedFilter == 'Active' || _selectedFilter == 'Requests' || _selectedFilter == 'History') {
       for (final req in activeRequests) {
-        final id = 'req_${req['id'] ?? req['request_id']}';
-        final isRead = _localReadIds.contains(id);
+        final rawId = req['request_id'] ?? req['id'];
+        final id = 'req_${rawId ?? ''}';
+        final date = req['created_at'] ?? req['request_date'];
+        final isRead = _isItemRead(id, date);
         if (_selectedFilter != 'History' && isRead) continue;
+
         final raiser = req['hog_raisers'];
         final String raiserName = (raiser is Map ? (raiser['name'] ?? raiser['app_users']?['name']) : null)?.toString() ??
             req['raiser_name']?.toString() ??
@@ -409,20 +419,21 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
         final String itemsDesc = req['item_name']?.toString() ??
             req['product_name']?.toString() ??
             'Stock supply request';
-        final String time = _formatTime(req['created_at'] ?? req['request_date']);
+        final String time = _formatTime(date);
 
         items.add(
           _buildNotificationCard(
             id: id,
             isRead: isRead,
-            icon: Icons.assignment_late_rounded,
-            iconColor: const Color(0xFFD97706),
-            bgColor: isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7),
+            icon: Icons.inventory_2_rounded,
+            iconColor: const Color(0xFFF59E0B),
+            bgColor: isDark ? const Color(0xFF78350F) : const Color(0xFFFFFBEB),
             title: strings.isFilipino ? 'Kahilingan sa Stock: $raiserName' : 'Stock Request: $raiserName',
             subtitle: '$itemsDesc • $time',
             badgeText: strings.isFilipino ? 'AKSYON KAILANGAN' : 'ACTION REQUIRED',
             badgeColor: const Color(0xFFD97706),
             actionLabel: strings.reviewRequest,
+            timeStr: time,
             isDark: isDark,
             onTap: () {
               setState(() => _localReadIds.add(id));
@@ -441,21 +452,27 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
         final id = 'stock_${p.id}';
         final isRead = _localReadIds.contains(id);
         if (_selectedFilter != 'History' && isRead) continue;
+
         final isCritical = p.units <= 5;
         items.add(
           _buildNotificationCard(
             id: id,
             isRead: isRead,
             icon: Icons.warning_amber_rounded,
-            iconColor: isCritical ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+            iconColor: isCritical ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
             bgColor: isCritical
-                ? (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFEE2E2))
-                : (isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7)),
+                ? (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFEF2F2))
+                : (isDark ? const Color(0xFF78350F) : const Color(0xFFFFFBEB)),
             title: strings.isFilipino ? 'Mababang Stock: ${p.name}' : '${p.name} is running low',
-            subtitle: strings.isFilipino ? '${p.units} unit na lang ang natitira sa imbentaryo' : 'Only ${p.units} units remaining in inventory',
-            badgeText: isCritical ? (strings.isFilipino ? 'KRITIKAL' : 'CRITICAL') : (strings.isFilipino ? 'MABABANG STOCK' : 'LOW STOCK'),
+            subtitle: strings.isFilipino
+                ? '${p.units} unit na lang ang natitira sa imbentaryo'
+                : 'Only ${p.units} units remaining in inventory',
+            badgeText: isCritical
+                ? (strings.isFilipino ? 'KRITIKAL' : 'CRITICAL')
+                : (strings.isFilipino ? 'MABABANG STOCK' : 'LOW STOCK'),
             badgeColor: isCritical ? const Color(0xFFDC2626) : const Color(0xFFD97706),
             actionLabel: strings.restockItem,
+            timeStr: strings.tabStock,
             isDark: isDark,
             onTap: () {
               setState(() => _localReadIds.add(id));
@@ -471,26 +488,30 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
     // 3. Completed Sales
     if (_selectedFilter == 'Active' || _selectedFilter == 'History') {
       for (final sale in widget.salesLogs.take(10)) {
-        final id = 'sale_${sale['id']}';
-        final isRead = _localReadIds.contains(id);
+        final rawId = sale['id'] ?? sale['sale_id'];
+        final id = 'sale_${rawId ?? ''}';
+        final date = sale['sale_date'] ?? sale['created_at'];
+        final isRead = _isItemRead(id, date);
         if (_selectedFilter != 'History' && isRead) continue;
-        final invoice = (sale['invoice_number'] ?? sale['receipt_number'] ?? '#SALE-${sale['id']}').toString();
+
+        final invoice = (sale['invoice_number'] ?? sale['receipt_number'] ?? '#SALE-${rawId ?? ''}').toString();
         final rawTotal = sale['total_amount'] ?? sale['total'] ?? 0;
         final double total = rawTotal is num ? rawTotal.toDouble() : double.tryParse(rawTotal.toString()) ?? 0.0;
-        final time = _formatTime(sale['sale_date'] ?? sale['created_at']);
+        final time = _formatTime(date);
 
         items.add(
           _buildNotificationCard(
             id: id,
             isRead: isRead,
             icon: Icons.check_circle_rounded,
-            iconColor: const Color(0xFF059669),
+            iconColor: const Color(0xFF10B981),
             bgColor: isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5),
             title: strings.isFilipino ? 'Nakumpletong Benta: $invoice' : 'Sale Completed: $invoice',
             subtitle: '₱${total.toStringAsFixed(2)} • $time',
             badgeText: strings.isFilipino ? 'TAPOS NA' : 'COMPLETED',
             badgeColor: const Color(0xFF059669),
             actionLabel: strings.viewReceipt,
+            timeStr: time,
             isDark: isDark,
             onTap: () {
               setState(() => _localReadIds.add(id));
@@ -557,7 +578,8 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                   height: 1.45,
                 ),
               ),
-              if (_selectedFilter != 'History') ...[
+              if (_selectedFilter != 'History' &&
+                  (activeRequests.isNotEmpty || widget.lowStockProducts.isNotEmpty || widget.salesLogs.isNotEmpty)) ...[
                 const SizedBox(height: 20),
                 Material(
                   color: Colors.transparent,
@@ -570,7 +592,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                         color: isDark ? const Color(0xFF1E293B) : Colors.white,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                          color: isDark ? Colors.white54 : _brandColor,
                           width: 1.5,
                         ),
                         boxShadow: [
@@ -587,7 +609,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                           Icon(
                             Icons.history_rounded,
                             size: 18,
-                            color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                            color: isDark ? Colors.white : _brandColor,
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -631,141 +653,175 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
     required String badgeText,
     required Color badgeColor,
     required String actionLabel,
+    required String timeStr,
     required bool isDark,
     required VoidCallback onTap,
   }) {
-    final cardBg = isRead
-        ? (isDark ? const Color(0xFF131E2D) : const Color(0xFFF8FAFC))
-        : (isDark ? const Color(0xFF1B2638) : Colors.white);
+    final itemBg = isRead
+        ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : const Color(0xFFF8FAFC))
+        : (isDark ? const Color(0xFF1E293B) : Colors.white);
 
-    final cardBorder = isRead
-        ? (isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0))
-        : (isDark ? const Color(0xFF334155) : PiggyTrunkTheme.ptBorder);
+    final itemBorder = isRead
+        ? (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder)
+        : (isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFFCBD5E1));
 
     final titleColor = isDark ? Colors.white : _brandColor;
     final descColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
 
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 250),
-      opacity: isRead ? 0.75 : 1.0,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: cardBorder,
-            width: isRead ? 1.0 : 1.2,
-          ),
-          boxShadow: [
-            if (!isRead)
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-          ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: itemBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: itemBorder,
+          width: isRead ? 1 : 1.2,
         ),
-        child: Material(
-          color: Colors.transparent,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isRead ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)) : bgColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      icon,
-                      color: isRead ? (isDark ? Colors.white54 : const Color(0xFF94A3B8)) : iconColor,
-                      size: 20,
-                    ),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Category Icon
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isRead ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)) : bgColor,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: isRead
-                                    ? (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))
-                                    : badgeColor.withValues(alpha: isDark ? 0.25 : 0.12),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                badgeText,
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: isRead ? (isDark ? Colors.white70 : const Color(0xFF64748B)) : badgeColor,
-                                ),
-                              ),
-                            ),
-                            if (!isRead)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: _brandBlue,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          title,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13.5,
-                            fontWeight: isRead ? FontWeight.w600 : FontWeight.w700,
-                            color: isRead ? (isDark ? Colors.white70 : const Color(0xFF475569)) : titleColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11.5,
-                            color: descColor,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              actionLabel,
+                  child: Icon(
+                    icon,
+                    color: isRead ? (isDark ? Colors.white54 : const Color(0xFF94A3B8)) : iconColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Content Column
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top Row: Title + Time (Aligned with Hog Raiser & PI)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                fontSize: 13.5,
+                                fontWeight: isRead ? FontWeight.w600 : FontWeight.w800,
+                                color: titleColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            timeStr,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: descColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+
+                      // Subtitle / message
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: isRead ? descColor : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+                          fontWeight: isRead ? FontWeight.w400 : FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Bottom Action & Tag Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Subtle Badge Tag
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isRead
+                                  ? (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))
+                                  : badgeColor.withValues(alpha: isDark ? 0.25 : 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              badgeText,
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: isRead ? (isDark ? Colors.white70 : const Color(0xFF64748B)) : badgeColor,
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
-                              size: 14,
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+
+                          // Action Link with Arrow
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                actionLabel,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                size: 13,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Unread Indicator Dot on the far right
+                if (!isRead) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.only(top: 6),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
         ),

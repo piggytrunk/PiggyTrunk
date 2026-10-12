@@ -45,6 +45,24 @@ class AuthSessionService {
     }
   }
 
+  /// Write a generic key-value item in secure storage
+  Future<void> writeKey(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (e) {
+      debugPrint('AuthSessionService writeKey notice: $e');
+    }
+  }
+
+  /// Read a generic key-value item from secure storage
+  Future<String?> readKey(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Check if there is a valid existing session and attempt auto-login
   /// Returns a map with { 'canAutoLogin': bool, 'targetRoute': String?, 'email': String?, 'role': String? }
   Future<Map<String, dynamic>> checkAndAttemptAutoLogin() async {
