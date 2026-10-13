@@ -445,35 +445,309 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
   Future<void> _fetchPendingRequests() async {
     try {
+      // 1. Fetch raw stock requests
       List<dynamic> res = [];
       try {
         res = await _supabase
             .from('stock_requests')
-            .select(
-              '*, hog_raisers(name, avatar_url, hog_raiser_id, user_id, app_users!hog_raisers_user_id_fkey(name, email))',
-            )
-            .order('created_at', ascending: false);
+            .select('*, assignments(*, batches(*))')
+            .order('request_date', ascending: false)
+            .order('request_id', ascending: false);
       } catch (_) {
         try {
           res = await _supabase
               .from('stock_requests')
-              .select('*, hog_raisers(name, avatar_url)')
-              .order('created_at', ascending: false);
+              .select('*')
+              .order('request_date', ascending: false)
+              .order('request_id', ascending: false);
         } catch (_) {
           try {
             res = await _supabase
                 .from('stock_requests')
-                .select()
-                .order('request_date', ascending: false);
+                .select('*')
+                .order('created_at', ascending: false);
           } catch (_) {
-            res = await _supabase.from('stock_requests').select();
+            res = await _supabase.from('stock_requests').select('*');
           }
         }
       }
 
+      // 2. Fetch app_users independently to guarantee real name availability
+      List<dynamic> appUsersRaw = [];
+      try {
+        appUsersRaw = await _supabase.from('app_users').select('*');
+      } catch (_) {}
+
+      final Map<String, Map<String, dynamic>> appUsersMap = {};
+      for (final u in appUsersRaw) {
+        if (u is! Map) continue;
+        final uid = (u['user_id'] ?? u['id'])?.toString() ?? '';
+        final suid = (u['supabase_user_id'])?.toString() ?? '';
+        if (uid.isNotEmpty) appUsersMap[uid] = Map<String, dynamic>.from(u);
+        if (suid.isNotEmpty) appUsersMap[suid] = Map<String, dynamic>.from(u);
+        final uEmail = (u['email'] ?? '').toString().toLowerCase().trim();
+        if (uEmail.isNotEmpty) appUsersMap[uEmail] = Map<String, dynamic>.from(u);
+      }
+
+      // 3. Fetch admin_notifications registration metadata for accurate signup names
+      final Map<String, Map<String, dynamic>> notifRegMap = {};
+      try {
+        final notifsRes = await _supabase
+            .from('admin_notifications')
+            .select('metadata')
+            .inFilter('type', ['user_registration', 'cashier_profile'])
+            .order('created_at', ascending: false)
+            .limit(60);
+        for (final n in notifsRes) {
+          final m = n['metadata'];
+          if (m is Map) {
+            final mUid = m['user_id']?.toString() ?? '';
+            final mEmail = m['email']?.toString().toLowerCase().trim() ?? '';
+            if (mUid.isNotEmpty && !notifRegMap.containsKey(mUid)) {
+              notifRegMap[mUid] = Map<String, dynamic>.from(m);
+            }
+            if (mEmail.isNotEmpty && !notifRegMap.containsKey(mEmail)) {
+              notifRegMap[mEmail] = Map<String, dynamic>.from(m);
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 4. Fetch raisers
+      List<dynamic> raisersRaw = [];
+      try {
+        raisersRaw = await _supabase.from('hog_raisers').select('*');
+      } catch (_) {}
+
+      final Map<String, Map<String, dynamic>> raisersMap = {};
+      for (final r in raisersRaw) {
+        if (r is! Map) continue;
+        final rId = (r['hog_raiser_id'] ?? r['id'])?.toString() ?? '';
+        final uId = (r['user_id'])?.toString() ?? '';
+        final rEmail = (r['email'] ?? '').toString().toLowerCase().trim();
+
+        final uInfo = (uId.isNotEmpty ? appUsersMap[uId] : null) ??
+            (rEmail.isNotEmpty ? appUsersMap[rEmail] : null);
+        final notifInfo = (uId.isNotEmpty ? notifRegMap[uId] : null) ??
+            (rEmail.isNotEmpty ? notifRegMap[rEmail] : null);
+
+        final suid = (uInfo?['supabase_user_id'])?.toString() ?? '';
+
+        final rDbName = (r['name'] ?? '').toString().trim();
+        final fName = (r['first_name'] ?? '').toString().trim();
+        final lName = (r['last_name'] ?? '').toString().trim();
+        final combinedRaiserName = [fName, lName].where((s) => s.isNotEmpty).join(' ').trim();
+        final appUserName = (uInfo?['name'] ?? '').toString().trim();
+        final notifName = (notifInfo?['name'] ?? notifInfo?['full_name'] ?? '').toString().trim();
+
+        String resolvedName = 'Hog Raiser';
+        if (rDbName.isNotEmpty &&
+            rDbName.toLowerCase() != 'hog raiser' &&
+            rDbName.toUpperCase() != 'N/A') {
+          resolvedName = rDbName;
+        } else if (combinedRaiserName.isNotEmpty &&
+            combinedRaiserName.toLowerCase() != 'hog raiser') {
+          resolvedName = combinedRaiserName;
+        } else if (appUserName.isNotEmpty &&
+            appUserName.toLowerCase() != 'hog raiser' &&
+            appUserName.toUpperCase() != 'N/A') {
+          resolvedName = appUserName;
+        } else if (notifName.isNotEmpty &&
+            notifName.toLowerCase() != 'hog raiser') {
+          resolvedName = notifName;
+        } else {
+          final effEmail = rEmail.isNotEmpty ? rEmail : (uInfo?['email'] ?? '').toString().toLowerCase().trim();
+          if (effEmail.isNotEmpty) {
+            final prefix = effEmail.split('@').first.replaceAll('.', ' ').replaceAll('_', ' ').trim();
+            if (prefix.isNotEmpty && prefix.toLowerCase() != 'raiser') {
+              resolvedName = prefix.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+            }
+          }
+        }
+
+        String resolvedPhone = (r['phone'] ?? uInfo?['phone'] ?? notifInfo?['phone'] ?? notifInfo?['contact_number'] ?? '').toString().trim();
+        if (resolvedPhone == 'null' || resolvedPhone == 'N/A') resolvedPhone = '';
+
+        String resolvedAddress = (r['address'] ?? uInfo?['address'] ?? notifInfo?['address'] ?? '').toString().trim();
+        if (resolvedAddress == 'null' || resolvedAddress == 'N/A') resolvedAddress = '';
+
+        String resolvedAvatar = (r['avatar_url'] ?? uInfo?['avatar_url'] ?? notifInfo?['avatar_url'] ?? '').toString().trim();
+        if (resolvedAvatar == 'null') resolvedAvatar = '';
+
+        final profile = {
+          'name': resolvedName,
+          'phone': resolvedPhone,
+          'address': resolvedAddress,
+          'avatar_url': resolvedAvatar,
+          'email': rEmail.isNotEmpty ? rEmail : (uInfo?['email'] ?? '').toString().trim(),
+        };
+
+        if (rId.isNotEmpty) raisersMap[rId] = profile;
+        if (uId.isNotEmpty) raisersMap[uId] = profile;
+        if (suid.isNotEmpty) raisersMap[suid] = profile;
+        if (rEmail.isNotEmpty) raisersMap[rEmail] = profile;
+      }
+
+      // 5. Fetch assignments & batches for batch name mapping
+      List<dynamic> assignmentsRaw = [];
+      try {
+        assignmentsRaw = await _supabase.from('assignments').select('*');
+      } catch (_) {}
+
+      List<dynamic> batchesRaw = [];
+      try {
+        batchesRaw = await _supabase.from('batches').select('*');
+      } catch (_) {}
+
+      final Map<String, String> batchNameMap = {};
+      for (final b in batchesRaw) {
+        if (b is! Map) continue;
+        final bId = (b['batch_id'] ?? b['id'])?.toString() ?? '';
+        final bName = (b['batch_name'] ?? b['name'])?.toString() ?? '';
+        if (bId.isNotEmpty && bName.isNotEmpty) {
+          batchNameMap[bId] = bName;
+        }
+      }
+
+      final Map<String, String> assignToBatchMap = {};
+      final Map<String, String> assignToTypeMap = {};
+      final Map<String, String> assignToRaiserMap = {};
+      final Map<String, String> raiserToActiveBatchMap = {};
+      for (final a in assignmentsRaw) {
+        if (a is! Map) continue;
+        final aId = (a['assignment_id'] ?? a['id'])?.toString() ?? '';
+        final bId = a['batch_id']?.toString() ?? '';
+        final rId = a['hog_raiser_id']?.toString() ?? '';
+        final status = (a['status'] ?? '').toString().toLowerCase();
+        final rawHogType = (a['hog_types'] is Map ? a['hog_types']['type_name'] : a['pig_type'])?.toString() ?? '';
+
+        if (aId.isNotEmpty) {
+          if (bId.isNotEmpty && batchNameMap.containsKey(bId)) {
+            assignToBatchMap[aId] = batchNameMap[bId]!;
+          }
+          if (rawHogType.isNotEmpty) {
+            assignToTypeMap[aId] = rawHogType;
+          }
+          if (rId.isNotEmpty) {
+            assignToRaiserMap[aId] = rId;
+          }
+        }
+        if (rId.isNotEmpty && bId.isNotEmpty && batchNameMap.containsKey(bId)) {
+          if (status == 'active' || !raiserToActiveBatchMap.containsKey(rId)) {
+            raiserToActiveBatchMap[rId] = batchNameMap[bId]!;
+          }
+        }
+      }
+
+      // 6. Enrich each request
+      final List<Map<String, dynamic>> enriched = [];
+      for (final r in res) {
+        if (r is! Map) continue;
+        final rMap = Map<String, dynamic>.from(r);
+
+        String rId = (rMap['hog_raiser_id'] ?? rMap['user_id'] ?? '').toString();
+        final aId = (rMap['assignment_id'] ?? '').toString();
+
+        if ((rId.isEmpty || rId == '0' || rId == 'null') && aId.isNotEmpty) {
+          rId = assignToRaiserMap[aId] ?? '';
+        }
+
+        String resolvedBatch = 'Unassigned';
+        final joinedAssignment = rMap['assignments'] is Map ? rMap['assignments'] as Map : null;
+        final joinedBatch = joinedAssignment?['batches'] is Map ? joinedAssignment!['batches'] as Map : null;
+        final joinedBatchName = (joinedBatch?['batch_name'] ?? '').toString().trim();
+
+        if (joinedBatchName.isNotEmpty && joinedBatchName.toLowerCase() != 'null') {
+          resolvedBatch = joinedBatchName;
+        } else if (aId.isNotEmpty && assignToBatchMap.containsKey(aId)) {
+          resolvedBatch = assignToBatchMap[aId]!;
+        } else if (rId.isNotEmpty && raiserToActiveBatchMap.containsKey(rId)) {
+          resolvedBatch = raiserToActiveBatchMap[rId]!;
+        }
+
+        final hType = assignToTypeMap[aId] ?? (joinedAssignment?['hog_types'] is Map ? joinedAssignment!['hog_types']['type_name'] : null)?.toString();
+        if (hType != null && hType.toString().trim().isNotEmpty) {
+          final tClean = hType.toString().trim();
+          if (!resolvedBatch.toLowerCase().contains(tClean.toLowerCase()) && resolvedBatch != 'Unassigned') {
+            resolvedBatch = '$resolvedBatch ($tClean)';
+          }
+        }
+
+        Map<String, dynamic>? raiserInfo = raisersMap[rId];
+
+        // Intelligent fallback: if raiserId is missing or unmapped, match by batch owner
+        if (raiserInfo == null || raiserInfo['name'] == 'Hog Raiser') {
+          final bClean = resolvedBatch.toLowerCase();
+          for (final profile in raisersMap.values) {
+            final pName = (profile['name'] ?? '').toString().trim();
+            if (pName.isNotEmpty && pName != 'Hog Raiser') {
+              final firstWord = pName.toLowerCase().split(' ').first;
+              if (firstWord.length >= 3 && bClean.contains(firstWord)) {
+                raiserInfo = profile;
+                break;
+              }
+            }
+          }
+        }
+
+        final String resolvedName = raiserInfo?['name'] ??
+            (rMap['user_name'] ?? rMap['raiser_name'] ?? 'Hog Raiser').toString().trim();
+        final String resolvedPhone = raiserInfo?['phone'] ?? (rMap['phone'] ?? '').toString().trim();
+        final String resolvedAddress = raiserInfo?['address'] ?? (rMap['address'] ?? '').toString().trim();
+        final String resolvedAvatar = raiserInfo?['avatar_url'] ?? (rMap['avatar_url'] ?? '').toString().trim();
+
+        final String rawFeedType = (rMap['feed_type'] ?? rMap['item_name'] ?? rMap['product_name'] ?? '').toString().trim();
+        final String resolvedProductName = rawFeedType.isNotEmpty ? rawFeedType : 'Feed Supply';
+
+        // Match against _products to extract real image, available stock, and product_id
+        String resolvedProductImage = '';
+        int? matchedProductId;
+        int availableUnits = 0;
+        String resolvedCategory = (rMap['category'] ?? 'Feeds').toString();
+
+        for (final p in _allProducts) {
+          final pNameLower = p.name.toLowerCase().trim();
+          final targetLower = resolvedProductName.toLowerCase().trim();
+          if (pNameLower == targetLower || pNameLower.contains(targetLower) || targetLower.contains(pNameLower)) {
+            matchedProductId = int.tryParse(p.id);
+            availableUnits = p.units;
+            if (p.image != null && p.image!.isNotEmpty) {
+              resolvedProductImage = p.image!;
+            }
+            if (p.category.isNotEmpty) {
+              resolvedCategory = p.category;
+            }
+            break;
+          }
+        }
+
+        rMap['fetched_raiser_name'] = resolvedName;
+        rMap['fetched_raiser_phone'] = resolvedPhone;
+        rMap['fetched_raiser_address'] = resolvedAddress;
+        rMap['fetched_raiser_avatar'] = resolvedAvatar;
+        rMap['fetched_batch_name'] = resolvedBatch;
+        rMap['fetched_product_name'] = resolvedProductName;
+        rMap['fetched_product_image'] = resolvedProductImage;
+        rMap['fetched_product_id'] = matchedProductId;
+        rMap['fetched_available_units'] = availableUnits;
+        rMap['category'] = resolvedCategory;
+
+        enriched.add(rMap);
+      }
+
+      enriched.sort((a, b) {
+        final dateA = (a['request_date'] ?? a['created_at'] ?? '').toString();
+        final dateB = (b['request_date'] ?? b['created_at'] ?? '').toString();
+        final dateComp = dateB.compareTo(dateA);
+        if (dateComp != 0) return dateComp;
+        final idA = a['request_id'] is num ? (a['request_id'] as num).toInt() : (int.tryParse(a['request_id']?.toString() ?? '') ?? 0);
+        final idB = b['request_id'] is num ? (b['request_id'] as num).toInt() : (int.tryParse(b['request_id']?.toString() ?? '') ?? 0);
+        return idB.compareTo(idA);
+      });
+
       if (mounted) {
         setState(() {
-          _pendingRequests = List<Map<String, dynamic>>.from(res);
+          _pendingRequests = enriched;
         });
       }
     } catch (e) {
@@ -511,9 +785,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           if (paren.isNotEmpty) payment = paren;
         }
 
+        final pName = (log['product_name'] ?? 'Product').toString();
+        final matchedProduct = _allProducts.where((p) => p.name.toLowerCase() == pName.toLowerCase()).firstOrNull;
+
         combined.add({
           'id': log['id'],
-          'product_name': log['product_name'] ?? 'Product',
+          'product_name': pName,
+          'category': matchedProduct?.category ?? 'Medicines',
+          'image': matchedProduct?.image,
           'total_amount': (log['price'] as num?)?.toDouble() ?? 0.0,
           'quantity': (log['units'] as num?)?.toInt() ?? 1,
           'sale_date': log['created_at'],
@@ -540,9 +819,13 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final saleId = s['sale_id'] ?? s['id'];
         final exists = combined.any((c) => c['id'] == saleId);
         if (!exists) {
+          final pName = (s['product_name'] ?? 'Inventory Sale').toString();
+          final matchedProduct = _allProducts.where((p) => p.name.toLowerCase() == pName.toLowerCase()).firstOrNull;
           combined.add({
             'id': saleId,
-            'product_name': s['product_name'] ?? 'Inventory Sale',
+            'product_name': pName,
+            'category': matchedProduct?.category ?? 'Medicines',
+            'image': matchedProduct?.image,
             'total_amount': (s['total_amount'] as num?)?.toDouble() ?? 0.0,
             'quantity': (s['quantity'] as num?)?.toInt() ?? 1,
             'sale_date': s['sale_date'] ?? s['created_at'],
@@ -1878,11 +2161,20 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       final newStock = (matchingProduct.stock - item.quantity).clamp(0, 999999);
       final newSold = matchingProduct.sold + item.quantity;
 
-      // Deduct stock in database
+      // Deduct stock in database across inventory_products and products
       try {
         await _supabase
             .from('inventory_products')
             .update({'units': newStock, 'sold': newSold})
+            .eq('id', item.productId);
+      } catch (e) {
+        debugPrint('inventory_products stock update error: $e');
+      }
+
+      try {
+        await _supabase
+            .from('products')
+            .update({'units': newStock, 'current_stock': newStock, 'sold': newSold})
             .eq('id', item.productId);
       } catch (_) {
         try {
@@ -1891,6 +2183,24 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
               .update({'units': newStock, 'sold': newSold})
               .eq('id', item.productId);
         } catch (_) {}
+      }
+
+      // Immediately update in-memory _allProducts stock so POS grid updates in real time
+      final pIdx = _allProducts.indexWhere((p) => p.id == item.productId);
+      if (pIdx >= 0) {
+        final p = _allProducts[pIdx];
+        _allProducts[pIdx] = POSProduct(
+          id: p.id,
+          name: p.name,
+          categoryId: p.categoryId,
+          category: p.category,
+          image: p.image,
+          description: p.description,
+          price: p.price,
+          units: newStock,
+          sold: newSold,
+          isArchived: p.isArchived,
+        );
       }
 
       // Log sale item in inventory_logs
@@ -1950,13 +2260,28 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       } catch (_) {}
     }
 
-    // Immediately update local sales logs so the receipt is visible right away
+    // Immediately update local sales logs so the receipt is visible right away with image
     if (mounted) {
       setState(() {
         for (final item in order.items) {
+          final matchingP = _allProducts.firstWhere(
+            (p) => p.id == item.productId || p.name.toLowerCase() == item.productName.toLowerCase(),
+            orElse: () => _allProducts.isNotEmpty ? _allProducts.first : POSProduct(
+              id: item.productId,
+              name: item.productName,
+              categoryId: '',
+              category: 'Medicines',
+              description: '',
+              price: item.price,
+              units: 0,
+              sold: 0,
+            ),
+          );
           _salesLogs.insert(0, {
             'id': DateTime.now().millisecondsSinceEpoch,
             'product_name': item.productName,
+            'category': matchingP.category,
+            'image': matchingP.image,
             'total_amount': item.subtotal,
             'quantity': item.quantity,
             'sale_date': nowStr,

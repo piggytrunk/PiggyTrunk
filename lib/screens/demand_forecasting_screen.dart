@@ -439,88 +439,63 @@ class _DemandForecastingScreenState extends State<DemandForecastingScreen> {
 
   // --- Screen Header ---
   Widget _buildHeader(bool isMobile) {
-    return isMobile
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Row(
             children: [
-              Row(
-                children: [
-                  _buildBackButton(),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Sales Forecast Summary',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: _titleColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Predict product sales & financial planning',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            color: _mutedColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _buildHeaderActionButtons(),
-            ],
-          )
-        : Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+              _buildBackButton(),
+              SizedBox(width: isMobile ? 10 : 14),
               Expanded(
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildBackButton(),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Sales Forecast Summary',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: _titleColor,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Predict product sales demand, top-selling items & financial planning based on POS history',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              color: _mutedColor,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                    Text(
+                      'Sales Forecast Summary',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isMobile ? 18 : 26,
+                        fontWeight: FontWeight.w800,
+                        color: _titleColor,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isMobile
+                          ? 'Predict product sales & financial planning'
+                          : 'Predict product sales demand, top-selling items & financial planning based on POS history',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isMobile ? 11.5 : 13,
+                        color: _mutedColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
-              _buildHeaderActionButtons(),
             ],
-          );
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          onPressed: _isLoading ? null : _loadData,
+          icon: _isLoading
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                  ),
+                )
+              : Icon(Icons.refresh_rounded, color: _mutedColor),
+          tooltip: 'Refresh Forecast',
+        ),
+      ],
+    );
   }
 
   Widget _buildBackButton() {
@@ -552,43 +527,6 @@ class _DemandForecastingScreenState extends State<DemandForecastingScreen> {
           ),
           child: Icon(Icons.arrow_back_rounded, size: 20, color: _titleColor),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderActionButtons() {
-    return OutlinedButton.icon(
-      onPressed: _isLoading ? null : _loadData,
-      icon: _isLoading
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-              ),
-            )
-          : Icon(
-              Icons.refresh_rounded,
-              size: 17,
-              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-            ),
-      label: Text(
-        'Refresh',
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        backgroundColor: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
-        side: BorderSide(
-          color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
-          width: 1.2,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

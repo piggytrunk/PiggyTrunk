@@ -186,15 +186,19 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: isDark
-                  ? [const Color(0xFF1E3A8A), const Color(0xFF1E293B)]
-                  : [_brandNavy, const Color(0xFF1E3A5F)],
+                  ? [PiggyTrunkTheme.ptPrimary, const Color(0xFF16253B)]
+                  : [PiggyTrunkTheme.ptPrimary, const Color(0xFF18314F)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: isDark ? PiggyTrunkTheme.ptBorderDark : const Color(0xFF324D6E),
+              width: 1,
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: isDark ? Colors.black38 : _brandNavy.withValues(alpha: 0.25),
+                color: isDark ? Colors.black38 : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.22),
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),
@@ -250,7 +254,7 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
                     Text(
                       _formatCurrency(todayRevenue),
                       style: GoogleFonts.plusJakartaSans(
-                        color: const Color(0xFF34D399),
+                        color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -401,17 +405,13 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
     final product = sale['product'] as Map<String, dynamic>?;
     final String productName = product != null ? (product['name'] as String) : (sale['product_name'] ?? 'ImmunoBooster 1L');
     final String categoryName = product != null ? (product['category'] as String) : (sale['category'] ?? 'Medicines');
-    final String imageUrl = (product != null && product['image'] != null) ? product['image'] as String : '';
+    final String imageUrl = (sale['image'] ?? sale['image_url'] ?? (product != null ? product['image'] : null) ?? '').toString();
     final double totalAmount = (sale['total_amount'] as num?)?.toDouble() ?? 0.0;
     final int quantity = sale['quantity'] as int? ?? 1;
     final String quantityLabel = sale['unit_type'] != null ? '$quantity ${sale['unit_type']}' : '$quantity units';
     final String customerName = sale['customer_name'] ?? 'Walk-in Customer';
     final String paymentMethod = sale['payment_method'] ?? 'Cash';
     final String dateFormatted = _formatDate(sale['sale_date'] ?? sale['created_at']);
-    
-    // Shorten UUIDs to clean receipt badges e.g. #SALE-XXXX or #50197623
-    final rawId = (sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'] ?? 'TX').toString();
-    final String saleId = rawId.length > 10 ? '#${rawId.substring(0, 8).toUpperCase()}' : (rawId.startsWith('#') ? rawId : '#$rawId');
 
     return Container(
       decoration: BoxDecoration(
@@ -436,34 +436,24 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Row: Sale ID, Customer & Date
+                // Top Row: Customer & Date (No confusing #ID)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              saleId,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: titleColor,
-                              ),
-                            ),
+                          Icon(
+                            Icons.person_outline_rounded,
+                            size: 15,
+                            color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               customerName,
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12.5,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: titleColor,
                               ),
@@ -512,7 +502,7 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
                   child: Divider(height: 1, thickness: 1, color: isDark ? const Color(0xFF28354A) : const Color(0xFFF1F5F9)),
                 ),
 
-                // Middle Row: Thumbnail, Product Name & Quantity
+                // Middle Row: Product Image Thumbnail, Name & Quantity
                 Row(
                   children: [
                     Container(
@@ -523,12 +513,24 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: cardBorder),
                       ),
-                      child: imageUrl.isNotEmpty
+                      child: (imageUrl.isNotEmpty && imageUrl != 'null')
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(imageUrl, fit: BoxFit.cover),
+                              borderRadius: BorderRadius.circular(11),
+                              child: Image.network(
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, err, stack) => Icon(
+                                  Icons.inventory_2_outlined,
+                                  color: subtitleColor,
+                                  size: 22,
+                                ),
+                              ),
                             )
-                          : Icon(Icons.receipt_long_rounded, color: titleColor, size: 22),
+                          : Icon(
+                              Icons.inventory_2_outlined,
+                              color: subtitleColor,
+                              size: 22,
+                            ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(

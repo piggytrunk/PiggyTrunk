@@ -9,7 +9,7 @@ import '../../../utils/capitalization_formatters.dart';
 import '../widgets/cashier_empty_state.dart';
 import '../widgets/cashier_sales_history_view.dart';
 import '../widgets/cashier_checkout_modal.dart';
-import '../widgets/cashier_receipt_modal.dart';
+import '../../../widgets/piggy_toast.dart';
 
 class CashierPOSTab extends StatefulWidget {
   final List<POSProduct> allProducts;
@@ -61,8 +61,8 @@ class CashierPOSTab extends StatefulWidget {
 }
 
 class _CashierPOSTabState extends State<CashierPOSTab> {
-  static const Color _brandNavy = Color(0xFF18314F);
-  static const Color _cardBorder = Color(0xFFE2E8F0);
+  static const Color _brandNavy = PiggyTrunkTheme.ptPrimary;
+  static const Color _cardBorder = PiggyTrunkTheme.ptBorder;
 
   final TextEditingController _searchCtrl = TextEditingController();
   final Map<String, int> _productQuantities = {};
@@ -92,12 +92,9 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
         _productQuantities[product.id] = current + 1;
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Cannot exceed available stock (${product.units} units).'),
-          backgroundColor: const Color(0xFFEF4444),
-          duration: const Duration(milliseconds: 900),
-        ),
+      PiggyToast.showError(
+        context,
+        'Cannot exceed available stock (${product.units} units).',
       );
     }
   }
@@ -130,11 +127,9 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
 
   void _openCheckoutModal() {
     if (widget.currentOrder.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cart is empty. Please add items to proceed.'),
-          backgroundColor: Colors.orange,
-        ),
+      PiggyToast.showWarning(
+        context,
+        'Cart is empty. Please add items to proceed.',
       );
       return;
     }
@@ -164,29 +159,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
           );
 
           if (!mounted) return;
-          final orderSnapshot = List<OrderItem>.from(order.items);
-          final totalSnapshot = order.total;
           widget.onClearCart();
-
-          // Show Digital Receipt Modal
-          showDialog(
-            context: this.context,
-            barrierDismissible: false,
-            builder: (ctx) => CashierReceiptModal(
-              receiptNumber: DateTime.now().millisecondsSinceEpoch.toString().substring(5),
-              customerName: customerName,
-              cashierName: widget.cashierName,
-              timestamp: DateTime.now(),
-              items: orderSnapshot,
-              totalAmount: totalSnapshot,
-              paymentMethod: paymentMethod,
-              tenderedAmount: tenderedAmount,
-              changeAmount: changeAmount,
-              onDone: () {
-                Navigator.pop(ctx);
-              },
-            ),
-          );
         },
       ),
     );
@@ -196,12 +169,12 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
 
-    final modalBg = isDark ? const Color(0xFF151F2E) : Colors.white;
-    final titleColor = isDark ? Colors.white : _brandNavy;
+    final modalBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface;
+    final titleColor = isDark ? PiggyTrunkTheme.ptTextDark : _brandNavy;
     final subtitleColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
-    final cardBorder = isDark ? const Color(0xFF28354A) : _cardBorder;
-    final itemBg = isDark ? const Color(0xFF1B2638) : const Color(0xFFF8FAFC);
-    final stepperBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : _cardBorder;
+    final itemBg = isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft;
+    final stepperBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
 
     return StatefulBuilder(
       builder: (context, setModalState) {
@@ -224,7 +197,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                     width: 44,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                      color: isDark ? PiggyTrunkTheme.ptBorderDark : const Color(0xFFCBD5E1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -259,7 +232,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.5,
-                                color: isDark ? const Color(0xFF93C5FD) : _brandNavy,
+                                color: isDark ? PiggyTrunkTheme.ptTextDark : _brandNavy,
                               ),
                             ),
                           ),
@@ -433,7 +406,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                       style: GoogleFonts.plusJakartaSans(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 13.5,
-                                        color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                                        color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                                       ),
                                     ),
                                   ),
@@ -471,7 +444,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
-                                color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                                color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                               ),
                             ),
                           ],
@@ -518,11 +491,11 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
 
-    final titleColor = isDark ? Colors.white : _brandNavy;
+    final titleColor = isDark ? PiggyTrunkTheme.ptTextDark : _brandNavy;
     final subtitleColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
-    final cardBorder = isDark ? const Color(0xFF28354A) : _cardBorder;
-    final cardBg = isDark ? const Color(0xFF1B2638) : Colors.white;
-    final topBarBg = isDark ? const Color(0xFF151F2E) : Colors.white;
+    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : _cardBorder;
+    final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurface;
+    final topBarBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface;
 
     if (_viewSalesHistory) {
       return Column(
@@ -566,19 +539,25 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    color: isDark
+                        ? PiggyTrunkTheme.ptSuccessDark.withValues(alpha: 0.16)
+                        : PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.receipt_rounded, size: 14, color: Color(0xFF10B981)),
+                      Icon(
+                        Icons.receipt_rounded,
+                        size: 14,
+                        color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '${widget.salesLogs.length} Receipts',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF10B981),
+                          color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                         ),
                       ),
                     ],
@@ -618,6 +597,24 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
       }
       return true;
     }).toList();
+
+    int categoryWeight(String category) {
+      final cat = category.trim().toLowerCase();
+      if (cat == 'feeds' || cat == 'feed') return 0;
+      if (cat == 'medicines' || cat == 'medicine') return 1;
+      if (cat == 'vitamins' || cat == 'vitamin') return 2;
+      if (cat == 'others' || cat == 'other') return 3;
+      return 4;
+    }
+
+    filtered.sort((a, b) {
+      final weightA = categoryWeight(a.category);
+      final weightB = categoryWeight(b.category);
+      if (weightA != weightB) {
+        return weightA.compareTo(weightB);
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
 
     return SizedBox.expand(
       child: Stack(
@@ -721,12 +718,12 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444),
+                                  color: isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent,
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: isDark ? const Color(0xFF151F2E) : Colors.white, width: 1.5),
+                                  border: Border.all(color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white, width: 1.5),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                                      color: (isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent).withValues(alpha: 0.35),
                                       blurRadius: 4,
                                       offset: const Offset(0, 1),
                                     ),
@@ -766,10 +763,10 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             height: 42,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E2F48) : const Color(0xFFEEF4FD),
+                              color: isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurfaceSoft,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+                                color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                                 width: 1.2,
                               ),
                               boxShadow: [
@@ -786,11 +783,11 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                 Icon(
                                   Icons.insights_rounded,
                                   size: 16,
-                                  color: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  'Demand Forecast',
+                                  'Sales Forecast Summary',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -821,10 +818,10 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             height: 42,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E2F48) : const Color(0xFFEEF4FD),
+                              color: isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurfaceSoft,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+                                color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                                 width: 1.2,
                               ),
                               boxShadow: [
@@ -838,10 +835,10 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.local_fire_department_rounded,
                                   size: 16,
-                                  color: Color(0xFFFF758C),
+                                  color: isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
@@ -880,19 +877,19 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? (isDark ? Colors.white : _brandNavy)
-                                    : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                                    ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                    : (isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: isSelected
-                                      ? (isDark ? Colors.white : _brandNavy)
+                                      ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                                       : cardBorder,
                                   width: 1,
                                 ),
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: (isDark ? Colors.white : _brandNavy).withValues(alpha: isDark ? 0.12 : 0.18),
+                                          color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.12 : 0.18),
                                           blurRadius: 6,
                                           offset: const Offset(0, 2),
                                         ),
@@ -906,7 +903,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                                   color: isSelected
                                       ? (isDark ? const Color(0xFF0F172A) : Colors.white)
-                                      : (isDark ? PiggyTrunkTheme.ptTextDark : const Color(0xFF475569)),
+                                      : (isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptMuted),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -938,7 +935,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                            color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                           ),
                         ),
                       ],
@@ -992,7 +989,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : _brandNavy,
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptPrimary,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                   boxShadow: [
                     BoxShadow(
@@ -1024,7 +1021,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             Text(
                               _formatCurrency(widget.currentOrder.total),
                               style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF34D399),
+                                color: isDark ? PiggyTrunkTheme.ptSuccessDark : const Color(0xFF34D399),
                                 fontSize: 19,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -1074,8 +1071,8 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
     required Color titleColor,
     required Color subtitleColor,
   }) {
-    final pillBg = isDark ? const Color(0xFF131E2D) : const Color(0xFFF8FAFC);
-    final stepperBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final pillBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurfaceSoft;
+    final stepperBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
@@ -1083,7 +1080,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: inCartQty > 0
-              ? (isDark ? const Color(0xFF60A5FA) : _brandNavy)
+              ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
               : cardBorder,
           width: inCartQty > 0 ? 1.5 : 1.0,
         ),
@@ -1106,7 +1103,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                 width: 95,
                 height: 95,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF151F2E) : const Color(0xFFF1F5F9),
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceDark : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: cardBorder),
                 ),
@@ -1132,7 +1129,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white : const Color(0xFF18314F),
+                      color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                       borderRadius: BorderRadius.circular(6),
                       boxShadow: [
                         BoxShadow(
@@ -1183,10 +1180,16 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
                         color: isOutOfStock
-                            ? (isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.16) : const Color(0xFFFEF3C7))
+                            ? (isDark
+                                ? PiggyTrunkTheme.ptInProgressDark.withValues(alpha: 0.16)
+                                : PiggyTrunkTheme.ptInProgress.withValues(alpha: 0.12))
                             : (product.units <= 10
-                                ? (isDark ? const Color(0xFFEF4444).withValues(alpha: 0.16) : const Color(0xFFFEE2E2))
-                                : (isDark ? const Color(0xFF10B981).withValues(alpha: 0.16) : const Color(0xFFECFDF5))),
+                                ? (isDark
+                                    ? PiggyTrunkTheme.ptAccentDark.withValues(alpha: 0.16)
+                                    : PiggyTrunkTheme.ptAccent.withValues(alpha: 0.12))
+                                : (isDark
+                                    ? PiggyTrunkTheme.ptSuccessDark.withValues(alpha: 0.16)
+                                    : PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.12))),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -1197,10 +1200,10 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
                           color: isOutOfStock
-                              ? (isDark ? const Color(0xFFFDE68A) : const Color(0xFFD97706))
+                              ? (isDark ? PiggyTrunkTheme.ptInProgressDark : const Color(0xFFD97706))
                               : (product.units <= 10
-                                  ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626))
-                                  : (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF059669))),
+                                  ? (isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent)
+                                  : (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)),
                         ),
                       ),
                     ),
@@ -1247,7 +1250,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w800,
-                              color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                              color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
                             ),
                           ),
                         ],
@@ -1269,9 +1272,9 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
                               color: isOutOfStock
-                                  ? (isDark ? const Color(0xFFFDE68A) : const Color(0xFFD97706))
+                                  ? (isDark ? PiggyTrunkTheme.ptInProgressDark : const Color(0xFFD97706))
                                   : (product.units <= 10
-                                      ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626))
+                                      ? (isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent)
                                       : titleColor),
                             ),
                           ),
@@ -1353,14 +1356,9 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                   final qtyToAdd = _getQuantity(product.id);
                                   final currentQtyInCart = widget.currentOrder.quantityFor(product.id);
                                   if (currentQtyInCart + qtyToAdd > product.units) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Cannot add $qtyToAdd item(s). Only ${product.units - currentQtyInCart} remaining in stock.',
-                                        ),
-                                        backgroundColor: const Color(0xFFEF4444),
-                                        duration: const Duration(milliseconds: 1200),
-                                      ),
+                                    PiggyToast.showError(
+                                      context,
+                                      'Cannot add $qtyToAdd item(s). Only ${product.units - currentQtyInCart} remaining in stock.',
                                     );
                                     return;
                                   }
@@ -1371,13 +1369,6 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                                   setState(() {
                                     _productQuantities[product.id] = 1;
                                   });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('${qtyToAdd}x ${product.name} added to order'),
-                                      backgroundColor: isDark ? const Color(0xFF1E3A8A) : const Color(0xFF315C8F),
-                                      duration: const Duration(milliseconds: 800),
-                                    ),
-                                  );
                                 },
                           icon: Icon(
                             Icons.add_shopping_cart_rounded,
@@ -1398,8 +1389,8 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isOutOfStock
-                                ? (isDark ? const Color(0xFF1E293B) : Colors.grey[300])
-                                : (isDark ? Colors.white : _brandNavy),
+                                ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.grey[300])
+                                : (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary),
                             foregroundColor: isOutOfStock
                                 ? subtitleColor
                                 : (isDark ? const Color(0xFF0F172A) : Colors.white),

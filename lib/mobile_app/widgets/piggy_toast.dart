@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:piggytrunk/theme/app_theme.dart';
 
 enum ToastType { success, error, info, warning }
 
@@ -220,43 +221,39 @@ class _PiggyToastState extends State<_PiggyToastWidget>
 
     switch (widget.type) {
       case ToastType.success:
-        accentColor = isDark ? const Color(0xFF34D399) : const Color(0xFF10B981);
+        accentColor = isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess;
         iconBgColor = isDark
-            ? const Color(0xFF34D399).withValues(alpha: 0.2)
-            : const Color(0xFFECFDF5);
+            ? PiggyTrunkTheme.ptSuccessDark.withValues(alpha: 0.18)
+            : PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.12);
         iconData = Icons.check_circle_rounded;
         break;
       case ToastType.error:
-        accentColor = isDark ? const Color(0xFFF87171) : const Color(0xFFEF4444);
+        accentColor = isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent;
         iconBgColor = isDark
-            ? const Color(0xFFF87171).withValues(alpha: 0.2)
-            : const Color(0xFFFEF2F2);
+            ? PiggyTrunkTheme.ptAccentDark.withValues(alpha: 0.18)
+            : PiggyTrunkTheme.ptAccent.withValues(alpha: 0.12);
         iconData = Icons.error_rounded;
         break;
       case ToastType.warning:
-        accentColor = isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
+        accentColor = isDark ? PiggyTrunkTheme.ptInProgressDark : PiggyTrunkTheme.ptInProgress;
         iconBgColor = isDark
-            ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
-            : const Color(0xFFFFFBEB);
+            ? PiggyTrunkTheme.ptInProgressDark.withValues(alpha: 0.18)
+            : PiggyTrunkTheme.ptInProgress.withValues(alpha: 0.12);
         iconData = Icons.warning_amber_rounded;
         break;
       case ToastType.info:
-        accentColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+        accentColor = isDark ? const Color(0xFF5BA4E5) : PiggyTrunkTheme.ptPrimary;
         iconBgColor = isDark
-            ? const Color(0xFF38BDF8).withValues(alpha: 0.2)
-            : const Color(0xFFF0F9FF);
+            ? const Color(0xFF5BA4E5).withValues(alpha: 0.18)
+            : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.10);
         iconData = Icons.info_outline_rounded;
         break;
     }
 
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final cardBorder = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFE2E8F0);
-    final titleTextColor = isDark ? Colors.white : const Color(0xFF0F172A);
-    final messageTextColor = isDark
-        ? const Color(0xFFF1F5F9)
-        : const Color(0xFF475569);
+    final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface;
+    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final titleTextColor = isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText;
+    final messageTextColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
 
     return Positioned(
       top: topPadding + 10,
@@ -294,19 +291,19 @@ class _PiggyToastState extends State<_PiggyToastWidget>
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: cardBorder, width: 1.2),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
-                    blurRadius: 20,
+                    color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.08),
+                    blurRadius: 18,
                     spreadRadius: 0,
-                    offset: const Offset(0, 8),
+                    offset: const Offset(0, 6),
                   ),
                   BoxShadow(
-                    color: accentColor.withValues(alpha: isDark ? 0.18 : 0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
+                    color: accentColor.withValues(alpha: isDark ? 0.15 : 0.06),
+                    blurRadius: 14,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
@@ -382,13 +379,13 @@ class _PiggyToastState extends State<_PiggyToastWidget>
                       decoration: BoxDecoration(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.black.withValues(alpha: 0.05),
+                            : PiggyTrunkTheme.ptBorder.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         Icons.close_rounded,
                         size: 14,
-                        color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                        color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
                       ),
                     ),
                   ),

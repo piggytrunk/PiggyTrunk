@@ -68,7 +68,6 @@ class _CashierNotificationDrawerContent extends StatefulWidget {
 
 class _CashierNotificationDrawerContentState extends State<_CashierNotificationDrawerContent> {
   static const Color _brandColor = Color(0xFF18314F);
-  static const Color _brandBlue = Color(0xFF2563EB);
 
   String _selectedFilter = 'Active'; // 'Active', 'Requests', 'Stock', 'History'
   late Set<String> _localReadIds;
@@ -210,12 +209,16 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                      color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                       borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                        width: 1,
+                      ),
                     ),
                     child: Icon(
                       Icons.notifications_active_rounded,
-                      color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                      color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                       size: 22,
                     ),
                   ),
@@ -270,10 +273,10 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                           ),
                         ),
                         child: Row(
@@ -281,7 +284,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                           children: [
                             Icon(
                               Icons.done_all_rounded,
-                              color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                              color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                               size: 14,
                             ),
                             const SizedBox(width: 4),
@@ -290,7 +293,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w700,
-                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                               ),
                             ),
                           ],
@@ -533,15 +536,15 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.3) : const Color(0xFFBFDBFE),
+                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                     width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: (isDark ? const Color(0xFF38BDF8) : const Color(0xFF2563EB)).withValues(alpha: 0.12),
+                      color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -550,7 +553,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                 child: Icon(
                   _selectedFilter == 'History' ? Icons.history_rounded : Icons.done_all_rounded,
                   size: 34,
-                  color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF1D4ED8),
+                  color: isDark ? Colors.white70 : PiggyTrunkTheme.ptPrimary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -657,11 +660,11 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
   }) {
     final itemBg = isRead
         ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : const Color(0xFFF8FAFC))
-        : (isDark ? const Color(0xFF1E293B) : Colors.white);
+        : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : Colors.white);
 
     final itemBorder = isRead
         ? (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder)
-        : (isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFFCBD5E1));
+        : (isDark ? Colors.white.withValues(alpha: 0.18) : PiggyTrunkTheme.ptBorder);
 
     final titleColor = isDark ? Colors.white : _brandColor;
     final descColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
@@ -789,13 +792,13 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
-                                  color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                                 ),
                               ),
                               const SizedBox(width: 4),
                               Icon(
                                 Icons.arrow_forward_rounded,
-                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                                color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                                 size: 13,
                               ),
                             ],
@@ -814,7 +817,7 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
                     height: 8,
                     margin: const EdgeInsets.only(top: 6),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
+                      color: isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptAccent,
                       shape: BoxShape.circle,
                     ),
                   ),

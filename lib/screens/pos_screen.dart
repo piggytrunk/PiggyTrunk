@@ -152,14 +152,32 @@ class _POSScreenState extends State<POSScreen> {
     }
   }
 
+  int _categoryWeight(String category) {
+    final cat = category.trim().toLowerCase();
+    if (cat == 'feeds' || cat == 'feed') return 0;
+    if (cat == 'medicines' || cat == 'medicine') return 1;
+    if (cat == 'vitamins' || cat == 'vitamin') return 2;
+    if (cat == 'others' || cat == 'other') return 3;
+    return 4;
+  }
+
   List<String> get _categories {
     final categorySet = _products.map((p) => p.category.trim()).where((c) => c.isNotEmpty).toSet();
-    final sorted = categorySet.toList()..sort();
+    final sorted = categorySet.toList()..sort((a, b) {
+      final weightA = _categoryWeight(a);
+      final weightB = _categoryWeight(b);
+      if (weightA != weightB) {
+        return weightA.compareTo(weightB);
+      }
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
     return sorted;
   }
 
   List<POSProduct> _productsByCategory(String category) {
-    return _products.where((p) => p.category.toLowerCase() == category.toLowerCase()).toList();
+    final list = _products.where((p) => p.category.toLowerCase() == category.toLowerCase()).toList();
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
   }
 
   bool _isProductTopSeller(POSProduct product) {

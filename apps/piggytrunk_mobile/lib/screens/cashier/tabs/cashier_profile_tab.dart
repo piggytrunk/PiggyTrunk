@@ -166,7 +166,7 @@ class CashierProfileTab extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    'Cashier & POS Staff',
+                    'Cashier',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -258,7 +258,7 @@ class CashierProfileTab extends StatelessWidget {
                 Divider(height: 24, color: cardBorder),
                 _buildProfileRow(Icons.store_outlined, 'Store / Branch Address', address, isDark),
                 Divider(height: 24, color: cardBorder),
-                _buildProfileRow(Icons.point_of_sale_rounded, strings.systemAccess, 'Cashier & POS Staff', isDark),
+                _buildProfileRow(Icons.point_of_sale_rounded, strings.systemAccess, 'Cashier', isDark),
                 Divider(height: 24, color: cardBorder),
                 _buildProfileRow(Icons.verified_user_outlined, strings.accountStatus, strings.activeStatus, isDark),
               ],

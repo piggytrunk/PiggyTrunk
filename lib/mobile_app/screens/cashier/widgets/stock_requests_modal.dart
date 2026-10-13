@@ -83,9 +83,15 @@ class StockRequestsModal extends StatelessWidget {
                     separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final req = pendingRequests[index];
-                      final prodName = req['product']?['name'] ?? 'Product';
-                      final raiserName = req['raiser']?['name'] ?? 'Raiser';
-                      final int qty = req['quantity'] as int;
+                      final prodName = (req['fetched_product_name'] as String?)?.isNotEmpty == true
+                          ? req['fetched_product_name']
+                          : (req['feed_type'] as String?)?.isNotEmpty == true
+                              ? req['feed_type']
+                              : req['product']?['name'] ?? 'Feed / Supply';
+                      final raiserName = (req['fetched_raiser_name'] as String?)?.isNotEmpty == true
+                          ? req['fetched_raiser_name']
+                          : req['raiser']?['name'] ?? 'Hog Raiser';
+                      final int qty = (req['quantity'] as num?)?.toInt() ?? (req['sacks'] as num?)?.toInt() ?? 1;
 
                       return Container(
                         padding: const EdgeInsets.all(16),
@@ -137,7 +143,8 @@ class StockRequestsModal extends StatelessWidget {
                                   ),
                                   onPressed: () async {
                                     Navigator.pop(context);
-                                    await onProcessRequest(req['request_id'] as int, 'Approved');
+                                    final reqId = (req['request_id'] as num?)?.toInt() ?? (req['id'] as num?)?.toInt() ?? 0;
+                                    await onProcessRequest(reqId, 'Approved');
                                   },
                                 ),
                                 IconButton(
@@ -148,7 +155,8 @@ class StockRequestsModal extends StatelessWidget {
                                   ),
                                   onPressed: () async {
                                     Navigator.pop(context);
-                                    await onProcessRequest(req['request_id'] as int, 'Rejected');
+                                    final reqId = (req['request_id'] as num?)?.toInt() ?? (req['id'] as num?)?.toInt() ?? 0;
+                                    await onProcessRequest(reqId, 'Rejected');
                                   },
                                 ),
                               ],

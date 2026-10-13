@@ -2,17 +2,21 @@ class InventoryRowAdapter {
   const InventoryRowAdapter();
 
   Map<String, dynamic> normalize(Map<String, dynamic> row, {required String sourceTable}) {
+    final image = row['image'] ?? row['image_url'] ?? row['img_url'] ?? row['photo_url'];
     if (sourceTable == 'inventory_products') {
-      return Map<String, dynamic>.from(row);
+      final copy = Map<String, dynamic>.from(row);
+      if (image != null && (copy['image'] == null || copy['image'].toString().isEmpty)) {
+        copy['image'] = image;
+      }
+      return copy;
     }
 
-    final id = row['id'] ?? row['product_id'] ?? row['product_id'] ?? '';
+    final id = row['id'] ?? row['product_id'] ?? '';
     final name = row['name'] ?? row['product_name'] ?? '';
     final category = row['category'] ?? '';
     final price = row['price'] ?? row['unit_price'] ?? 0;
     final units = row['units'] ?? row['current_stock'] ?? 0;
     final sold = row['sold'] ?? 0;
-    final image = row['image'];
     final description = row['description'] ?? '';
     final createdAt = row['created_at'];
     final isArchived = row['is_archived'] ?? false;
