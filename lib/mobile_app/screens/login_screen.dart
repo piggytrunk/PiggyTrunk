@@ -11,6 +11,7 @@ import '../widgets/piggy_toast.dart';
 import '../widgets/forgot_password_modal.dart';
 import '../widgets/install_pwa_banner.dart';
 import '../services/locale_provider.dart';
+import '../../services/app_update_service.dart';
 
 
 const String googleLogoSvg = '''
@@ -53,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkRedirectOAuthSession();
+      AppUpdateService.instance.promptUpdateIfAvailable(context);
     });
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.signedIn && mounted) {

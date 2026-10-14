@@ -4,6 +4,7 @@ import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../services/locale_provider.dart';
 import '../../../utils/app_strings.dart';
 import '../../../widgets/change_password_modal.dart';
+import 'package:piggytrunk/services/app_update_service.dart';
 
 class CashierProfileTab extends StatelessWidget {
   final String cashierName;
@@ -601,6 +602,30 @@ class CashierProfileTab extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 18),
+
+          // ==================== APP VERSION & CHECK FOR UPDATE ====================
+          Center(
+            child: TextButton.icon(
+              onPressed: () {
+                AppUpdateService.instance.promptUpdateIfAvailable(context, isManualCheck: true);
+              },
+              icon: Icon(
+                Icons.system_update_rounded,
+                size: 15,
+                color: subtitleColor,
+              ),
+              label: Text(
+                'Piggy Trunk Mobile • Check for Updates',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: subtitleColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );
