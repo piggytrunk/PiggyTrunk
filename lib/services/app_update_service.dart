@@ -32,7 +32,7 @@ class AppUpdateService {
   static final AppUpdateService instance = AppUpdateService._();
 
   static const String defaultApkUrl =
-      'https://ywwwrshblzyqmxkbkxsp.supabase.co/storage/v1/object/public/piggytrunkmobile/PiggyTrunkMobile.apk';
+      'https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk';
   static const String staticVersionUrl =
       'https://piggy-trunk.vercel.app/version.json';
 

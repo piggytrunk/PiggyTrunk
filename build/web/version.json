@@ -8,9 +8,9 @@
     "Enhanced order checkout and cash calculation workflows",
     "Added automated in-app update notifications"
   ],
-  "apk_url": "https://ywwwrshblzyqmxkbkxsp.supabase.co/storage/v1/object/public/piggytrunkmobile/PiggyTrunkMobile.apk",
-  "file_size_bytes": 26822477,
-  "file_size_mb": 25.58,
+  "apk_url": "https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk",
+  "file_size_bytes": 26888205,
+  "file_size_mb": 25.64,
   "force_update": false,
   "released_at": "2026-10-14T07:30:00Z"
 }

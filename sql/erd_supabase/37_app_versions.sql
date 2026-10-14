@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.app_versions (
     min_supported_version TEXT DEFAULT '1.0.0',
     min_supported_version_code INTEGER DEFAULT 1,
     release_notes TEXT[] DEFAULT ARRAY[]::TEXT[],
-    apk_url TEXT NOT NULL DEFAULT 'https://ywwwrshblzyqmxkbkxsp.supabase.co/storage/v1/object/public/piggytrunkmobile/PiggyTrunkMobile.apk',
+    apk_url TEXT NOT NULL DEFAULT 'https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk',
     file_size_bytes BIGINT DEFAULT 26822477,
     file_size_mb NUMERIC(5,2) DEFAULT 25.58,
     force_update BOOLEAN DEFAULT FALSE,
@@ -67,7 +67,7 @@ INSERT INTO public.app_versions (
         'Enhanced order checkout and cash calculation workflows',
         'Added automated in-app update notifications'
     ],
-    'https://ywwwrshblzyqmxkbkxsp.supabase.co/storage/v1/object/public/piggytrunkmobile/PiggyTrunkMobile.apk',
+    'https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk',
     26822477,
     25.58,
     FALSE,

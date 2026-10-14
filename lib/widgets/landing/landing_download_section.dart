@@ -21,7 +21,7 @@ class LandingDownloadSection extends StatefulWidget {
 
 class _LandingDownloadSectionState extends State<LandingDownloadSection> {
   static const String _apkUrl =
-      'https://ywwwrshblzyqmxkbkxsp.supabase.co/storage/v1/object/public/piggytrunkmobile/PiggyTrunkMobile.apk';
+      'https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk';
   static const String _webAppUrl = 'https://mobile.piggytrunk.site';
 
   String get _effectiveWebAppUrl => _webAppUrl;
