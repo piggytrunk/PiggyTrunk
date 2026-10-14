@@ -189,6 +189,20 @@ class GoogleAuthService {
       final String currentStatus = (existingUser['status'] ?? 'Pending').toString();
       final existingUserId = existingUser['user_id'];
 
+      // If user signed up via Google with an explicitly selected role (e.g. Cashier)
+      // but was defaulted to 'hog_raiser' by the trigger while still Pending, heal role
+      if (isSignUpMode &&
+          targetRole != null &&
+          targetRole.isNotEmpty &&
+          currentStatus == 'Pending' &&
+          currentRole != targetRole) {
+        return await completeGoogleRegistration(
+          email: email,
+          selectedRole: targetRole,
+          fullName: nameToUse,
+        );
+      }
+
       // Link supabase_user_id if not linked yet
       try {
         await _supabase
@@ -267,7 +281,7 @@ class GoogleAuthService {
       if (newUserId != null) {
         if (selectedRole == 'hog_raiser' || selectedRole == 'raiser') {
           try {
-            await _supabase.from('hog_raisers').insert({
+            await _supabase.from('hog_raisers').upsert({
               'user_id': newUserId,
               'name': nameToUse,
               'phone': 'N/A',
@@ -276,25 +290,32 @@ class GoogleAuthService {
               'account_status': 'Pending',
               'pig_type': 'N/A',
               'lifecycle_stage': 'N/A',
-            });
+            }, onConflict: 'user_id');
           } catch (raiserErr) {
             debugPrint('Hog raiser auto-create notice: $raiserErr');
           }
         } else if (selectedRole == 'partner' || selectedRole == 'investor') {
           try {
-            await _supabase.from('partner_investors').insert({
+            await _supabase.from('partner_investors').upsert({
               'user_id': newUserId,
-            });
+            }, onConflict: 'user_id');
           } catch (partnerErr) {
             debugPrint('Partner investor auto-create notice: $partnerErr');
           }
         } else if (selectedRole == 'cashier') {
           try {
-            await _supabase.from('cashiers').insert({
+            await _supabase.from('cashiers').upsert({
               'user_id': newUserId,
               'status': 'Pending',
-            });
+              'date_hired': DateTime.now().toIso8601String().split('T').first,
+            }, onConflict: 'user_id');
           } catch (cashierErr) {
+            try {
+              await _supabase.from('cashiers').upsert({
+                'user_id': newUserId,
+                'date_hired': DateTime.now().toIso8601String().split('T').first,
+              }, onConflict: 'user_id');
+            } catch (_) {}
             debugPrint('Cashier auto-create notice: $cashierErr');
           }
         }

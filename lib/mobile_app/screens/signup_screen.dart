@@ -419,10 +419,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
               'user_id': userId,
             }, onConflict: 'user_id');
           } else if (_selectedRole == 'cashier') {
-            await Supabase.instance.client.from('cashiers').upsert({
-              'user_id': userId,
-              'status': 'Pending',
-            }, onConflict: 'user_id');
+            try {
+              await Supabase.instance.client.from('cashiers').upsert({
+                'user_id': userId,
+                'status': 'Pending',
+                'date_hired': DateTime.now().toIso8601String().split('T').first,
+              }, onConflict: 'user_id');
+            } catch (_) {
+              try {
+                await Supabase.instance.client.from('cashiers').upsert({
+                  'user_id': userId,
+                  'date_hired': DateTime.now().toIso8601String().split('T').first,
+                }, onConflict: 'user_id');
+              } catch (_) {}
+            }
           }
         }
 

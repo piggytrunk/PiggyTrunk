@@ -96,68 +96,79 @@ begin
     limit 1;
   end if;
 
-  -- 2. Populate specific role tables
-  if user_role = 'partner' then
-    insert into public.partner_investors (user_id)
-    values (new_app_user_id)
-    on conflict (user_id) do nothing;
+  -- 2. Populate specific role tables safely in isolated sub-block
+  begin
+    if user_role = 'partner' then
+      insert into public.partner_investors (user_id)
+      values (new_app_user_id)
+      on conflict (user_id) do nothing;
 
-  elsif user_role = 'hog_raiser' then
-    insert into public.hog_raisers (
-      user_id,
-      name,
-      email,
-      phone,
-      address,
-      status,
-      account_status,
-      pig_type,
-      lifecycle_stage
-    ) values (
-      new_app_user_id,
-      user_name,
-      new.email,
-      coalesce(new.raw_user_meta_data->>'phone', 'N/A'),
-      coalesce(new.raw_user_meta_data->>'address', 'N/A'),
-      'Inactive',
-      'Pending',
-      'N/A',
-      'N/A'
-    )
-    on conflict (user_id) do update set
-      name = excluded.name,
-      email = excluded.email;
+    elsif user_role = 'hog_raiser' then
+      insert into public.hog_raisers (
+        user_id,
+        name,
+        email,
+        phone,
+        address,
+        status,
+        account_status,
+        pig_type,
+        lifecycle_stage
+      ) values (
+        new_app_user_id,
+        user_name,
+        new.email,
+        coalesce(new.raw_user_meta_data->>'phone', 'N/A'),
+        coalesce(new.raw_user_meta_data->>'address', 'N/A'),
+        'Inactive',
+        'Pending',
+        'N/A',
+        'N/A'
+      )
+      on conflict (user_id) do update set
+        name = excluded.name,
+        email = excluded.email;
 
-  elsif user_role = 'cashier' then
-    insert into public.cashiers (user_id, status)
-    values (new_app_user_id, 'Pending')
-    on conflict (user_id) do nothing;
+    elsif user_role = 'cashier' then
+      insert into public.cashiers (user_id, status, date_hired)
+      values (new_app_user_id, user_status, current_date)
+      on conflict (user_id) do update set
+        status = excluded.status;
+    end if;
+  exception when others then
+    raise warning 'handle_new_user: Role table child insert notice: %', SQLERRM;
+  end;
+
+  -- 3. Always dispatch admin notification for non-admin signups
+  if user_role != 'admin' then
+    begin
+      insert into public.admin_notifications (
+        title,
+        message,
+        type,
+        is_read,
+        metadata
+      ) values (
+        'New User Registration',
+        user_name || ' (' || coalesce(new.email, '') || ') registered as ' || role_display || ' and is pending approval.',
+        'user_registration',
+        false,
+        jsonb_build_object(
+          'user_id', new_app_user_id,
+          'name', user_name,
+          'email', new.email,
+          'role', user_role
+        )
+      );
+    exception when others then
+      raise warning 'handle_new_user: admin_notifications insert notice: %', SQLERRM;
+    end;
   end if;
-
-  -- 3. Insert EXACTLY ONE clean English notification for Admin Web
-  insert into public.admin_notifications (
-    title,
-    message,
-    type,
-    is_read,
-    metadata
-  ) values (
-    'New User Registration',
-    user_name || ' (' || coalesce(new.email, '') || ') registered as ' || role_display || ' and is pending approval.',
-    'user_registration',
-    false,
-    jsonb_build_object(
-      'user_id', new_app_user_id,
-      'name', user_name,
-      'email', new.email,
-      'role', user_role
-    )
-  );
 
   return new;
 exception
   when others then
-    raise warning 'handle_new_user notice: %', SQLERRM;
+    raise warning 'handle_new_user top-level exception: %', SQLERRM;
     return new;
 end;
 $$;
