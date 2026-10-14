@@ -352,6 +352,12 @@ class NotificationItemCard extends StatelessWidget {
                               height: 1.35,
                             ),
                           ),
+
+                          // Status Pill for User Registrations & Approvals
+                          if (notif.type == 'user_registration' || notif.type == 'approval_email' || notif.title.toLowerCase().contains('registration') || notif.title.toLowerCase().contains('approved')) ...[
+                            const SizedBox(height: 6),
+                            _buildUserStatusPill(notif, isDark),
+                          ],
                         ],
                       ),
                     ),
@@ -372,6 +378,34 @@ class NotificationItemCard extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserStatusPill(AdminNotification notif, bool isDark) {
+    final titleLower = notif.title.toLowerCase();
+    final isApproved = titleLower.contains('approved') || notif.type == 'approval_email';
+    final isRejected = titleLower.contains('rejected');
+
+    final label = isApproved ? 'APPROVED' : (isRejected ? 'REJECTED' : 'PENDING REVIEW');
+    final color = isApproved
+        ? const Color(0xFF10B981)
+        : (isRejected ? const Color(0xFFEF4444) : const Color(0xFFF59E0B));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.2 : 0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 0.8),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.jakarta(
+          size: 9.5,
+          weight: FontWeight.w700,
+          color: color,
         ),
       ),
     );

@@ -65,7 +65,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
       }
       if (_selectedFilter == 'unread') return !n.isRead;
       if (_selectedFilter == 'investments') return NotificationFilterBar.isPartnerInvestment(n);
-      if (_selectedFilter == 'registrations') return n.type == 'user_registration';
+      if (_selectedFilter == 'registrations') return NotificationFilterBar.isUserRegistration(n);
       if (_selectedFilter == 'history') return true;
       return !n.isRead;
     }).toList();

@@ -320,25 +320,55 @@ class GoogleAuthService {
           }
         }
 
-        // Send Notification to Admin Web
+        // Also update auth.users metadata with chosen role so future sessions retain it
+        try {
+          await _supabase.auth.updateUser(
+            UserAttributes(data: {'role': selectedRole, 'full_name': nameToUse}),
+          );
+        } catch (_) {}
+
+        // Send or Update Notification to Admin Web
         try {
           final String roleDisplay = selectedRole == 'hog_raiser' || selectedRole == 'raiser'
               ? 'Hog Raiser'
               : (selectedRole == 'partner' || selectedRole == 'investor' ? 'Partner Investor' : 'Cashier');
-          await _supabase.from('admin_notifications').insert({
-            'title': 'New User Registration',
-            'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
-            'type': 'user_registration',
-            'is_read': false,
-            'metadata': {
-              'user_id': newUserId,
-              'email': email,
-              'name': nameToUse,
-              'role': selectedRole,
-            },
-          });
+
+          // Check if trigger created a default registration notification (e.g. as Hog Raiser)
+          final existingNotifs = await _supabase
+              .from('admin_notifications')
+              .select('notification_id')
+              .eq('type', 'user_registration')
+              .or('metadata->>email.eq.$email,message.ilike.%$email%');
+
+          if (existingNotifs.isNotEmpty) {
+            final notifId = existingNotifs.first['notification_id'];
+            await _supabase.from('admin_notifications').update({
+              'title': 'New User Registration',
+              'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
+              'is_read': false,
+              'metadata': {
+                'user_id': newUserId,
+                'email': email,
+                'name': nameToUse,
+                'role': selectedRole,
+              },
+            }).eq('notification_id', notifId);
+          } else {
+            await _supabase.from('admin_notifications').insert({
+              'title': 'New User Registration',
+              'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
+              'type': 'user_registration',
+              'is_read': false,
+              'metadata': {
+                'user_id': newUserId,
+                'email': email,
+                'name': nameToUse,
+                'role': selectedRole,
+              },
+            });
+          }
         } catch (notifErr) {
-          debugPrint('Admin notification insert notice: $notifErr');
+          debugPrint('Admin notification insert/update notice: $notifErr');
         }
 
         // Trigger Registration Email via Gmail SMTP

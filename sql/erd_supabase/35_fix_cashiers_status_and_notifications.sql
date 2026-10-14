@@ -38,36 +38,6 @@ on conflict (user_id) do update set
   status = excluded.status;
 
 -- ------------------------------------------------------------------------------
--- 2.1 Backfill: Insert missing admin_notifications for cashiers (e.g. Mark Rejie)
--- so they immediately appear in the Admin Web 'Users' tab
--- ------------------------------------------------------------------------------
-insert into public.admin_notifications (
-  title,
-  message,
-  type,
-  is_read,
-  metadata
-)
-select
-  'New User Registration',
-  u.name || ' (' || coalesce(u.email, '') || ') registered as Cashier and is pending approval.',
-  'user_registration',
-  false,
-  jsonb_build_object(
-    'user_id', u.user_id,
-    'name', u.name,
-    'email', u.email,
-    'role', 'cashier'
-  )
-from public.app_users u
-where lower(u.role) = 'cashier'
-  and not exists (
-    select 1 from public.admin_notifications n 
-    where n.type = 'user_registration' 
-      and (n.metadata->>'email' = u.email or n.message ilike '%' || u.email || '%')
-  );
-
--- ------------------------------------------------------------------------------
 -- 3. Upgrade handle_new_user(): Resilient, Multi-Role Central Trigger
 -- ------------------------------------------------------------------------------
 create or replace function public.handle_new_user()

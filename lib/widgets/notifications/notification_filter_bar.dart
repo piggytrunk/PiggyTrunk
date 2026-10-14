@@ -76,10 +76,20 @@ class NotificationFilterBar extends StatelessWidget {
                 (n.metadata!['amount'] != null && n.metadata!['batch_id'] != null)));
   }
 
+  static bool isUserRegistration(AdminNotification n) {
+    final type = n.type.toLowerCase();
+    final title = n.title.toLowerCase();
+    return type == 'user_registration' ||
+        type == 'approval_email' ||
+        title.contains('registration') ||
+        title.contains('approved') ||
+        title.contains('user');
+  }
+
   @override
   Widget build(BuildContext context) {
     final investmentCount = allNotifications.where(isPartnerInvestment).length;
-    final usersCount = allNotifications.where((n) => n.type == 'user_registration').length;
+    final usersCount = allNotifications.where(isUserRegistration).length;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,

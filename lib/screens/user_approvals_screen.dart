@@ -378,12 +378,23 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
         debugPrint("Notice: Failed to send approval email: $e");
       }
 
-      // Clear pending registration notification for this user
+      // Transition registration notification to Approved state instead of hard-deleting it
       try {
         if (userEmail.isNotEmpty) {
+          final role = targetUser['role']?.toString() ?? 'User';
+          final roleDisplay = role.toLowerCase().contains('raiser')
+              ? 'Hog Raiser'
+              : (role.toLowerCase().contains('partner')
+                  ? 'Partner Investor'
+                  : (role.toLowerCase().contains('cashier') ? 'Cashier' : 'User'));
+
           await _supabase
               .from('admin_notifications')
-              .delete()
+              .update({
+                'is_read': true,
+                'title': 'Account Approved ($roleDisplay)',
+                'message': 'User $name ($userEmail) was approved as $roleDisplay.',
+              })
               .eq('metadata->>email', userEmail)
               .eq('type', 'user_registration');
         }
@@ -430,12 +441,16 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
           .update({'status': 'rejected'})
           .eq('user_id', userId);
 
-      // Clean up any lingering admin notifications for this pending registration
+      // Transition registration notification to Rejected state instead of hard-deleting it
       try {
         if (userEmail.isNotEmpty) {
           await _supabase
               .from('admin_notifications')
-              .delete()
+              .update({
+                'is_read': true,
+                'title': 'Registration Rejected',
+                'message': 'Registration for "$name" ($userEmail) was rejected.',
+              })
               .eq('metadata->>email', userEmail)
               .eq('type', 'user_registration');
         }
