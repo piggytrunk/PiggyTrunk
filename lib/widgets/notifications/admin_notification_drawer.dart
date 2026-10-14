@@ -459,7 +459,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'View Notification History',
+                          'View All Notifications',
                           style: AppTextStyles.jakarta(
                             size: 13.5,
                             weight: FontWeight.w800,

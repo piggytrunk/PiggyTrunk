@@ -103,7 +103,7 @@ class NotificationFilterBar extends StatelessWidget {
           const SizedBox(width: 6),
           _buildFilterPill('registrations', 'Users ($usersCount)'),
           const SizedBox(width: 6),
-          _buildFilterPill('history', 'History (${allNotifications.length})'),
+          _buildFilterPill('history', 'All (${allNotifications.length})'),
         ],
       ),
     );

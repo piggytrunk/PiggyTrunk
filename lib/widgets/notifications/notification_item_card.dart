@@ -194,6 +194,47 @@ class NotificationItemCard extends StatelessWidget {
     return isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
   }
 
+  String _resolveUserRole(AdminNotification notif) {
+    final meta = notif.metadata ?? <String, dynamic>{};
+    final role = (meta['role'] ?? meta['user_role'] ?? '').toString().toLowerCase().trim();
+    if (role.isNotEmpty) {
+      if (role.contains('cashier')) return 'Cashier';
+      if (role.contains('partner') || role.contains('investor')) return 'Partner Investor';
+      if (role.contains('raiser') || role.contains('hog')) return 'Hog Raiser';
+    }
+    final msg = notif.message.toLowerCase();
+    final title = notif.title.toLowerCase();
+    if (msg.contains('cashier') || title.contains('cashier')) return 'Cashier';
+    if (msg.contains('partner') || title.contains('partner') || msg.contains('investor') || title.contains('investor')) {
+      return 'Partner Investor';
+    }
+    if (msg.contains('hog raiser') || title.contains('hog raiser') || msg.contains('raiser') || title.contains('raiser')) {
+      return 'Hog Raiser';
+    }
+    return 'Hog Raiser'; // Default role in Piggy Trunk for general accounts
+  }
+
+  String _formatNotificationTitle(AdminNotification notif) {
+    final cleaned = NotificationService.cleanText(notif.title);
+    final lower = cleaned.toLowerCase();
+
+    // If it's an account approved notification
+    if (lower.contains('account approved') || notif.type == 'approval_email') {
+      final roleDisplay = _resolveUserRole(notif);
+      return 'Account Approved for $roleDisplay';
+    }
+
+    // If it's a registration notification
+    if (lower.contains('registration') || notif.type == 'user_registration') {
+      final roleDisplay = _resolveUserRole(notif);
+      if (roleDisplay != 'User' && !lower.contains(roleDisplay.toLowerCase())) {
+        return 'New $roleDisplay Registration';
+      }
+    }
+
+    return cleaned;
+  }
+
   @override
   Widget build(BuildContext context) {
     final targetRoute = _resolveTargetRoute(notif);
@@ -319,7 +360,7 @@ class NotificationItemCard extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  NotificationService.cleanText(notif.title),
+                                  _formatNotificationTitle(notif),
                                   style: AppTextStyles.jakarta(
                                     size: 13,
                                     weight: notif.isRead ? FontWeight.w600 : FontWeight.w800,
@@ -353,10 +394,10 @@ class NotificationItemCard extends StatelessWidget {
                             ),
                           ),
 
-                          // Status Pill for User Registrations & Approvals
+                          // Badges for User Registrations & Approvals (Role Tag + Status Tag)
                           if (notif.type == 'user_registration' || notif.type == 'approval_email' || notif.title.toLowerCase().contains('registration') || notif.title.toLowerCase().contains('approved')) ...[
                             const SizedBox(height: 6),
-                            _buildUserStatusPill(notif, isDark),
+                            _buildUserBadges(notif, isDark),
                           ],
                         ],
                       ),
@@ -383,31 +424,67 @@ class NotificationItemCard extends StatelessWidget {
     );
   }
 
-  Widget _buildUserStatusPill(AdminNotification notif, bool isDark) {
+  Widget _buildUserBadges(AdminNotification notif, bool isDark) {
     final titleLower = notif.title.toLowerCase();
     final isApproved = titleLower.contains('approved') || notif.type == 'approval_email';
     final isRejected = titleLower.contains('rejected');
 
-    final label = isApproved ? 'APPROVED' : (isRejected ? 'REJECTED' : 'PENDING REVIEW');
-    final color = isApproved
+    final statusLabel = isApproved ? 'APPROVED' : (isRejected ? 'REJECTED' : 'PENDING REVIEW');
+    final statusColor = isApproved
         ? const Color(0xFF10B981)
         : (isRejected ? const Color(0xFFEF4444) : const Color(0xFFF59E0B));
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.2 : 0.08),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.35), width: 0.8),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyles.jakarta(
-          size: 9.5,
-          weight: FontWeight.w700,
-          color: color,
+    final roleDisplay = _resolveUserRole(notif);
+
+    Color roleColor;
+    if (roleDisplay == 'Cashier') {
+      roleColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED);
+    } else if (roleDisplay == 'Partner Investor') {
+      roleColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+    } else {
+      roleColor = isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB);
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // Role Tag
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+          decoration: BoxDecoration(
+            color: roleColor.withValues(alpha: isDark ? 0.2 : 0.08),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: roleColor.withValues(alpha: 0.35), width: 0.8),
+          ),
+          child: Text(
+            roleDisplay.toUpperCase(),
+            style: AppTextStyles.jakarta(
+              size: 9.5,
+              weight: FontWeight.w700,
+              color: roleColor,
+            ),
+          ),
         ),
-      ),
+        // Status Tag
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: isDark ? 0.2 : 0.08),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: statusColor.withValues(alpha: 0.35), width: 0.8),
+          ),
+          child: Text(
+            statusLabel,
+            style: AppTextStyles.jakarta(
+              size: 9.5,
+              weight: FontWeight.w700,
+              color: statusColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

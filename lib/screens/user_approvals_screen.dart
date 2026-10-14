@@ -392,11 +392,11 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
               .from('admin_notifications')
               .update({
                 'is_read': true,
-                'title': 'Account Approved ($roleDisplay)',
+                'title': 'Account Approved for $roleDisplay',
                 'message': 'User $name ($userEmail) was approved as $roleDisplay.',
               })
               .eq('metadata->>email', userEmail)
-              .eq('type', 'user_registration');
+              .inFilter('type', ['user_registration', 'approval_email']);
         }
       } catch (_) {}
 
