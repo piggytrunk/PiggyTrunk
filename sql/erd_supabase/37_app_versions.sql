@@ -20,27 +20,28 @@ CREATE TABLE IF NOT EXISTS public.app_versions (
     released_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Grants
+GRANT ALL ON TABLE public.app_versions TO anon, authenticated, service_role;
+
 -- Enable Row Level Security
 ALTER TABLE public.app_versions ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access to active app versions so mobile apps can check updates
+DROP POLICY IF EXISTS "app_versions_anon_select" ON public.app_versions;
 DROP POLICY IF EXISTS "Allow public read access to active app versions" ON public.app_versions;
-CREATE POLICY "Allow public read access to active app versions"
+CREATE POLICY "app_versions_anon_select"
 ON public.app_versions FOR SELECT
+TO anon
 USING (is_active = TRUE);
 
--- Allow authenticated admin users to manage versions
+-- Allow authenticated users to manage versions (matching 28_rls_policies.sql standard)
+DROP POLICY IF EXISTS "app_versions_auth_all" ON public.app_versions;
 DROP POLICY IF EXISTS "Allow admin full access to app versions" ON public.app_versions;
-CREATE POLICY "Allow admin full access to app versions"
+CREATE POLICY "app_versions_auth_all"
 ON public.app_versions FOR ALL
 TO authenticated
-USING (
-    EXISTS (
-        SELECT 1 FROM public.app_users
-        WHERE app_users.id = auth.uid()
-        AND app_users.role = 'admin'
-    )
-);
+USING (true)
+WITH CHECK (true);
 
 -- Seed initial version record
 INSERT INTO public.app_versions (
