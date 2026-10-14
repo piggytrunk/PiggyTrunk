@@ -48,7 +48,7 @@ class _MobileAppDistributionScreenState extends State<MobileAppDistributionScree
       });
       return;
     }
-    _urlCtrl.text = 'https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk';
+    _urlCtrl.text = 'https://piggytrunk.site/download/apk';
   }
 
   @override

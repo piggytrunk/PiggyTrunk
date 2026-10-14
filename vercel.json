@@ -1,6 +1,18 @@
 {
   "buildCommand": null,
   "outputDirectory": "build/web",
+  "redirects": [
+    {
+      "source": "/download/apk",
+      "destination": "https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk",
+      "permanent": false
+    },
+    {
+      "source": "/download/PiggyTrunkMobile.apk",
+      "destination": "https://github.com/rewithjie/Piggy-Trunk/releases/latest/download/PiggyTrunkMobile.apk",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/|api$).*)",
