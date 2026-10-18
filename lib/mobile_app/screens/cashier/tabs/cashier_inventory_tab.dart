@@ -223,7 +223,7 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
       color: PiggyTrunkTheme.ptPrimary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(isMobile ? 12 : 20),
+        padding: EdgeInsets.fromLTRB(isMobile ? 12 : 20, isMobile ? 12 : 20, isMobile ? 12 : 20, 108),
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1350),

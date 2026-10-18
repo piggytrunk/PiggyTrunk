@@ -175,7 +175,7 @@ class PartnerHomeTab extends StatelessWidget {
       color: isDark ? Colors.white : _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: EdgeInsets.fromLTRB(fit.dp(20), fit.dp(20), fit.dp(20), fit.dp(32)),
+        padding: EdgeInsets.fromLTRB(fit.dp(20), fit.dp(20), fit.dp(20), fit.dp(108)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

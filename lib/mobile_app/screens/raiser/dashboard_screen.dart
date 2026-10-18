@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_session_service.dart';
 import '../../services/location_service.dart';
@@ -18,6 +17,7 @@ import 'tabs/raiser_request_tab.dart';
 import 'tabs/raiser_hogs_tab.dart';
 import 'tabs/raiser_profile_tab.dart';
 import 'widgets/raiser_dashboard_skeleton.dart';
+import 'widgets/raiser_liquid_bottom_bar.dart';
 
 class MobileDashboardScreen extends StatefulWidget {
   const MobileDashboardScreen({super.key});
@@ -2659,11 +2659,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       child: Builder(
         builder: (context) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          final strings = AppStrings.of(context);
           final scaffoldBg = isDark ? PiggyTrunkTheme.ptBgDark : PiggyTrunkTheme.ptBg;
-          final navBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-          final navSelectedColor = isDark ? Colors.white : _brandColor;
-          final navUnselectedColor = isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xffa0aec0);
 
           final rawAddress = (_raiserData['address'] ?? '').toString().trim();
           final bool isAddressMissing = rawAddress.isEmpty ||
@@ -2674,6 +2670,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
           return Scaffold(
             backgroundColor: scaffoldBg,
+            extendBody: true,
             body: _isLoading
                 ? SafeArea(
                     child: RaiserDashboardSkeleton(
@@ -2736,73 +2733,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                       ],
                     ),
                   ),
-            bottomNavigationBar: Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: BottomNavigationBar(
-                currentIndex: _currentIndex,
-                onTap: (index) => setState(() => _currentIndex = index),
-                type: BottomNavigationBarType.fixed,
-                backgroundColor: navBg,
-                selectedItemColor: navSelectedColor,
-                unselectedItemColor: navUnselectedColor,
-                selectedLabelStyle: GoogleFonts.plusJakartaSans(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-                unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                ),
-                items: [
-                  BottomNavigationBarItem(
-                    icon: SvgPicture.asset(
-                      'assets/icons/sidebar/dashboard.svg',
-                      width: 22,
-                      height: 22,
-                      colorFilter: ColorFilter.mode(navUnselectedColor, BlendMode.srcIn),
-                    ),
-                    activeIcon: SvgPicture.asset(
-                      'assets/icons/sidebar/dashboard.svg',
-                      width: 22,
-                      height: 22,
-                      colorFilter: ColorFilter.mode(navSelectedColor, BlendMode.srcIn),
-                    ),
-                    label: strings.navDashboard,
-                  ),
-                  BottomNavigationBarItem(
-                    icon: const Icon(Icons.description_outlined),
-                    label: strings.navRequest,
-                  ),
-                  BottomNavigationBarItem(
-                    icon: const Icon(Icons.pets),
-                    label: strings.navHogs,
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Badge(
-                      isLabelVisible: isAddressMissing,
-                      backgroundColor: const Color(0xFFDC2626),
-                      smallSize: 8,
-                      child: const Icon(Icons.person_outline_rounded),
-                    ),
-                    activeIcon: Badge(
-                      isLabelVisible: isAddressMissing,
-                      backgroundColor: const Color(0xFFDC2626),
-                      smallSize: 8,
-                      child: const Icon(Icons.person_rounded),
-                    ),
-                    label: strings.navProfile,
-                  ),
-                ],
-              ),
+            bottomNavigationBar: RaiserLiquidBottomBar(
+              currentIndex: _currentIndex,
+              isAddressMissing: isAddressMissing,
+              onTap: (index) => setState(() => _currentIndex = index),
             ),
           );
         },

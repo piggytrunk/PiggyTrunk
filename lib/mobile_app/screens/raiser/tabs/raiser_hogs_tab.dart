@@ -284,7 +284,7 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                         ..sort(_compareAssignments);
                       return ListView.separated(
                         shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 108),
                         itemCount: sortedAssignments.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (ctx, index) {
@@ -1846,7 +1846,7 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
       color: _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 32.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 108.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

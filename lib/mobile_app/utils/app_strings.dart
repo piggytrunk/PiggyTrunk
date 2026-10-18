@@ -128,7 +128,7 @@ class AppStrings {
   // ================= Notifications Drawer =================
   String get notificationsTitle => isFilipino ? 'Mga Abiso' : 'Notifications';
   String get notificationsSubtitle => isFilipino ? 'Mga live na update at alerto' : 'Live updates and alerts';
-  String get markAllRead => isFilipino ? 'Basahin Lahat' : 'Mark all read';
+  String get markAllRead => isFilipino ? 'Markahan na Nabasa' : 'Mark as Read';
   String get noNotifications => isFilipino ? 'Walang Notipikasyon' : 'No Notifications';
   String get noNotificationsSubtitle => isFilipino ? 'Lalabas dito ang mga bagong update.' : 'You\'re all caught up! New updates will show here.';
   String get allCaughtUp => isFilipino ? 'Lahat ay Nabasa Na!' : 'All Caught Up!';

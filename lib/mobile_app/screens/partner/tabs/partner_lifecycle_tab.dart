@@ -714,7 +714,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
         color: _brandColor,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          padding: const EdgeInsets.fromLTRB(20, 40, 20, 40),
+          padding: const EdgeInsets.fromLTRB(20, 40, 20, 108),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
@@ -817,7 +817,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
       color: _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 32.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 108.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

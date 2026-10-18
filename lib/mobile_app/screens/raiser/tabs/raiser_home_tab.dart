@@ -227,7 +227,7 @@ class RaiserHomeTab extends StatelessWidget {
       color: _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 32.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 108.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

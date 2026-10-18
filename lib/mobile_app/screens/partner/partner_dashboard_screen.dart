@@ -14,6 +14,7 @@ import 'tabs/partner_activities_tab.dart';
 import 'tabs/partner_lifecycle_tab.dart';
 import 'tabs/partner_profile_tab.dart';
 import 'widgets/partner_dashboard_skeleton.dart';
+import 'widgets/partner_liquid_bottom_bar.dart';
 import '../../services/auth_session_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/piggy_toast.dart';
@@ -2559,8 +2560,6 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
     final scaffoldBg = isDark ? const Color(0xff0f1724) : PiggyTrunkTheme.ptBg;
-    final navBg = isDark ? const Color(0xff151f2e) : Colors.white;
-    final navBorder = isDark ? const Color(0xff28354a) : const Color(0xffe6ebf2);
 
     final List<Widget> tabs = [
       PartnerHomeTab(
@@ -2654,6 +2653,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       },
       child: Scaffold(
         backgroundColor: scaffoldBg,
+        extendBody: true,
         body: SafeArea(
           child: _isLoading
             ? PartnerDashboardSkeleton(
@@ -2663,66 +2663,12 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 index: _currentIndex,
                 children: tabs,
               ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: navBg,
-          border: Border(
-            top: BorderSide(color: navBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
         ),
-        child: BottomNavigationBar(
+        bottomNavigationBar: PartnerLiquidBottomBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: navBg,
-          selectedItemColor: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F),
-          unselectedItemColor: isDark ? const Color(0xff9cb0c9) : PiggyTrunkTheme.ptMuted,
-          selectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-          ),
-          unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w600,
-          ),
-          items: [
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.grid_view_rounded),
-              activeIcon: Icon(Icons.grid_view_rounded, color: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F)),
-              label: strings.navHome,
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.account_balance_wallet_outlined),
-              activeIcon: Icon(Icons.account_balance_wallet_rounded, color: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F)),
-              label: strings.navInvestment,
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.timeline_rounded),
-              activeIcon: Icon(Icons.timeline_rounded, color: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F)),
-              label: strings.navLifecycle,
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.article_outlined),
-              activeIcon: Icon(Icons.article_rounded, color: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F)),
-              label: strings.navActivities,
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.person_outline_rounded),
-              activeIcon: Icon(Icons.person_rounded, color: isDark ? const Color(0xffecf2ff) : const Color(0xFF18314F)),
-              label: strings.navProfile,
-            ),
-          ],
         ),
       ),
-    ),
-  );
+    );
   }
 }

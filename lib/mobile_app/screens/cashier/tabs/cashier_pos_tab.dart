@@ -629,7 +629,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                 16.0,
                 14.0,
                 16.0,
-                widget.currentOrder.items.isNotEmpty ? 110.0 : 24.0,
+                widget.currentOrder.items.isNotEmpty ? 170.0 : 108.0,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

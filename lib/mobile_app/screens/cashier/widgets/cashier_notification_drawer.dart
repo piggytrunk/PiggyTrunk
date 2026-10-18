@@ -4,6 +4,7 @@ import 'package:piggytrunk/models/pos_model.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../utils/app_strings.dart';
 import '../../../widgets/piggy_toast.dart';
+import '../../../utils/sale_id_formatter.dart';
 
 void showCashierNotificationDrawer({
   required BuildContext context,
@@ -115,6 +116,8 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
       for (final req in widget.pendingRequests) {
         final raw = req['request_id'] ?? req['id'];
         if (raw != null) _localReadIds.add('req_$raw');
+        if (req['id'] != null) _localReadIds.add('req_${req['id']}');
+        if (req['request_id'] != null) _localReadIds.add('req_${req['request_id']}');
       }
       for (final p in widget.lowStockProducts) {
         _localReadIds.add('stock_${p.id}');
@@ -122,6 +125,8 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
       for (final sale in widget.salesLogs) {
         final raw = sale['id'] ?? sale['sale_id'];
         if (raw != null) _localReadIds.add('sale_$raw');
+        if (sale['id'] != null) _localReadIds.add('sale_${sale['id']}');
+        if (sale['sale_id'] != null) _localReadIds.add('sale_${sale['sale_id']}');
       }
     });
     widget.onMarkAllAsRead();
@@ -495,10 +500,11 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
         final isRead = _isItemRead(id, date);
         if (_selectedFilter != 'History' && isRead) continue;
 
-        final invoice = (sale['invoice_number'] ?? sale['receipt_number'] ?? '#SALE-${rawId ?? ''}').toString();
+        final cleanSaleId = SaleIdFormatter.format(sale['invoice_number'] ?? sale['receipt_number'] ?? rawId);
         final rawTotal = sale['total_amount'] ?? sale['total'] ?? 0;
         final double total = rawTotal is num ? rawTotal.toDouble() : double.tryParse(rawTotal.toString()) ?? 0.0;
         final time = _formatTime(date);
+        final pName = (sale['product_name'] ?? sale['product'] ?? '').toString().trim();
 
         items.add(
           _buildNotificationCard(
@@ -507,8 +513,8 @@ class _CashierNotificationDrawerContentState extends State<_CashierNotificationD
             icon: Icons.check_circle_rounded,
             iconColor: const Color(0xFF10B981),
             bgColor: isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5),
-            title: strings.isFilipino ? 'Nakumpletong Benta: $invoice' : 'Sale Completed: $invoice',
-            subtitle: '₱${total.toStringAsFixed(2)} • $time',
+            title: strings.isFilipino ? 'Nakumpletong Benta: $cleanSaleId' : 'Sale Completed: $cleanSaleId',
+            subtitle: pName.isNotEmpty ? '$pName • ₱${total.toStringAsFixed(2)} • $time' : '₱${total.toStringAsFixed(2)} • $time',
             badgeText: strings.isFilipino ? 'TAPOS NA' : 'COMPLETED',
             badgeColor: const Color(0xFF059669),
             actionLabel: strings.viewReceipt,

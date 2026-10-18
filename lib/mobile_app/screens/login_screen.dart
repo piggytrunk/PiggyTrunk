@@ -12,6 +12,9 @@ import '../widgets/forgot_password_modal.dart';
 import '../widgets/install_pwa_banner.dart';
 import '../services/locale_provider.dart';
 import '../../services/app_update_service.dart';
+import '../services/connectivity_service.dart';
+import '../widgets/no_connection_modal.dart';
+import '../../theme/app_theme.dart';
 
 
 const String googleLogoSvg = '''
@@ -193,6 +196,14 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
+    if (!await ConnectivityService.hasInternet()) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showNoConnectionModal(context, onRetry: _handlePasswordSignIn);
+      }
+      return;
+    }
+
     String emailToUse = identifier;
 
     try {
@@ -229,7 +240,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on AuthException catch (e) {
       final msg = e.message.toLowerCase();
-      if (msg.contains('email not confirmed')) {
+      if (e is AuthRetryableFetchException || ConnectivityService.isNetworkError(e)) {
+        if (mounted) showNoConnectionModal(context, onRetry: _handlePasswordSignIn);
+      } else if (msg.contains('email not confirmed')) {
         if (mounted) _showUnconfirmedEmailDialog(emailToUse);
       } else {
         // Smart check: Does this user exist in app_users?
@@ -254,9 +267,13 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     } catch (e) {
-      setState(() {
-        _passwordError = 'Invalid Email or Password. Please try again.';
-      });
+      if (ConnectivityService.isNetworkError(e)) {
+        if (mounted) showNoConnectionModal(context, onRetry: _handlePasswordSignIn);
+      } else {
+        setState(() {
+          _passwordError = 'Invalid Email or Password. Please try again.';
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -270,6 +287,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _isGoogleLoading = true;
     });
 
+    // Block the browser OAuth redirect entirely when offline.
+    if (!await ConnectivityService.hasInternet()) {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+        showNoConnectionModal(context, onRetry: _handleGoogleSignIn);
+      }
+      return;
+    }
+
     try {
       final result = await _googleAuthService.signInWithGoogle(
         targetRole: _targetRole,
@@ -278,15 +304,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await _processGoogleAuthResult(result);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Google Sign-In error: ${e.toString()}';
-      });
+      if (ConnectivityService.isNetworkError(e)) {
+        if (mounted) showNoConnectionModal(context, onRetry: _handleGoogleSignIn);
+      } else {
+        setState(() {
+          _errorMessage = 'Google Sign-In error: ${e.toString()}';
+        });
+      }
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
 
   Future<void> _processGoogleAuthResult(Map<String, dynamic> result) async {
+    if (result['is_network_error'] == true) {
+      if (mounted) showNoConnectionModal(context, onRetry: _handleGoogleSignIn);
+      return;
+    }
+    if (result['canceled'] == true ||
+        result['message'] == 'Canceled Google sign-in.' ||
+        result['message'] == 'Google Sign-In was canceled.') {
+      if (mounted) {
+        setState(() {
+          _isGoogleLoading = false;
+        });
+      }
+      return;
+    }
     if (result['success'] == true) {
       final bool isNewUser = result['is_new_user'] == true;
       final String? googleEmail = result['email'];
@@ -363,111 +407,189 @@ class _LoginScreenState extends State<LoginScreen> {
             ? 'partner'
             : (actualRole.toLowerCase().contains('cashier') ? 'cashier' : actualRole.toLowerCase()));
 
-    showDialog(
+    showModalBottomSheet<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEEF4FD),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: const Color(0xFFD7E3F3),
-                  width: 1,
-                ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      constraints: const BoxConstraints(maxWidth: 480),
+      barrierColor: PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.45),
+      builder: (sheetCtx) {
+        final isDark = Theme.of(sheetCtx).brightness == Brightness.dark;
+        final surface = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface;
+        final border = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+        final text = isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText;
+        final muted = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+        final primaryColor = isDark ? PiggyTrunkTheme.ptPrimaryDark : PiggyTrunkTheme.ptPrimary;
+        final primaryBtnBg = isDark ? PiggyTrunkTheme.ptAccentDark : PiggyTrunkTheme.ptPrimary;
+
+        return Container(
+          padding: EdgeInsets.fromLTRB(24, 10, 24, 20 + MediaQuery.of(sheetCtx).padding.bottom),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(color: border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, -4),
               ),
-              child: const Icon(
-                Icons.swap_horiz_rounded,
-                color: Color(0xFF18314F),
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Role Mismatch',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Color(0xFF18314F),
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'This account is registered as a $actualDisplayName, but you are signing in under the $targetDisplayName portal.\n\nPlease switch to the $actualDisplayName tab to continue.',
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF334155),
-            height: 1.45,
+            ],
           ),
-        ),
-        actions: [
-          Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () => Navigator.pop(dialogCtx),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13.5,
-                    ),
-                  ),
+              // Drag handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF18314F),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+              const SizedBox(height: 22),
+
+              // Swap Role Icon Badge
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: primaryColor.withValues(alpha: 0.10),
+                  border: Border.all(
+                    color: primaryColor.withValues(alpha: 0.25),
+                    width: 1.5,
                   ),
+                ),
+                child: Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 34,
+                  color: primaryColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // Title
+              Text(
+                'Role Mismatch',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.04,
+                  color: text,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Description with clear role highlighting
+              RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    height: 1.5,
+                    color: muted,
+                  ),
+                  children: [
+                    const TextSpan(text: 'This account is registered as a '),
+                    TextSpan(
+                      text: actualDisplayName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: text,
+                      ),
+                    ),
+                    const TextSpan(text: ', but you are signing in under the '),
+                    TextSpan(
+                      text: targetDisplayName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: text,
+                      ),
+                    ),
+                    const TextSpan(text: ' portal.\n\nPlease switch to the '),
+                    TextSpan(
+                      text: actualDisplayName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: text,
+                      ),
+                    ),
+                    const TextSpan(text: ' tab to continue.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Primary Action: Switch to Actual Role
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
                   onPressed: () {
-                    Navigator.pop(dialogCtx);
+                    Navigator.pop(sheetCtx);
                     setState(() {
                       _targetRole = normalizedActualRoleKey;
                       _clearErrors();
                     });
                   },
-                  child: Text(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryBtnBg,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.swap_horiz_rounded,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                  label: Text(
                     'Switch to $actualDisplayName',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Secondary Action: Cancel
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(sheetCtx),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: border, width: 1.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: muted,
                     ),
                   ),
                 ),
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -911,7 +1033,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Padding(
                 padding: const EdgeInsets.only(
                   left: 20.0,
-                  top: 6.0,
+                  top: 10.0,
                   right: 20.0,
                   bottom: 2.0,
                 ),
@@ -1386,7 +1508,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                     // State 2: Valid Personal Email -> Highlighted Blue with mail icon, opens modal
                                     if (isValidPersonal) {
                                       return GestureDetector(
-                                        onTap: () {
+                                        onTap: () async {
+                                          if (!await ConnectivityService.hasInternet()) {
+                                            if (context.mounted) showNoConnectionModal(context);
+                                            return;
+                                          }
+                                          if (!context.mounted) return;
                                           ForgotPasswordModal.show(
                                             context,
                                             initialEmail: currentInput,
@@ -1443,13 +1570,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
                               SizedBox(height: fieldSpacing * 1.2),
 
-                              // Sign In Button (Piggy Brand Navy Gradient without arrow icon)
-                              Container(
-                                width: double.infinity,
-                                height: buttonHeight,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16.0),
-                                  gradient: const LinearGradient(
+                              ValueListenableBuilder<bool>(
+                                valueListenable: ConnectivityService.isOnline,
+                                builder: (context, isOnline, _) {
+                                  return AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 250),
+                                    opacity: isOnline ? 1.0 : 0.72,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Sign In Button (Piggy Brand Navy Gradient without arrow icon)
+                                        Container(
+                                          width: double.infinity,
+                                          height: buttonHeight,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(16.0),
+                                            gradient: const LinearGradient(
                                     colors: [
                                       Color(0xFF18314F),
                                       Color(0xFF243B53),
@@ -1468,7 +1604,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ],
                                 ),
                                 child: ElevatedButton(
-                                  onPressed: _isLoading
+                                  onPressed: (_isLoading || _isGoogleLoading)
                                       ? null
                                       : () => _handlePasswordSignIn(),
                                   style: ElevatedButton.styleFrom(
@@ -1552,7 +1688,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 child: ElevatedButton(
-                                  onPressed: _isGoogleLoading
+                                  onPressed: (_isGoogleLoading || _isLoading)
                                       ? null
                                       : () => _handleGoogleSignIn(),
                                   style: ElevatedButton.styleFrom(
@@ -1604,8 +1740,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ),
                                           ],
                                         ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
+                              );
+                            },
+                          ),
                             ],
                           ),
                         ),

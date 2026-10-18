@@ -14,6 +14,7 @@ import 'screens/cashier/cashier_dashboard_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'services/locale_provider.dart';
 import 'widgets/responsive_mobile_wrapper.dart';
+import 'services/connectivity_service.dart';
 
 const String _defaultSupabaseUrl = 'https://ywwwrshblzyqmxkbkxsp.supabase.co';
 const String _defaultSupabaseAnonKey =
@@ -43,6 +44,8 @@ void main() async {
   } catch (e) {
     debugPrint('Supabase init warning: $e');
   }
+
+  ConnectivityService.start();
 
   // Initialize Native Device Notifications safely
   try {

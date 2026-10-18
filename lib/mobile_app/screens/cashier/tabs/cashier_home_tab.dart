@@ -6,6 +6,7 @@ import '../../../utils/app_strings.dart';
 import '../widgets/cashier_empty_state.dart';
 import '../widgets/cashier_notification_bell.dart';
 import '../widgets/cashier_notification_drawer.dart';
+import '../../../utils/sale_id_formatter.dart';
 
 class CashierHomeTab extends StatelessWidget {
   final String cashierName;
@@ -151,7 +152,7 @@ class CashierHomeTab extends StatelessWidget {
       color: isDark ? Colors.white : _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 32.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 108.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -724,11 +725,23 @@ class CashierHomeTab extends StatelessWidget {
                 separatorBuilder: (context, index) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final sale = salesLogs[index];
-                  final invoice = (sale['invoice_number'] ?? sale['receipt_number'] ?? '#SALE-${sale['id'] ?? index + 1001}').toString();
+                  final cleanSaleId = SaleIdFormatter.format(
+                    sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'],
+                    index: index,
+                    totalCount: salesLogs.length,
+                  );
                   final rawTotal = sale['total_amount'] ?? sale['total'] ?? 0;
                   final double total = rawTotal is num ? rawTotal.toDouble() : double.tryParse(rawTotal.toString()) ?? 0.0;
                   final String paymentMethod = (sale['payment_method'] ?? 'Cash').toString();
                   final dateStr = sale['sale_date'] ?? sale['created_at'];
+
+                  final rawProductName = (sale['product_name'] ?? sale['product'] ?? '').toString().trim();
+                  final int quantity = sale['quantity'] as int? ?? (int.tryParse(sale['units']?.toString() ?? '1') ?? 1);
+                  final String displayTitle = rawProductName.isNotEmpty
+                      ? (quantity > 1 ? '$rawProductName (${quantity}x)' : rawProductName)
+                      : (sale['customer_name'] != null && sale['customer_name'].toString().trim().isNotEmpty
+                          ? sale['customer_name'].toString().trim()
+                          : cleanSaleId);
 
                   String timeDisplay = 'Today';
                   if (dateStr != null) {
@@ -741,60 +754,69 @@ class CashierHomeTab extends StatelessWidget {
                     } catch (_) {}
                   }
 
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: cardBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                            shape: BoxShape.circle,
+                  return InkWell(
+                    onTap: onShowSalesHistory,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: cardBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.receipt_rounded,
+                              color: isDark ? const Color(0xFF93C5FD) : _brandColor,
+                              size: 20,
+                            ),
                           ),
-                          child: Icon(
-                            Icons.receipt_rounded,
-                            color: isDark ? const Color(0xFF93C5FD) : _brandColor,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                invoice,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: titleColor,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: titleColor,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$paymentMethod • $timeDisplay',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 11.5,
-                                  color: subtitleColor,
+                                const SizedBox(height: 3),
+                                Text(
+                                  '$cleanSaleId • $paymentMethod • $timeDisplay',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11.5,
+                                    color: subtitleColor,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
-                          _formatCurrency(total),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w800,
-                            color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatCurrency(total),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },

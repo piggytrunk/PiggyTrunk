@@ -4,6 +4,7 @@ import 'package:piggytrunk/models/pos_model.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'cashier_receipt_modal.dart';
 import '../../../utils/capitalization_formatters.dart';
+import '../../../utils/sale_id_formatter.dart';
 
 class CashierSalesHistoryView extends StatefulWidget {
   final List<Map<String, dynamic>> salesLogs;
@@ -76,9 +77,9 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
     final double unitPrice = quantity > 0 ? totalAmount / quantity : totalAmount;
     final String dateStr = sale['sale_date'] ?? sale['created_at'] ?? DateTime.now().toIso8601String();
     final DateTime dt = DateTime.tryParse(dateStr) ?? DateTime.now();
-    final String receiptNumber = sale['id'] != null
-        ? sale['id'].toString().padLeft(6, '0')
-        : dt.millisecondsSinceEpoch.toString().substring(6);
+    final String receiptNumber = SaleIdFormatter.toReceiptNumber(
+      sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'],
+    );
 
     showDialog(
       context: context,
@@ -144,6 +145,7 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
       final category = (product != null ? product['category'] : sale['category'])?.toString().toLowerCase() ?? '';
       final customer = (sale['customer_name'] ?? '').toString().toLowerCase();
       final idStr = (sale['id'] ?? '').toString().toLowerCase();
+      final cleanSaleId = SaleIdFormatter.format(sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id']).toLowerCase();
 
       // Quick filter pill
       if (_selectedFilterIndex == 1) {
@@ -171,7 +173,7 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
 
       // Search query filter
       if (query.isNotEmpty) {
-        return pName.contains(query) || idStr.contains(query) || customer.contains(query) || category.contains(query);
+        return pName.contains(query) || idStr.contains(query) || cleanSaleId.contains(query) || customer.contains(query) || category.contains(query);
       }
 
       return true;
@@ -333,6 +335,8 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
                       itemBuilder: (context, index) {
                         return _buildReceiptCard(
                           filteredLogs[index],
+                          index: index,
+                          totalCount: filteredLogs.length,
                           isDark: isDark,
                           cardBg: cardBg,
                           cardBorder: cardBorder,
@@ -396,6 +400,8 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
 
   Widget _buildReceiptCard(
     Map<String, dynamic> sale, {
+    int? index,
+    int? totalCount,
     required bool isDark,
     required Color cardBg,
     required Color cardBorder,
@@ -412,6 +418,11 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
     final String customerName = sale['customer_name'] ?? 'Walk-in Customer';
     final String paymentMethod = sale['payment_method'] ?? 'Cash';
     final String dateFormatted = _formatDate(sale['sale_date'] ?? sale['created_at']);
+    final String cleanSaleId = SaleIdFormatter.format(
+      sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'],
+      index: index,
+      totalCount: totalCount,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -436,25 +447,46 @@ class _CashierSalesHistoryViewState extends State<CashierSalesHistoryView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Row: Customer & Date (No confusing #ID)
+                // Top Row: Sale ID, Customer & Date
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        cleanSaleId,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                          color: isDark ? const Color(0xFF93C5FD) : _brandNavy,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Row(
                         children: [
                           Icon(
                             Icons.person_outline_rounded,
-                            size: 15,
-                            color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                            size: 14,
+                            color: subtitleColor,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               customerName,
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
                                 color: titleColor,
                               ),
                               maxLines: 1,

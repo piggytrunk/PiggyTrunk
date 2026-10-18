@@ -380,7 +380,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                   ? ShimmerProvider(
                       child: ListView.builder(
                         physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 108),
                         itemCount: 5,
                         itemBuilder: (context, _) => Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -451,7 +451,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                           color: isDark ? Colors.white : _brandColor,
                           child: ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 108),
                             itemCount: filtered.length,
                             itemBuilder: (context, index) {
                               final req = filtered[index];

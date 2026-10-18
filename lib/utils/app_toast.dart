@@ -227,7 +227,9 @@ class _ToastWidgetState extends State<_ToastWidget>
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final topPadding = mediaQuery.padding.top;
     final isMobile = screenWidth < 600;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accentColor = _getAccentColor();
@@ -238,9 +240,10 @@ class _ToastWidgetState extends State<_ToastWidget>
     final subtitleColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
     final resolvedTitle = widget.title ?? _getDefaultTitle();
+    final topOffset = topPadding + (isMobile ? 12.0 : 20.0);
 
     return Positioned(
-      top: isMobile ? 16 : 24,
+      top: topOffset,
       right: isMobile ? 16 : 24,
       left: isMobile ? 16 : null,
       child: Material(

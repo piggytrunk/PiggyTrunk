@@ -17,10 +17,12 @@ import 'tabs/cashier_profile_tab.dart';
 import 'widgets/stock_requests_modal.dart';
 import 'widgets/cashier_empty_state.dart';
 import 'widgets/cashier_dashboard_skeleton.dart';
+import 'widgets/cashier_liquid_bottom_bar.dart';
 import '../../services/auth_session_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 import '../../services/location_service.dart';
+import '../../utils/sale_id_formatter.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import '../../widgets/piggy_toast.dart';
@@ -156,7 +158,19 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       final secureTimeStr = await AuthSessionService().readKey('cashier_last_mark_all_read_time');
       final secureIdsStr = await AuthSessionService().readKey('cashier_read_notifications');
 
-      final effectiveTimeStr = savedTimeStr ?? secureTimeStr;
+      // Check Cloud Supabase user_metadata (critical for app reinstallation or fresh install)
+      User? user = _supabase.auth.currentUser;
+      if (user == null) {
+        try {
+          final res = await _supabase.auth.getUser();
+          user = res.user;
+        } catch (_) {}
+      }
+      final meta = user?.userMetadata;
+      final cloudTimeStr = meta?['cashier_last_mark_all_read_time']?.toString();
+      final dynamic rawCloudIds = meta?['cashier_read_notifications'];
+
+      final effectiveTimeStr = savedTimeStr ?? secureTimeStr ?? cloudTimeStr;
       DateTime? parsedTime;
       if (effectiveTimeStr != null && effectiveTimeStr.isNotEmpty) {
         parsedTime = DateTime.tryParse(effectiveTimeStr);
@@ -173,6 +187,17 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         } catch (_) {
           loadedIds.addAll(secureIdsStr.split(',').where((s) => s.isNotEmpty));
         }
+      }
+      if (rawCloudIds is List) {
+        loadedIds.addAll(rawCloudIds.map((e) => e.toString()));
+      }
+
+      // If local storage was empty (e.g. freshly reinstalled), backfill local storage
+      if (savedList == null && loadedIds.isNotEmpty) {
+        prefs.setStringList('cashier_read_notifications', loadedIds.toList());
+      }
+      if (savedTimeStr == null && parsedTime != null) {
+        prefs.setString('cashier_last_mark_all_read_time', parsedTime.toIso8601String());
       }
 
       if (mounted) {
@@ -194,10 +219,31 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       final idList = _readNotificationIds.toList();
       await prefs.setStringList('cashier_read_notifications', idList);
       await AuthSessionService().writeKey('cashier_read_notifications', jsonEncode(idList));
+      String? isoTime;
       if (_lastMarkAllReadTime != null) {
-        final iso = _lastMarkAllReadTime!.toIso8601String();
-        await prefs.setString('cashier_last_mark_all_read_time', iso);
-        await AuthSessionService().writeKey('cashier_last_mark_all_read_time', iso);
+        isoTime = _lastMarkAllReadTime!.toIso8601String();
+        await prefs.setString('cashier_last_mark_all_read_time', isoTime);
+        await AuthSessionService().writeKey('cashier_last_mark_all_read_time', isoTime);
+      }
+
+      // Sync to Supabase Auth user_metadata so read state persists across app reinstalls
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        try {
+          // Cap recent IDs to 150 to keep auth user metadata compact and fast
+          final cappedIds = idList.length > 150 ? idList.sublist(idList.length - 150) : idList;
+          final Map<String, dynamic> updateData = {
+            'cashier_read_notifications': cappedIds,
+          };
+          if (isoTime != null) {
+            updateData['cashier_last_mark_all_read_time'] = isoTime;
+          }
+          await _supabase.auth.updateUser(
+            UserAttributes(data: updateData),
+          );
+        } catch (metaErr) {
+          debugPrint('Notice syncing read notifications to user metadata: $metaErr');
+        }
       }
     } catch (e) {
       debugPrint('Error saving cashier read notifications: $e');
@@ -226,6 +272,20 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
       // Extract Auth Metadata if available
       final meta = user?.userMetadata;
+      if (meta != null) {
+        if (_lastMarkAllReadTime == null && meta['cashier_last_mark_all_read_time'] != null) {
+          final pTime = DateTime.tryParse(meta['cashier_last_mark_all_read_time'].toString());
+          if (pTime != null && mounted) {
+            setState(() => _lastMarkAllReadTime = pTime);
+          }
+        }
+        final cloudIds = meta['cashier_read_notifications'];
+        if (cloudIds is List && mounted) {
+          setState(() {
+            _readNotificationIds.addAll(cloudIds.map((e) => e.toString()));
+          });
+        }
+      }
       String? googleName;
       if (meta != null) {
         googleName = (meta['full_name'] ?? meta['name'] ?? meta['displayName'])
@@ -2438,11 +2498,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final sale = _salesLogs[index];
-                          final invoice =
-                              (sale['invoice_number'] ??
-                                      sale['receipt_number'] ??
-                                      '#SALE-${sale['id'] ?? index + 1001}')
-                                  .toString();
+                          final cleanSaleId = SaleIdFormatter.format(
+                            sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'],
+                            index: index,
+                            totalCount: _salesLogs.length,
+                          );
                           final rawTotal =
                               sale['total_amount'] ?? sale['total'] ?? 0;
                           final double total = rawTotal is num
@@ -2454,6 +2514,25 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                               (sale['sale_date'] ?? sale['created_at'])
                                   ?.toString() ??
                               '';
+
+                          final rawProductName = (sale['product_name'] ?? sale['product'] ?? '').toString().trim();
+                          final int quantity = sale['quantity'] as int? ?? (int.tryParse(sale['units']?.toString() ?? '1') ?? 1);
+                          final String displayTitle = rawProductName.isNotEmpty
+                              ? (quantity > 1 ? '$rawProductName (${quantity}x)' : rawProductName)
+                              : (sale['customer_name'] != null && sale['customer_name'].toString().trim().isNotEmpty
+                                  ? sale['customer_name'].toString().trim()
+                                  : cleanSaleId);
+
+                          String timeDisplay = dateStr;
+                          if (dateStr.isNotEmpty) {
+                            try {
+                              final dt = DateTime.parse(dateStr).toLocal();
+                              final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+                              final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+                              final minute = dt.minute.toString().padLeft(2, '0');
+                              timeDisplay = '$hour:$minute $ampm';
+                            } catch (_) {}
+                          }
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -2485,7 +2564,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        invoice,
+                                        displayTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w700,
@@ -2494,7 +2575,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        '$paymentMethod • $dateStr',
+                                        '$cleanSaleId • $paymentMethod • $timeDisplay',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 12,
                                           color: PiggyTrunkTheme.ptMuted,
@@ -2503,6 +2586,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   '₱${total.toStringAsFixed(2)}',
                                   style: GoogleFonts.plusJakartaSans(
@@ -2527,7 +2611,6 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final strings = AppStrings.of(context);
 
     return PopScope(
       canPop: false,
@@ -2549,6 +2632,7 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       },
       child: Scaffold(
         backgroundColor: isDark ? PiggyTrunkTheme.ptBgDark : const Color(0xFFF8FAFC),
+        extendBody: true,
         body: SafeArea(
           bottom: false,
           child: _isLoading
@@ -2662,82 +2746,17 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                   ],
                 ),
         ),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF151F2E) : Colors.white,
-            border: Border(
-              top: BorderSide(
-                color: isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0),
-                width: 1,
-              ),
-            ),
-          ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: isDark ? const Color(0xFF151F2E) : Colors.white,
-            selectedItemColor: isDark ? Colors.white : _brandColor,
-            unselectedItemColor: isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF909BB0),
-            selectedLabelStyle: GoogleFonts.plusJakartaSans(
-              fontWeight: FontWeight.w800,
-              fontSize: 11,
-            ),
-            unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-            ),
-            elevation: 0,
-            items: [
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.home_outlined),
-                activeIcon: const Icon(Icons.home_rounded),
-                label: strings.navHome,
-              ),
-              BottomNavigationBarItem(
-                icon: Badge(
-                  isLabelVisible: _pendingRequests
-                      .where((r) => r['status'] == 'Pending')
-                      .isNotEmpty,
-                  label: Text(
-                    '${_pendingRequests.where((r) => r['status'] == 'Pending').length}',
-                    style: const TextStyle(fontSize: 10, color: Colors.white),
-                  ),
-                  backgroundColor: Colors.red,
-                  child: const Icon(Icons.assignment_outlined),
-                ),
-                activeIcon: const Icon(Icons.assignment_rounded),
-                label: strings.navRequest,
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.inventory_2_outlined),
-                activeIcon: const Icon(Icons.inventory_2_rounded),
-                label: strings.navInventory,
-              ),
-              BottomNavigationBarItem(
-                icon: Badge(
-                  isLabelVisible: _currentOrder.items.isNotEmpty,
-                  label: Text(
-                    '${_currentOrder.totalItems}',
-                    style: const TextStyle(fontSize: 10, color: Colors.white),
-                  ),
-                  backgroundColor: const Color(0xFF10B981),
-                  child: const Icon(Icons.point_of_sale_outlined),
-                ),
-                activeIcon: const Icon(Icons.point_of_sale_rounded),
-                label: strings.navPOS,
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.person_outline_rounded),
-                activeIcon: const Icon(Icons.person_rounded),
-                label: strings.navProfile,
-              ),
-            ],
-          ),
+        bottomNavigationBar: CashierLiquidBottomBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          pendingRequestsCount: _pendingRequests
+              .where((r) => (r['status'] ?? '').toString().toLowerCase() == 'pending')
+              .length,
+          cartItemCount: _currentOrder.totalItems,
         ),
       ),
     );

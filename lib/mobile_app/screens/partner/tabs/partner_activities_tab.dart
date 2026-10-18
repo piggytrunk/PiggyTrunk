@@ -189,7 +189,7 @@ class _PartnerActivitiesTabState extends State<PartnerActivitiesTab> {
       color: isDark ? Colors.white : _brandColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: EdgeInsets.fromLTRB(fit.dp(20), fit.dp(20), fit.dp(20), fit.dp(36)),
+        padding: EdgeInsets.fromLTRB(fit.dp(20), fit.dp(20), fit.dp(20), fit.dp(108)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

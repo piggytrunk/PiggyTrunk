@@ -481,7 +481,7 @@ class _CashierRequestsTabState extends State<CashierRequestsTab> {
             child: requestsToDisplay.isEmpty
                 ? _buildEmptyState(isDark: isDark, titleColor: titleColor, subtitleColor: subtitleColor)
                 : ListView.separated(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 108),
                     physics: const BouncingScrollPhysics(),
                     itemCount: requestsToDisplay.length,
                     separatorBuilder: (context, index) => const SizedBox(height: 14),

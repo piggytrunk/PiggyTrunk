@@ -32,6 +32,7 @@ import 'mobile_app/screens/cashier/cashier_dashboard_screen.dart';
 import 'mobile_app/screens/admin/admin_dashboard_screen.dart';
 import 'mobile_app/services/locale_provider.dart';
 import 'mobile_app/widgets/responsive_mobile_wrapper.dart';
+import 'mobile_app/services/connectivity_service.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.light);
 bool isInitialLaunch = true;
@@ -69,6 +70,8 @@ void main() async {
   } catch (e) {
     debugPrint('Supabase init warning: $e');
   }
+
+  ConnectivityService.start();
 
   try {
     await NotificationService().initialize();

@@ -66,7 +66,7 @@ class CashierProfileTab extends StatelessWidget {
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 108),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -262,8 +262,6 @@ class CashierProfileTab extends StatelessWidget {
                 _buildProfileRow(Icons.store_outlined, 'Store / Branch Address', address, isDark),
                 Divider(height: 24, color: cardBorder),
                 _buildProfileRow(Icons.point_of_sale_rounded, strings.systemAccess, 'Cashier', isDark),
-                Divider(height: 24, color: cardBorder),
-                _buildProfileRow(Icons.verified_user_outlined, strings.accountStatus, strings.activeStatus, isDark),
               ],
             ),
           ),
@@ -280,290 +278,165 @@ class CashierProfileTab extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // ---- Language Preference Card ----
+          // ---- Unified Grouped Settings Card ----
           Container(
-            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: cardColor,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: cardBorder),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.language_rounded,
-                        color: isDark ? Colors.white : _brandColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            strings.languagePreference,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelColor,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            strings.languageSubtitle,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: subtitleColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Language Toggle Option Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildToggleOption(
-                        context: context,
+                // 1. Language Preference Row (Clean Typography, No Flags)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      _buildSettingsIcon(
+                        icon: Icons.translate_rounded,
                         isDark: isDark,
-                        title: 'English',
-                        emoji: '🇺🇸',
-                        isSelected: currentLocale == 'en',
-                        onTap: () => settingsProvider?.setLocale('en'),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildToggleOption(
-                        context: context,
-                        isDark: isDark,
-                        title: 'Filipino',
-                        emoji: '🇵🇭',
-                        isSelected: currentLocale == 'fil',
-                        onTap: () => settingsProvider?.setLocale('fil'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ---- App Theme Card ----
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: cardBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.palette_outlined,
-                        color: isDark ? Colors.white : _brandColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            strings.themePreference,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelColor,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            strings.themeSubtitle,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: subtitleColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Theme Toggle Option Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildToggleOption(
-                        context: context,
-                        isDark: isDark,
-                        title: strings.lightMode,
-                        icon: Icons.wb_sunny_rounded,
-                        isSelected: currentThemeMode == ThemeMode.light,
-                        onTap: () => settingsProvider?.setThemeMode(ThemeMode.light),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildToggleOption(
-                        context: context,
-                        isDark: isDark,
-                        title: strings.darkMode,
-                        icon: Icons.nights_stay_rounded,
-                        isSelected: currentThemeMode == ThemeMode.dark,
-                        onTap: () => settingsProvider?.setThemeMode(ThemeMode.dark),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // ---- Security / Change Password Card ----
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: cardBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.shield_outlined,
-                        color: isDark ? Colors.white : _brandColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            strings.passwordAndSecurity,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelColor,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            strings.updatePasswordSubtitle,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: subtitleColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: () => ChangePasswordModal.show(context),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: isDark ? const Color(0xFF151F2E) : const Color(0xFFF8FAFC),
-                      side: BorderSide(
-                        color: isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0),
-                        width: 1.2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.lock_reset_rounded,
-                          color: isDark ? Colors.white : _brandColor,
-                          size: 19,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          strings.changePassword,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          strings.languagePreference,
                           style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : _brandColor,
-                            fontSize: 13.5,
+                            color: labelColor,
                           ),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: 8),
+                      _buildSegmentedControl(
+                        isDark: isDark,
+                        options: [
+                          _SegmentOption(
+                            icon: Icons.language_rounded,
+                            label: 'English',
+                            isSelected: currentLocale == 'en',
+                            onTap: () => settingsProvider?.setLocale('en'),
+                          ),
+                          _SegmentOption(
+                            icon: Icons.translate_rounded,
+                            label: 'Filipino',
+                            isSelected: currentLocale == 'fil',
+                            onTap: () => settingsProvider?.setLocale('fil'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                Divider(height: 1, thickness: 1, color: cardBorder),
+
+                // 2. App Theme Row (Compact Light / Dark Toggle)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      _buildSettingsIcon(
+                        icon: Icons.palette_outlined,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          strings.themePreference,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: labelColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildSegmentedControl(
+                        isDark: isDark,
+                        options: [
+                          _SegmentOption(
+                            icon: Icons.wb_sunny_rounded,
+                            label: strings.lightMode,
+                            isSelected: currentThemeMode == ThemeMode.light,
+                            onTap: () => settingsProvider?.setThemeMode(ThemeMode.light),
+                          ),
+                          _SegmentOption(
+                            icon: Icons.nights_stay_rounded,
+                            label: strings.darkMode,
+                            isSelected: currentThemeMode == ThemeMode.dark,
+                            onTap: () => settingsProvider?.setThemeMode(ThemeMode.dark),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                Divider(height: 1, thickness: 1, color: cardBorder),
+
+                // 3. Password & Security Row (Tappable Tile with Chevron)
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                  child: InkWell(
+                    onTap: () => ChangePasswordModal.show(context),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        children: [
+                          _buildSettingsIcon(
+                            icon: Icons.shield_outlined,
+                            isDark: isDark,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  strings.passwordAndSecurity,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: labelColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  strings.updatePasswordSubtitle,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: subtitleColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: subtitleColor,
+                            size: 22,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
           // ==================== LOGOUT BUTTON ====================
           SizedBox(
@@ -631,72 +504,107 @@ class CashierProfileTab extends StatelessWidget {
     );
   }
 
-  /// Unified toggle option for both Language and Theme cards.
-  Widget _buildToggleOption({
-    required BuildContext context,
+  Widget _buildSettingsIcon({
+    required IconData icon,
     required bool isDark,
-    required String title,
-    required bool isSelected,
-    required VoidCallback onTap,
-    String? emoji,
-    IconData? icon,
   }) {
-    final activeColor = isDark ? Colors.white : _brandColor;
-    final activeTextColor = isDark ? const Color(0xFF0F172A) : Colors.white;
-    final inactiveBg = isDark ? const Color(0xFF151F2E) : const Color(0xFFF8FAFC);
-    final inactiveBorder = isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0);
-    final inactiveText = isDark ? Colors.white : _brandColor;
-    final inactiveIconColor = isDark ? PiggyTrunkTheme.ptMutedDark : _brandColor;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-        decoration: BoxDecoration(
-          color: isSelected ? activeColor : inactiveBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? activeColor : inactiveBorder,
-            width: isSelected ? 1.5 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.15 : 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : [],
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.09) : const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.16) : const Color(0xFFDBEAFE),
+          width: 0.8,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (emoji != null) ...[
-              Text(emoji, style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
-            ],
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: isSelected ? activeTextColor : inactiveIconColor),
-              const SizedBox(width: 8),
-            ],
-            Text(
-              title,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13.5,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected ? activeTextColor : inactiveText,
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          color: isDark ? Colors.white : _brandColor,
+          size: 19,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentedControl({
+    required bool isDark,
+    required List<_SegmentOption> options,
+    double width = 186.0,
+  }) {
+    final activeBg = isDark ? Colors.white : _brandColor;
+    final activeText = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final inactiveText = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final containerBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final containerBorder = isDark ? const Color(0xFF28354A) : const Color(0xFFE2E8F0);
+
+    return Container(
+      width: width,
+      height: 38,
+      padding: const EdgeInsets.all(3.5),
+      decoration: BoxDecoration(
+        color: containerBg,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: containerBorder, width: 0.8),
+      ),
+      child: Row(
+        children: options.map((opt) {
+          final selected = opt.isSelected;
+          return Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: opt.onTap,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? activeBg : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: (isDark ? Colors.black : _brandColor).withValues(
+                              alpha: isDark ? 0.35 : 0.18,
+                            ),
+                            blurRadius: 5,
+                            offset: const Offset(0, 1.5),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (opt.icon != null) ...[
+                      Icon(
+                        opt.icon,
+                        size: 13,
+                        color: selected ? activeText : inactiveText,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Flexible(
+                      child: Text(
+                        opt.label,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11.5,
+                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                          color: selected ? activeText : inactiveText,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              Icon(Icons.check_circle_rounded, color: activeTextColor, size: 16),
-            ],
-          ],
-        ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -706,13 +614,32 @@ class CashierProfileTab extends StatelessWidget {
     final valueColor = isDark ? Colors.white : _brandColor;
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, color: mutedColor, size: 20),
-        const SizedBox(width: 16),
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.09) : const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.16) : const Color(0xFFDBEAFE),
+              width: 0.8,
+            ),
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              color: isDark ? Colors.white : _brandColor,
+              size: 19,
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 label,
@@ -722,7 +649,7 @@ class CashierProfileTab extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Text(
                 value,
                 style: GoogleFonts.plusJakartaSans(
@@ -737,4 +664,18 @@ class CashierProfileTab extends StatelessWidget {
       ],
     );
   }
+}
+
+class _SegmentOption {
+  final String label;
+  final IconData? icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SegmentOption({
+    required this.label,
+    this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
 }

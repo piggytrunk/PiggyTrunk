@@ -1176,7 +1176,7 @@ class _RequestFormScreenState extends State<RequestFormScreen> {
                             ),
                           )
                         : ListView(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 108),
                             children: [
                               // Active Batch Selection
                               Row(

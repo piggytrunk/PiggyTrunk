@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
+import 'offline_banner.dart';
 
 /// Wraps mobile screens on Web to ensure a clean, responsive presentation.
 /// On native mobile devices (Android/iOS APK) or mobile web browsers (< 560px),
@@ -19,6 +20,32 @@ class ResponsiveMobileWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Offline banner pinned on top of every mobile screen with coordinated layout shift
+    final child = ValueListenableBuilder<bool>(
+      valueListenable: OfflineBanner.isVisible,
+      builder: (context, isBannerVisible, _) {
+        return Stack(
+          children: [
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              top: isBannerVisible ? OfflineBanner.bannerHeight : 0.0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: this.child,
+            ),
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: OfflineBanner(),
+            ),
+          ],
+        );
+      },
+    );
+
     if (!kIsWeb) {
       return child;
     }

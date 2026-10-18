@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'cashier_receipt_modal.dart';
 import '../../../utils/app_strings.dart';
 import '../../../utils/capitalization_formatters.dart';
+import '../../../utils/sale_id_formatter.dart';
 
 class CashierCheckoutModal extends StatefulWidget {
   final Order currentOrder;
@@ -899,7 +900,7 @@ class _CashierCheckoutModalState extends State<CashierCheckoutModal> {
                           context: context,
                           barrierDismissible: true,
                           builder: (ctx) => CashierReceiptModal(
-                            receiptNumber: DateTime.now().millisecondsSinceEpoch.toString().substring(5),
+                            receiptNumber: SaleIdFormatter.toReceiptNumber(DateTime.now().millisecondsSinceEpoch),
                             customerName: _successCustomerName,
                             cashierName: widget.cashierName,
                             timestamp: _successTimestamp,

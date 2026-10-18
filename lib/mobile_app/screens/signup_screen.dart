@@ -744,9 +744,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
               // FIXED TOP HEADER SECTION (Anchored at Top - Compact)
               Padding(
                 padding: const EdgeInsets.only(
-                  left: 18.0,
-                  top: 4.0,
-                  right: 18.0,
+                  left: 20.0,
+                  top: 10.0,
+                  right: 20.0,
                   bottom: 2.0,
                 ),
                 child: Column(
@@ -765,8 +765,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
+                            horizontal: 14,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -778,7 +778,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.03),
-                                blurRadius: 4,
+                                blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
                             ],
@@ -788,14 +788,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             children: [
                               const Icon(
                                 Icons.arrow_back_rounded,
-                                size: 16,
+                                size: 18,
                                 color: Color(0xFF18314F),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
                               Text(
                                 backText,
                                 style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12.0,
+                                  fontSize: 13.0,
                                   fontWeight: FontWeight.w700,
                                   color: const Color(0xFF18314F),
                                 ),

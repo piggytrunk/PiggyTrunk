@@ -313,7 +313,7 @@ class _DemandForecastingScreenState extends State<DemandForecastingScreen> {
           key: _scaffoldKey,
           backgroundColor: _bgDark,
           body: SafeArea(
-            child: _buildMainContent(),
+            child: _buildMobileLayout(),
           ),
         ),
       );
@@ -351,7 +351,7 @@ class _DemandForecastingScreenState extends State<DemandForecastingScreen> {
                       currentRoute: '/pos',
                       onLogout: () => Navigator.of(context).pushReplacementNamed('/login'),
                     ),
-                  Expanded(child: _buildMainContent()),
+                  Expanded(child: isSmall ? _buildMobileLayout() : _buildMainContent()),
                 ],
               ),
             ),
@@ -2381,5 +2381,678 @@ class _DemandForecastingScreenState extends State<DemandForecastingScreen> {
         ],
       ),
     );
+  }
+
+  // ===================== DEDICATED MOBILE-FIRST LAYOUT =====================
+  Widget _buildMobileLayout() {
+    final list = _filteredForecasts;
+
+    return Column(
+      children: [
+        // 1. Mobile Top Bar
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          decoration: BoxDecoration(
+            color: _isDark ? PiggyTrunkTheme.ptBgDark : Colors.white,
+            border: Border(bottom: BorderSide(color: _cardBorder, width: 0.8)),
+          ),
+          child: _buildHeader(true),
+        ),
+
+        // 2. Scrollable Body
+        Expanded(
+          child: _isLoading
+              ? _buildMobileLoadingSkeleton()
+              : CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    // Top Metrics & Period Switcher (scrolls away naturally)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Compact 2-Column KPI Strip (~70px)
+                            _buildMobileKpiStrip(),
+                            const SizedBox(height: 10),
+
+                            // Segmented Horizon Switcher (7D | 14D | 30D)
+                            _buildMobilePeriodSegmentedControl(),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Sticky Header: Tabs + Search & Filter (Pins neatly to the top!)
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _ForecastStickyHeaderDelegate(
+                        height: 98,
+                        backgroundColor: _bgDark,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildMobileTabBar(),
+                              const SizedBox(height: 8),
+                              _buildMobileSearchAndFilterRow(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Product List Header Info
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _activeTabTitle,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: _titleColor,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: _fieldBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: _cardBorder),
+                              ),
+                              child: Text(
+                                '${list.length} items',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: _mutedColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Products List
+                    if (list.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _buildMobileEmptyState(),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (ctx, idx) {
+                              final f = list[idx];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: _cardBg,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: _cardBorder),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.02),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _showProductDeepDive(f),
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: _buildMobileRow(f),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            childCount: list.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileKpiStrip() {
+    return Row(
+      children: [
+        // Monthly Sales Card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.payments_rounded,
+                        size: 14,
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'SALES',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF10B981),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _formatCurrency(_totalMonthlySales),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _titleColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  '$_totalMonthlyUnits units sold',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10.5,
+                    color: _mutedColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Restock Capital Card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: (_isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 14,
+                        color: _isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (_isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'RESTOCK',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          color: _isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _formatCurrency(_estimatedPurchasingCapital),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _titleColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  'Estimated capital',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10.5,
+                    color: _mutedColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobilePeriodSegmentedControl() {
+    final horizons = [7, 14, 30];
+    final labels = ['7 Days', '14 Days', '30 Days'];
+
+    return Container(
+      padding: const EdgeInsets.all(3.5),
+      decoration: BoxDecoration(
+        color: _fieldBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _cardBorder),
+      ),
+      child: Row(
+        children: List.generate(horizons.length, (i) {
+          final h = horizons[i];
+          final isSelected = _selectedHorizonDays == h;
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedHorizonDays = h),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (_isDark ? const Color(0xFF243B53) : Colors.white)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: _isDark ? 0.25 : 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1.5),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Text(
+                    labels[i],
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected
+                          ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                          : _mutedColor,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildMobileTabBar() {
+    final tabs = [
+      (
+        tab: SalesForecastViewTab.topSelling,
+        label: 'Top Sellers',
+        icon: Icons.leaderboard_rounded,
+      ),
+      (
+        tab: SalesForecastViewTab.forecastSummary,
+        label: 'Forecast',
+        icon: Icons.insights_rounded,
+      ),
+      (
+        tab: SalesForecastViewTab.historicalSales,
+        label: 'History',
+        icon: Icons.history_rounded,
+      ),
+      (
+        tab: SalesForecastViewTab.financialPlanning,
+        label: 'Planning',
+        icon: Icons.account_balance_wallet_outlined,
+      ),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: tabs.map((item) {
+          final isSelected = _activeTab == item.tab;
+          final Color activeColor = _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              onTap: () => setState(() => _activeTab = item.tab),
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (_isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD))
+                      : (_isDark ? const Color(0xFF132034) : const Color(0xFFF8FAFC)),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? activeColor : _cardBorder,
+                    width: isSelected ? 1.4 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      item.icon,
+                      size: 14,
+                      color: isSelected ? activeColor : _mutedColor,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      item.label,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? activeColor : _mutedColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildMobileSearchAndFilterRow() {
+    return Row(
+      children: [
+        // Slim Search Input
+        Expanded(
+          child: Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (_) => setState(() {}),
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12.5,
+                color: _fieldText,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search products...',
+                hintStyle: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  color: _mutedColor,
+                ),
+                prefixIcon: Icon(Icons.search_rounded, size: 17, color: _mutedColor),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 16),
+                        color: _mutedColor,
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() {});
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 9),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Quick Sales Performance Filter Menu
+        PopupMenuButton<String>(
+          initialValue: _salesFilter,
+          onSelected: (val) => setState(() => _salesFilter = val),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          color: _isDark ? const Color(0xFF1A2940) : Colors.white,
+          itemBuilder: (ctx) => [
+            const PopupMenuItem(value: 'All Products', child: Text('All Products')),
+            const PopupMenuItem(value: 'Top Selling', child: Text('Top Selling')),
+            const PopupMenuItem(value: 'Low Selling', child: Text('Low Selling')),
+          ],
+          child: Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: _salesFilter != 'All Products' && _salesFilter != 'All'
+                  ? (_isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD))
+                  : _fieldBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _salesFilter != 'All Products' && _salesFilter != 'All'
+                    ? PiggyTrunkTheme.ptPrimary
+                    : _cardBorder,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.filter_list_rounded,
+                  size: 16,
+                  color: _salesFilter != 'All Products' && _salesFilter != 'All'
+                      ? PiggyTrunkTheme.ptPrimary
+                      : _mutedColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _salesFilter == 'All Products' || _salesFilter == 'All' ? 'Filter' : _salesFilter.split(' ').first,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: _salesFilter != 'All Products' && _salesFilter != 'All'
+                        ? PiggyTrunkTheme.ptPrimary
+                        : _titleColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLoadingSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: _cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _cardBorder),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: _cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _cardBorder),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _cardBorder),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.separated(
+              itemCount: 5,
+              separatorBuilder: (ctx, i) => const SizedBox(height: 10),
+              itemBuilder: (ctx, i) => Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _cardBorder),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 48, color: _mutedColor.withValues(alpha: 0.5)),
+            const SizedBox(height: 12),
+            Text(
+              'No products match your current filters.',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _titleColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Try adjusting your search or filter options.',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                color: _mutedColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ForecastStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+  final Color backgroundColor;
+
+  _ForecastStickyHeaderDelegate({
+    required this.child,
+    required this.height,
+    required this.backgroundColor,
+  });
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      height: height,
+      color: backgroundColor,
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _ForecastStickyHeaderDelegate oldDelegate) {
+    return oldDelegate.height != height ||
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.child != child;
   }
 }

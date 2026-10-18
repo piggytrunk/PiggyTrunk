@@ -198,7 +198,7 @@ class _AdminNotificationDrawerState extends ConsumerState<AdminNotificationDrawe
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'Mark all read',
+                                        'Mark as Read',
                                         style: AppTextStyles.jakarta(
                                           size: 11,
                                           weight: FontWeight.w700,

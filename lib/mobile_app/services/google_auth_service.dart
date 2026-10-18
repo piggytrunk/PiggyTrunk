@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:piggytrunk/services/email_service.dart';
+import 'connectivity_service.dart';
 
 class GoogleAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -14,6 +15,14 @@ class GoogleAuthService {
     String? targetRole,
     bool isSignUpMode = false,
   }) async {
+    // Prevent starting Google auth or browser OAuth when device is offline
+    if (!await ConnectivityService.hasInternet()) {
+      return {
+        'success': false,
+        'message': 'No internet connection. Please check your Wi-Fi or data connection.',
+        'is_network_error': true,
+      };
+    }
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn(
         clientId: kIsWeb ? webClientId : androidClientId,
@@ -27,20 +36,26 @@ class GoogleAuthService {
       } catch (_) {}
 
       GoogleSignInAccount? googleUser;
-      String? googleErr;
       try {
         googleUser = await googleSignIn.signIn();
       } catch (e) {
-        googleErr = e.toString();
         debugPrint('GoogleSignIn exception: $e');
       }
 
       if (googleUser == null) {
-        // Try Supabase OAuth fallback if native GoogleSignIn fails or is unconfigured
+        // On native mobile (Android/iOS), if the user dismissed or cancelled the account picker,
+        // DO NOT open an external browser with Supabase OAuth. Return cleanly.
+        if (!kIsWeb) {
+          return {
+            'success': false,
+            'canceled': true,
+            'message': 'Google Sign-In was canceled.',
+          };
+        }
+
+        // On Web only, try Supabase OAuth redirect as fallback
         try {
-          final String redirectUrl = kIsWeb
-              ? '${Uri.base.origin}/'
-              : 'io.supabase.piggytrunk://login-callback';
+          final String redirectUrl = '${Uri.base.origin}/';
 
           final bool oAuthStarted = await _supabase.auth.signInWithOAuth(
             OAuthProvider.google,
@@ -67,9 +82,8 @@ class GoogleAuthService {
 
         return {
           'success': false,
-          'message': googleErr != null
-              ? 'Google Sign-In was canceled.'
-              : 'Unable to connect to Google Sign-In. Please check your internet connection or try signing in with email and password.',
+          'canceled': true,
+          'message': 'Google Sign-In was canceled.',
         };
       }
 
