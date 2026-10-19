@@ -28,8 +28,6 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
-  final TextEditingController _middleInitialController =
-      TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -70,7 +68,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _lastNameController.dispose();
     _firstNameController.dispose();
-    _middleInitialController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -86,22 +83,30 @@ class _SignUpScreenState extends State<SignUpScreen> {
       RegExp(r'\s+'),
       ' ',
     );
-    final middleInitial = _middleInitialController.text
-        .trim()
-        .replaceAll('.', '')
-        .toUpperCase();
     return [
       firstName,
-      if (middleInitial.isNotEmpty) '${middleInitial[0]}.',
       lastName,
     ].where((p) => p.isNotEmpty).join(' ');
+  }
+
+  bool _isFirstHasError() {
+    if (_fullNameError == null) return false;
+    if (_firstNameController.text.trim().isEmpty) return true;
+    if (_lastNameController.text.trim().isNotEmpty) return true;
+    return false;
+  }
+
+  bool _isLastHasError() {
+    if (_fullNameError == null) return false;
+    if (_lastNameController.text.trim().isEmpty) return true;
+    if (_firstNameController.text.trim().isNotEmpty) return true;
+    return false;
   }
 
   Widget _buildNameField(
     String label,
     String hint,
-    TextEditingController controller,
-    bool isInitial, {
+    TextEditingController controller, {
     bool hasError = false,
     double labelFontSize = 12.5,
     double inputFontSize = 13.5,
@@ -125,11 +130,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           cursorColor: const Color(0xFF18314F),
           textCapitalization: TextCapitalization.words,
           keyboardType: TextInputType.name,
-          maxLength: isInitial ? 1 : null,
-          inputFormatters: [
-            if (isInitial) FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
-            if (!isInitial) const NameInputFormatter(),
-          ],
+          inputFormatters: const [NameInputFormatter()],
           onChanged: (_) {
             if (_fullNameError != null) setState(() => _fullNameError = null);
           },
@@ -282,12 +283,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String? passErr;
     String? confirmPassErr;
 
-    // 1. Normalized name validation: First Name, MI, Last Name
+    // 1. Normalized name validation: First Name, Last Name
     final nameTrimmed = fullName.trim();
     final nameValidCharsRegex = RegExp(r"^[a-zA-Z\u00C0-\u024F\s\.\-']+$");
-    if (_firstNameController.text.trim().isEmpty ||
-        _lastNameController.text.trim().isEmpty) {
+    final isFirstEmpty = _firstNameController.text.trim().isEmpty;
+    final isLastEmpty = _lastNameController.text.trim().isEmpty;
+
+    if (isFirstEmpty && isLastEmpty) {
       nameErr = 'Please enter your first name and last name.';
+    } else if (isFirstEmpty) {
+      nameErr = 'Please enter your first name.';
+    } else if (isLastEmpty) {
+      nameErr = 'Please enter your last name.';
     } else if (RegExp(r'\d').hasMatch(nameTrimmed)) {
       nameErr =
           'Full name should only contain letters and spaces (no numbers).';
@@ -370,10 +377,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'registered_name': fullName,
           'last_name': _lastNameController.text.trim(),
           'first_name': _firstNameController.text.trim(),
-          'middle_initial': _middleInitialController.text
-              .trim()
-              .replaceAll('.', '')
-              .toUpperCase(),
           'role': _selectedRole,
         },
       );
@@ -1021,24 +1024,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 ),
                               ),
 
-                              // Name fields — label inside field, full-width stacked
+                              // Name fields — First Name and Last Name
                               _buildNameField(
                                 'First Name',
                                 'e.g. Juan',
                                 _firstNameController,
-                                false,
-                                hasError: _fullNameError != null,
-                                labelFontSize: labelFontSize,
-                                inputFontSize: inputFontSize,
-                                inputPaddingV: inputPaddingV,
-                              ),
-                              const SizedBox(height: 6),
-                              _buildNameField(
-                                'Middle Initial (optional)',
-                                'e.g. M',
-                                _middleInitialController,
-                                true,
-                                hasError: _fullNameError != null,
+                                hasError: _isFirstHasError(),
                                 labelFontSize: labelFontSize,
                                 inputFontSize: inputFontSize,
                                 inputPaddingV: inputPaddingV,
@@ -1048,8 +1039,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 'Last Name',
                                 'e.g. Dela Cruz',
                                 _lastNameController,
-                                false,
-                                hasError: _fullNameError != null,
+                                hasError: _isLastHasError(),
                                 labelFontSize: labelFontSize,
                                 inputFontSize: inputFontSize,
                                 inputPaddingV: inputPaddingV,
