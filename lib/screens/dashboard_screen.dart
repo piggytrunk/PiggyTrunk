@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
 import '../widgets/common/shimmer_loading.dart';
+import '../widgets/dashboard/cycle_history_drawer.dart';
 import '../utils/responsive.dart';
 import '../main.dart';
 
@@ -499,7 +500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final bId = (aMap?['batch_id'] ?? '').toString();
             copy['batch_name'] = batchesMap[bId] ?? (bId.isNotEmpty ? 'Batch #$bId' : 'Batch ${copy['name']}');
           } else {
-            copy['batch_name'] = 'Batch ${copy['name']}';
+            copy['batch_name'] = 'Unassigned';
           }
 
           // Calculate recency date for sorting (latest first)
@@ -1069,50 +1070,238 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// ACTIVE HOG RAISERS PROGRESS SECTION - Displays progress map below investment allocation
+  bool _isRaiserCycleCompleted(Map<String, dynamic> raiser) {
+    final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    if (raiserHogs.isNotEmpty) {
+      return raiserHogs.every((h) {
+        final rawHType = (h['pig_type'] ?? '').toString().trim();
+        final hIsBreed = rawHType.toLowerCase().contains('sow') || rawHType.toLowerCase().contains('breed');
+        final stage = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], hIsBreed).toLowerCase();
+        return stage == 'selling' || stage == 'lactation' || stage == 'completed';
+      });
+    }
+    final rawType = (raiser['pig_type'] ?? '').toString().trim();
+    final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+    final currentStage = _resolveStageName(raiser['lifecycle_stage'], isBreed).toLowerCase();
+    return currentStage == 'selling' || currentStage == 'lactation' || currentStage == 'completed';
+  }
+
+  bool _isRaiserAssignedToBatch(Map<String, dynamic> raiser) {
+    final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    if (raiserHogs.isNotEmpty) return true;
+
+    final batchName = (raiser['batch_name'] ?? '').toString().trim().toLowerCase();
+    final bool hasValidBatch = batchName.isNotEmpty &&
+        batchName != 'unassigned' &&
+        batchName != 'no batch' &&
+        batchName != 'none' &&
+        !batchName.startsWith('batch ${raiser['name']?.toString().toLowerCase()}');
+
+    final rawType = (raiser['pig_type'] ?? '').toString().trim().toLowerCase();
+    final bool hasValidType = rawType.isNotEmpty &&
+        rawType != 'n/a' &&
+        rawType != 'null' &&
+        rawType != 'none' &&
+        rawType != 'unassigned';
+
+    return hasValidBatch && hasValidType;
+  }
+
+  /// ACTIVE HOG RAISERS PROGRESS SECTION - Displays ongoing feeding cycles with Cycle History drawer trigger
   Widget _buildActiveRaisersSection() {
     final isMobile = Responsive.isMobile(context);
+    final assignedRaisers = _activeRaisersList.where(_isRaiserAssignedToBatch).toList();
+    final inProgressRaisers = assignedRaisers.where((r) => !_isRaiserCycleCompleted(r)).toList();
+    final completedRaisers = assignedRaisers.where((r) => _isRaiserCycleCompleted(r)).toList();
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       decoration: BoxDecoration(
-        color: _surfaceDark.withValues(alpha: 0.2),
+        color: _surfaceDark,
         border: Border.all(color: _borderDark, width: 1),
         borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'ACTIVE HOG RAISERS PROGRESS',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _textDark,
-              letterSpacing: 0.3,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'ACTIVE HOG RAISERS PROGRESS',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isMobile ? 13 : 14,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Monitor ongoing feeding cycles for all active raisers',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isMobile ? 11 : 12,
+                        fontWeight: FontWeight.w500,
+                        color: _mutedDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              InkWell(
+                onTap: () => CycleHistoryDrawer.show(
+                  context: context,
+                  completedRaisers: completedRaisers,
+                  onNavigateToBatches: () => Navigator.of(context).pushNamed('/batches'),
+                ),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 10 : 13,
+                    vertical: isMobile ? 6 : 7.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _isDark
+                        ? PiggyTrunkTheme.ptSurfaceSoftDark
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isDark
+                          ? PiggyTrunkTheme.ptBorderDark
+                          : const Color(0xFFDDE3EC),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: _isDark ? 0.15 : 0.03),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.history_rounded,
+                        size: isMobile ? 14 : 16,
+                        color: _isDark
+                            ? PiggyTrunkTheme.ptTextDark
+                            : PiggyTrunkTheme.ptPrimary,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Finished Lifecycles',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: isMobile ? 11.5 : 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: _textDark,
+                        ),
+                      ),
+                      if (completedRaisers.isNotEmpty) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: _isDark
+                                ? const Color(0xFF064E3B)
+                                : const Color(0xFFDEF7EC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _isDark
+                                  ? const Color(0xFF059669).withValues(alpha: 0.4)
+                                  : const Color(0xFF31C48D).withValues(alpha: 0.4),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            completedRaisers.length.toString(),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: _isDark
+                                  ? const Color(0xFFA7F3D0)
+                                  : const Color(0xFF03543F),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Monitor lifecycle stages of all approved active raisers',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: _mutedDark,
-            ),
+          const SizedBox(height: 20),
+          Divider(
+            color: _borderDark.withValues(alpha: 0.6),
+            height: 1,
+            thickness: 1,
           ),
           const SizedBox(height: 24),
-          if (_activeRaisersList.isEmpty)
+          if (inProgressRaisers.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: 36),
               child: Center(
-                child: Text(
-                  'No active raisers found.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _mutedDark,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 40,
+                      color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'All Batches Currently Finished',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'All approved raisers have completed their lifecycles and are archived.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: _mutedDark,
+                      ),
+                    ),
+                    if (completedRaisers.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: () => CycleHistoryDrawer.show(
+                          context: context,
+                          completedRaisers: completedRaisers,
+                          onNavigateToBatches: () => Navigator.of(context).pushNamed('/batches'),
+                        ),
+                        icon: const Icon(Icons.history_rounded, size: 15),
+                        label: Text('View Finished Lifecycles (${completedRaisers.length})'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF10B981),
+                          side: const BorderSide(color: Color(0xFF10B981)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             )
@@ -1120,13 +1309,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _activeRaisersList.length,
+              itemCount: inProgressRaisers.length,
               separatorBuilder: (context, index) => Divider(
                 color: _borderDark.withValues(alpha: 0.5),
                 height: 32,
               ),
               itemBuilder: (context, index) {
-                final raiser = _activeRaisersList[index];
+                final raiser = inProgressRaisers[index];
                 final name = (raiser['name'] ?? 'Hog Raiser').toString();
                 final rawPigType = (raiser['pig_type'] ?? '').toString().trim();
                 final cleanList = rawPigType
@@ -1215,13 +1404,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    if (isUnassigned)
-                      _buildLifecycleMap(
-                        'Unassigned',
-                        'fattening',
-                        isUnassigned: true,
-                      )
-                    else if (raiserHogs.isNotEmpty)
+                    if (raiserHogs.isNotEmpty)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: raiserHogs.asMap().entries.map((entry) {
@@ -1379,7 +1562,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               ? 'SOW / BREEDING'
                                               : 'FATTENING',
                                           style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 10,
+                                            fontSize: 9.5,
                                             fontWeight: FontWeight.w700,
                                             color: _isDark
                                                 ? const Color(0xFF94A3B8)

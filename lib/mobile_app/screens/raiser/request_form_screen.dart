@@ -794,230 +794,261 @@ class _RequestFormScreenState extends State<RequestFormScreen> {
     final isOutOfStock = p.units <= 0;
     final isLowStock = p.units > 0 && p.units <= 10;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (dialogCtx) {
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      builder: (sheetCtx) {
         return StatefulBuilder(
-          builder: (ctx, setDialogState) {
+          builder: (ctx, setSheetState) {
             final currentQty = _cart[p.id] ?? 0;
-            return Dialog(
-              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-              surfaceTintColor: Colors.transparent,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.88,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 20,
+                    offset: Offset(0, -4),
+                  ),
+                ],
+              ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header with Image and close button
-                      Stack(
-                        children: [
-                          Container(
-                            height: 280,
-                            width: double.infinity,
-                            color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                            child: p.image != null && p.image!.isNotEmpty
-                                ? InteractiveViewer(
-                                    minScale: 0.8,
-                                    maxScale: 4.0,
-                                    child: Image.network(
-                                      p.image!,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, _, _) => Center(
-                                        child: Icon(
-                                          _getCategoryIcon(p.category),
-                                          color: PiggyTrunkTheme.ptMuted.withValues(alpha: 0.6),
-                                          size: 64,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Top Drag handle
+                    Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 6),
+                      width: 44,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF334155) : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Header with Image and close button
+                            Stack(
+                              children: [
+                                Container(
+                                  height: 280,
+                                  width: double.infinity,
+                                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                                  child: p.image != null && p.image!.isNotEmpty
+                                      ? InteractiveViewer(
+                                          minScale: 0.8,
+                                          maxScale: 4.0,
+                                          child: Image.network(
+                                            p.image!,
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (_, _, _) => Center(
+                                              child: Icon(
+                                                _getCategoryIcon(p.category),
+                                                color: PiggyTrunkTheme.ptMuted.withValues(alpha: 0.6),
+                                                size: 64,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Icon(
+                                            _getCategoryIcon(p.category),
+                                            color: PiggyTrunkTheme.ptMuted.withValues(alpha: 0.6),
+                                            size: 64,
+                                          ),
                                         ),
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.pop(sheetCtx),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.5),
+                                        shape: BoxShape.circle,
                                       ),
-                                    ),
-                                  )
-                                : Center(
-                                    child: Icon(
-                                      _getCategoryIcon(p.category),
-                                      color: PiggyTrunkTheme.ptMuted.withValues(alpha: 0.6),
-                                      size: 64,
+                                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                                     ),
                                   ),
-                          ),
-                          Positioned(
-                            top: 10,
-                            right: 10,
-                            child: GestureDetector(
-                              onTap: () => Navigator.pop(dialogCtx),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.5),
-                                  shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 12,
-                            left: 12,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.7),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                p.category.toUpperCase(),
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (p.image != null && p.image!.isNotEmpty)
-                            Positioned(
-                              bottom: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.zoom_in_rounded, size: 12, color: Colors.white70),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Pinch to zoom',
+                                Positioned(
+                                  top: 12,
+                                  left: 12,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      p.category.toUpperCase(),
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              p.name,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: isDark ? Colors.white : _brandColor,
-                                height: 1.3,
-                              ),
-                            ),
-                            if (p.description.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                p.description,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark ? Colors.white70 : const Color(0xFF64748B),
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 14),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '₱${p.price.toStringAsFixed(2)}',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 20,
                                         fontWeight: FontWeight.w800,
-                                        color: isDark ? Colors.white : _brandColor,
+                                        color: Colors.white,
+                                        letterSpacing: 0.5,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 7,
-                                          height: 7,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: isOutOfStock
-                                                ? _dangerRed
-                                                : isLowStock
-                                                    ? _warningAmber
-                                                    : _successGreen,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Text(
-                                          isOutOfStock
-                                              ? (strings.isFilipino ? 'Ubos na' : 'Out of Stock')
-                                              : isLowStock
-                                                  ? (strings.isFilipino ? 'Kakaunti: ${p.units}' : 'Low Stock: ${p.units}')
-                                                  : (strings.isFilipino ? 'Tira: ${p.units}' : 'Stock: ${p.units}'),
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: isOutOfStock
-                                                ? _dangerRed
-                                                : isLowStock
-                                                    ? _warningAmber
-                                                    : _successGreen,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                                if (!isOutOfStock && widget.activeAssignments.isNotEmpty)
-                                  ElevatedButton.icon(
-                                    onPressed: () {
-                                      _addToCart(p);
-                                      setDialogState(() {});
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.add_rounded, size: 16),
-                                    label: Text(
-                                      currentQty > 0
-                                          ? (strings.isFilipino ? 'Dagdag ($currentQty)' : 'Add More ($currentQty)')
-                                          : (strings.isFilipino ? 'Magdagdag' : 'Add to Request'),
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
+                                if (p.image != null && p.image!.isNotEmpty)
+                                  Positioned(
+                                    bottom: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.6),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: _brandColor,
-                                      foregroundColor: Colors.white,
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.zoom_in_rounded, size: 12, color: Colors.white70),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Pinch to zoom',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
                               ],
                             ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    p.name,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: isDark ? Colors.white : _brandColor,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  if (p.description.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      p.description,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '₱${p.price.toStringAsFixed(2)}',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w800,
+                                              color: isDark ? Colors.white : _brandColor,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                width: 7,
+                                                height: 7,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: isOutOfStock
+                                                      ? _dangerRed
+                                                      : isLowStock
+                                                          ? _warningAmber
+                                                          : _successGreen,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                isOutOfStock
+                                                    ? (strings.isFilipino ? 'Ubos na' : 'Out of Stock')
+                                                    : isLowStock
+                                                        ? (strings.isFilipino ? 'Kakaunti: ${p.units}' : 'Low Stock: ${p.units}')
+                                                        : (strings.isFilipino ? 'Tira: ${p.units}' : 'Stock: ${p.units}'),
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isOutOfStock
+                                                      ? _dangerRed
+                                                      : isLowStock
+                                                          ? _warningAmber
+                                                          : _successGreen,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      if (!isOutOfStock && widget.activeAssignments.isNotEmpty)
+                                        ElevatedButton.icon(
+                                          onPressed: () {
+                                            _addToCart(p);
+                                            setSheetState(() {});
+                                            setState(() {});
+                                          },
+                                          icon: const Icon(Icons.add_rounded, size: 16),
+                                          label: Text(
+                                            currentQty > 0
+                                                ? (strings.isFilipino ? 'Dagdag ($currentQty)' : 'Add More ($currentQty)')
+                                                : (strings.isFilipino ? 'Magdagdag' : 'Add to Request'),
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: _brandColor,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             );

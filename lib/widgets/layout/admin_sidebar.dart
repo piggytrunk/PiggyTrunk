@@ -279,10 +279,10 @@ class _AdminSidebarState extends ConsumerState<AdminSidebar> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'PiggyTrunk',
+                          'Piggy Trunk',
                           style: AppTextStyles.sidebarBrand(textColor).copyWith(
                             fontSize: isCompactHeight ? 18.5 : 20.5,
                           ),

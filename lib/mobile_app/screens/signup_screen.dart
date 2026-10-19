@@ -28,6 +28,8 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _middleInitialController =
+      TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -41,7 +43,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscureConfirmPassword = true;
 
   String? _errorMessage;
-  String? _fullNameError;
+  String? _firstNameError;
+  String? _lastNameError;
   String? _emailError;
   String? _passwordError;
   String? _confirmPasswordError;
@@ -68,6 +71,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _lastNameController.dispose();
     _firstNameController.dispose();
+    _middleInitialController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -83,35 +87,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
       RegExp(r'\s+'),
       ' ',
     );
+    final middleInitial = _middleInitialController.text
+        .trim()
+        .replaceAll('.', '')
+        .toUpperCase();
     return [
       firstName,
+      if (middleInitial.isNotEmpty) '${middleInitial[0]}.',
       lastName,
     ].where((p) => p.isNotEmpty).join(' ');
-  }
-
-  bool _isFirstHasError() {
-    if (_fullNameError == null) return false;
-    if (_firstNameController.text.trim().isEmpty) return true;
-    if (_lastNameController.text.trim().isNotEmpty) return true;
-    return false;
-  }
-
-  bool _isLastHasError() {
-    if (_fullNameError == null) return false;
-    if (_lastNameController.text.trim().isEmpty) return true;
-    if (_firstNameController.text.trim().isNotEmpty) return true;
-    return false;
   }
 
   Widget _buildNameField(
     String label,
     String hint,
     TextEditingController controller, {
-    bool hasError = false,
+    String? errorText,
+    bool isInitial = false,
     double labelFontSize = 12.5,
     double inputFontSize = 13.5,
     double inputPaddingV = 7.0,
+    VoidCallback? onChanged,
   }) {
+    final hasError = errorText != null && errorText.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -121,18 +119,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
           style: GoogleFonts.plusJakartaSans(
             fontSize: labelFontSize,
             fontWeight: FontWeight.w700,
-            color: hasError ? const Color(0xFFE53935) : const Color(0xFF18314F),
+            color: const Color(0xFF18314F),
           ),
         ),
         const SizedBox(height: 2),
         TextField(
           controller: controller,
           cursorColor: const Color(0xFF18314F),
-          textCapitalization: TextCapitalization.words,
+          textCapitalization: isInitial
+              ? TextCapitalization.characters
+              : TextCapitalization.words,
           keyboardType: TextInputType.name,
-          inputFormatters: const [NameInputFormatter()],
+          maxLength: isInitial ? 1 : null,
+          inputFormatters: [
+            if (isInitial)
+              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
+            if (!isInitial) const NameInputFormatter(),
+          ],
           onChanged: (_) {
-            if (_fullNameError != null) setState(() => _fullNameError = null);
+            if (onChanged != null) onChanged();
           },
           style: GoogleFonts.plusJakartaSans(
             fontSize: inputFontSize,
@@ -157,46 +162,61 @@ class _SignUpScreenState extends State<SignUpScreen> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.0),
               borderSide: BorderSide(
-                color: hasError ? const Color(0xFFE53935) : const Color(0xFFCBD5E1),
+                color: hasError
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFFCBD5E1),
                 width: hasError ? 1.4 : 1.2,
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.0),
               borderSide: BorderSide(
-                color: hasError ? const Color(0xFFE53935) : const Color(0xFFCBD5E1),
+                color: hasError
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFFCBD5E1),
                 width: hasError ? 1.4 : 1.2,
               ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.0),
               borderSide: BorderSide(
-                color: hasError ? const Color(0xFFE53935) : const Color(0xFF18314F),
+                color: hasError
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFF18314F),
                 width: 1.6,
               ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.0),
-              borderSide: const BorderSide(color: Color(0xFFE53935), width: 1.4),
+              borderSide: const BorderSide(
+                color: Color(0xFFE53935),
+                width: 1.4,
+              ),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.0),
-              borderSide: const BorderSide(color: Color(0xFFE53935), width: 1.6),
+              borderSide: const BorderSide(
+                color: Color(0xFFE53935),
+                width: 1.6,
+              ),
             ),
           ),
         ),
+        if (hasError) _buildInlineError(errorText),
       ],
     );
   }
 
   void _clearErrors() {
-    if (_fullNameError != null ||
+    if (_firstNameError != null ||
+        _lastNameError != null ||
         _emailError != null ||
         _passwordError != null ||
         _confirmPasswordError != null ||
         _errorMessage != null) {
       setState(() {
-        _fullNameError = null;
+        _firstNameError = null;
+        _lastNameError = null;
         _emailError = null;
         _passwordError = null;
         _confirmPasswordError = null;
@@ -278,30 +298,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final String password = _passwordController.text;
     final String confirmPassword = _confirmPasswordController.text;
 
-    String? nameErr;
+    String? firstNameErr;
+    String? lastNameErr;
     String? emailErr;
     String? passErr;
     String? confirmPassErr;
 
-    // 1. Normalized name validation: First Name, Last Name
-    final nameTrimmed = fullName.trim();
+    // 1. First Name & Last Name validation
     final nameValidCharsRegex = RegExp(r"^[a-zA-Z\u00C0-\u024F\s\.\-']+$");
-    final isFirstEmpty = _firstNameController.text.trim().isEmpty;
-    final isLastEmpty = _lastNameController.text.trim().isEmpty;
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
 
-    if (isFirstEmpty && isLastEmpty) {
-      nameErr = 'Please enter your first name and last name.';
-    } else if (isFirstEmpty) {
-      nameErr = 'Please enter your first name.';
-    } else if (isLastEmpty) {
-      nameErr = 'Please enter your last name.';
-    } else if (RegExp(r'\d').hasMatch(nameTrimmed)) {
-      nameErr =
-          'Full name should only contain letters and spaces (no numbers).';
-    } else if (!nameValidCharsRegex.hasMatch(nameTrimmed)) {
-      nameErr = 'Full name contains invalid characters.';
-    } else if (nameTrimmed.length < 2) {
-      nameErr = 'Full name must be at least 2 characters.';
+    if (firstName.isEmpty) {
+      firstNameErr = 'Please enter your first name.';
+    } else if (RegExp(r'\d').hasMatch(firstName)) {
+      firstNameErr = 'First name should only contain letters (no numbers).';
+    } else if (!nameValidCharsRegex.hasMatch(firstName)) {
+      firstNameErr = 'First name contains invalid characters.';
+    } else if (firstName.length < 2) {
+      firstNameErr = 'First name must be at least 2 characters.';
+    }
+
+    if (lastName.isEmpty) {
+      lastNameErr = 'Please enter your last name.';
+    } else if (RegExp(r'\d').hasMatch(lastName)) {
+      lastNameErr = 'Last name should only contain letters (no numbers).';
+    } else if (!nameValidCharsRegex.hasMatch(lastName)) {
+      lastNameErr = 'Last name contains invalid characters.';
+    } else if (lastName.length < 2) {
+      lastNameErr = 'Last name must be at least 2 characters.';
     }
 
     // 2. Email Address Validation
@@ -349,12 +374,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       confirmPassErr = 'Passwords do not match.';
     }
 
-    if (nameErr != null ||
+    if (firstNameErr != null ||
+        lastNameErr != null ||
         emailErr != null ||
         passErr != null ||
         confirmPassErr != null) {
       setState(() {
-        _fullNameError = nameErr;
+        _firstNameError = firstNameErr;
+        _lastNameError = lastNameErr;
         _emailError = emailErr;
         _passwordError = passErr;
         _confirmPasswordError = confirmPassErr;
@@ -377,6 +404,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'registered_name': fullName,
           'last_name': _lastNameController.text.trim(),
           'first_name': _firstNameController.text.trim(),
+          'middle_initial': _middleInitialController.text
+              .trim()
+              .replaceAll('.', '')
+              .toUpperCase(),
           'role': _selectedRole,
         },
       );
@@ -1024,27 +1055,46 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 ),
                               ),
 
-                              // Name fields — First Name and Last Name
+                              // Name fields — First Name, Middle Initial (optional), and Last Name
                               _buildNameField(
                                 'First Name',
                                 'e.g. Juan',
                                 _firstNameController,
-                                hasError: _isFirstHasError(),
+                                errorText: _firstNameError,
+                                labelFontSize: labelFontSize,
+                                inputFontSize: inputFontSize,
+                                inputPaddingV: inputPaddingV,
+                                onChanged: () {
+                                  if (_firstNameError != null) {
+                                    setState(() => _firstNameError = null);
+                                  }
+                                },
+                              ),
+                              SizedBox(height: fieldSpacing),
+                              _buildNameField(
+                                'Middle Initial (optional)',
+                                'e.g. M',
+                                _middleInitialController,
+                                isInitial: true,
                                 labelFontSize: labelFontSize,
                                 inputFontSize: inputFontSize,
                                 inputPaddingV: inputPaddingV,
                               ),
-                              const SizedBox(height: 6),
+                              SizedBox(height: fieldSpacing),
                               _buildNameField(
                                 'Last Name',
                                 'e.g. Dela Cruz',
                                 _lastNameController,
-                                hasError: _isLastHasError(),
+                                errorText: _lastNameError,
                                 labelFontSize: labelFontSize,
                                 inputFontSize: inputFontSize,
                                 inputPaddingV: inputPaddingV,
+                                onChanged: () {
+                                  if (_lastNameError != null) {
+                                    setState(() => _lastNameError = null);
+                                  }
+                                },
                               ),
-                              _buildInlineError(_fullNameError),
                               SizedBox(height: fieldSpacing),
                               // Email Label
                               Text(

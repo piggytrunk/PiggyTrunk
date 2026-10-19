@@ -87,7 +87,7 @@ class AppDrawer extends StatelessWidget {
                 const PiggyTrunkLogo(size: LogoSize.medium),
                 const SizedBox(height: 12),
                 Text(
-                  'PiggyTrunk Admin',
+                  'Piggy Trunk Admin',
                   style: TextStyle(
                     color: textDark,
                     fontSize: 18,

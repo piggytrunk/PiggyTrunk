@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final cleanId = identifier.trim().toLowerCase();
     if (cleanId.isEmpty) {
-      idErr = 'Please enter your Username or Gmail address.';
+      idErr = 'Please enter your full name or email address.';
     } else if (cleanId.contains('gmail') && !cleanId.contains('@')) {
       idErr = 'Please include "@" in your email address (e.g. name@gmail.com).';
     }
@@ -1282,9 +1282,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Username/Email Label
+                              // Full Name/Email Label
                               Text(
-                                isFilipino ? 'Username o Email Address' : 'Username or Email Address',
+                                isFilipino ? 'Buong Pangalan o Email Address' : 'Full Name or Email Address',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: labelFontSize,
                                   fontWeight: FontWeight.w700,
@@ -1355,7 +1355,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       width: 1.6,
                                     ),
                                   ),
-                                  hintText: isFilipino ? 'Ilagay ang username o email' : 'Enter username or email',
+                                  hintText: isFilipino ? 'Ilagay ang buong pangalan o email' : 'Enter full name or email',
                                   hintStyle: GoogleFonts.plusJakartaSans(
                                     color: const Color(0xFF64748B),
                                     fontSize: inputFontSize,

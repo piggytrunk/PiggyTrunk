@@ -146,7 +146,7 @@ class ScreenTopBar extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
           ],
 
           /// PIGGY TRUNK LOGO
@@ -161,11 +161,11 @@ class ScreenTopBar extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
 
           /// SYSTEM TITLE
           Text(
-            'PiggyTrunk',
+            'Piggy Trunk',
             style: AppTextStyles.sidebarBrand(textColor).copyWith(
               fontSize: isCompactHeight ? 18.5 : 20.5,
             ),
