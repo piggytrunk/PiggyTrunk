@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../theme/app_theme.dart';
 import '../services/connectivity_service.dart';
+import 'no_connection_modal.dart';
 
 /// Slim top banner (Facebook/YouTube style):
 /// coral "No internet connection" while offline, green "Back online" briefly on reconnect.
@@ -91,26 +92,31 @@ class _OfflineBannerState extends State<OfflineBanner> {
           ),
           child: Material(
             type: MaterialType.transparency,
-            child: SizedBox(
-              height: OfflineBanner.bannerHeight,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _offline ? Icons.wifi_off_rounded : Icons.wifi_rounded,
-                    size: 16,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _offline ? 'No internet connection' : 'Back online',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+            child: InkWell(
+              onTap: (_visible && _offline)
+                  ? () => showNoConnectionModal(context)
+                  : null,
+              child: SizedBox(
+                height: OfflineBanner.bannerHeight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _offline ? Icons.wifi_off_rounded : Icons.wifi_rounded,
+                      size: 16,
                       color: Colors.white,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      _offline ? 'No internet connection' : 'Back online',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

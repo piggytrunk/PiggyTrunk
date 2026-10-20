@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:piggytrunk/services/email_service.dart';
 import '../services/google_auth_service.dart';
+import '../services/connectivity_service.dart';
+import '../widgets/no_connection_modal.dart';
 import '../utils/screen_fit_util.dart';
 import '../utils/capitalization_formatters.dart';
 
@@ -293,6 +295,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Future<void> _handlePasswordSignUp() async {
     _clearErrors();
 
+    if (!await ConnectivityService.hasInternet()) {
+      if (mounted) {
+        showNoConnectionModal(context, onRetry: _handlePasswordSignUp);
+      }
+      return;
+    }
+
     final String fullName = _normalizedFullName();
     final String email = _emailController.text.trim();
     final String password = _passwordController.text;
@@ -329,14 +338,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
       lastNameErr = 'Last name must be at least 2 characters.';
     }
 
-    // 2. Email Address Validation
-    final emailRegExp = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-    );
-    if (email.isEmpty) {
+    // 2. Email Address Validation (Strictly Gmail @gmail.com)
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty) {
       emailErr = 'Please enter your email address.';
-    } else if (!emailRegExp.hasMatch(email)) {
-      emailErr = 'Please enter a valid email address (e.g. name@domain.com).';
+    } else if (!cleanEmail.contains('@')) {
+      emailErr = 'Please include "@" in your email address (e.g. name@gmail.com).';
+    } else if (!cleanEmail.endsWith('@gmail.com')) {
+      emailErr = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
+    } else {
+      final usernamePart = cleanEmail.substring(0, cleanEmail.indexOf('@'));
+      final gmailUserRegex = RegExp(r'^[a-zA-Z0-9.]+$');
+      if (usernamePart.isEmpty || !gmailUserRegex.hasMatch(usernamePart)) {
+        emailErr = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
+      }
     }
 
     // 3. Password Validation
@@ -516,6 +531,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _showSuccessDialog();
       }
     } on AuthException catch (e) {
+      if (e is AuthRetryableFetchException || ConnectivityService.isNetworkError(e)) {
+        if (mounted) {
+          showNoConnectionModal(context, onRetry: _handlePasswordSignUp);
+        }
+        return;
+      }
       final msg = e.message;
       final lower = msg.toLowerCase();
       setState(() {
@@ -535,7 +556,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               'Password is too weak or common. Please use a stronger combination of letters and numbers.';
         } else if (lower.contains('email') &&
             (lower.contains('invalid') || lower.contains('format'))) {
-          _emailError = 'Please enter a valid email address.';
+          _emailError = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
         } else if (lower.contains('rate limit') ||
             lower.contains('too many requests') ||
             lower.contains('over_email_send_rate_limit')) {
@@ -548,6 +569,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         }
       });
     } catch (e) {
+      if (ConnectivityService.isNetworkError(e)) {
+        if (mounted) {
+          showNoConnectionModal(context, onRetry: _handlePasswordSignUp);
+        }
+        return;
+      }
       final str = e.toString();
       final lower = str.toLowerCase();
       setState(() {
@@ -575,6 +602,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _isGoogleLoading = true;
     });
 
+    if (!await ConnectivityService.hasInternet()) {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+        showNoConnectionModal(context, onRetry: _handleGoogleSignUp);
+      }
+      return;
+    }
+
     try {
       final result = await _googleAuthService.signInWithGoogle(
         targetRole: _selectedRole,
@@ -594,6 +629,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         });
       }
     } catch (e) {
+      if (ConnectivityService.isNetworkError(e)) {
+        if (mounted) {
+          showNoConnectionModal(context, onRetry: _handleGoogleSignUp);
+        }
+        return;
+      }
       setState(() {
         _errorMessage = 'Google Sign-Up error: ${e.toString()}';
       });
@@ -1465,164 +1506,188 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               _buildInlineError(_confirmPasswordError),
                               SizedBox(height: fieldSpacing * 1.5),
 
-                              // Sign Up Button
-                              Container(
-                                width: double.infinity,
-                                height: buttonHeight,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14.0),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF18314F),
-                                      Color(0xFF243B53),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF18314F,
-                                      ).withValues(alpha: 0.25),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton(
-                                  onPressed: _isLoading
-                                      ? null
-                                      : () => _handlePasswordSignUp(),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    shadowColor: Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    padding: EdgeInsets.zero,
-                                    alignment: Alignment.center,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14.0),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 22,
-                                          width: 22,
-                                          child: CircularProgressIndicator(
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Colors.white,
-                                                ),
-                                            strokeWidth: 2.2,
+                              // Sign Up & Social Actions with Offline Greyout
+                              ValueListenableBuilder<bool>(
+                                valueListenable: ConnectivityService.isOnline,
+                                builder: (context, isOnline, _) {
+                                  return AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 250),
+                                    opacity: isOnline ? 1.0 : 0.72,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Sign Up Button
+                                        Container(
+                                          width: double.infinity,
+                                          height: buttonHeight,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(14.0),
+                                            gradient: isOnline
+                                                ? const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFF18314F),
+                                                      Color(0xFF243B53),
+                                                    ],
+                                                    begin: Alignment.centerLeft,
+                                                    end: Alignment.centerRight,
+                                                  )
+                                                : const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFF4B6079),
+                                                      Color(0xFF5A728F),
+                                                    ],
+                                                    begin: Alignment.centerLeft,
+                                                    end: Alignment.centerRight,
+                                                  ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: isOnline
+                                                    ? const Color(0xFF18314F).withValues(alpha: 0.25)
+                                                    : Colors.black.withValues(alpha: 0.08),
+                                                blurRadius: isOnline ? 10 : 4,
+                                                offset: isOnline ? const Offset(0, 3) : const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
-                                        )
-                                      : Text(
-                                          'Create Account',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 15.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
-                                            letterSpacing: 0.2,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Divider with "or continue with"
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      height: 1,
-                                      color: const Color(0xFFE2E8F0),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10.0,
-                                    ),
-                                    child: Text(
-                                      'or continue with',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF94A3B8),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Container(
-                                      height: 1,
-                                      color: const Color(0xFFE2E8F0),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Sign up with Google Button (Official Vector SVG Logo)
-                              Container(
-                                width: double.infinity,
-                                height: buttonHeight,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(24.0),
-                                  border: Border.all(
-                                    color: const Color(0xFF747775),
-                                    width: 1.0,
-                                  ),
-                                ),
-                                child: ElevatedButton(
-                                  onPressed: _isGoogleLoading
-                                      ? null
-                                      : () => _handleGoogleSignUp(),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: const Color(0xFF1F1F1F),
-                                    shadowColor: Colors.transparent,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(24.0),
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    alignment: Alignment.center,
-                                  ),
-                                  child: _isGoogleLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Color(0xFF18314F),
-                                                ),
-                                            strokeWidth: 2.0,
-                                          ),
-                                        )
-                                      : Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            SvgPicture.string(
-                                              googleLogoSvg,
-                                              height: 20.0,
-                                              width: 20.0,
+                                          child: ElevatedButton(
+                                            onPressed: _isLoading
+                                                ? null
+                                                : () => _handlePasswordSignUp(),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.transparent,
+                                              shadowColor: Colors.transparent,
+                                              foregroundColor: Colors.white,
+                                              padding: EdgeInsets.zero,
+                                              alignment: Alignment.center,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(14.0),
+                                              ),
                                             ),
-                                            const SizedBox(width: 10.0),
-                                            Text(
-                                              'Sign Up with Google',
-                                              style:
-                                                  GoogleFonts.plusJakartaSans(
-                                                    fontSize: 14.0,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: const Color(
-                                                      0xFF1F1F1F,
+                                            child: _isLoading
+                                                ? const SizedBox(
+                                                    height: 22,
+                                                    width: 22,
+                                                    child: CircularProgressIndicator(
+                                                      valueColor:
+                                                          AlwaysStoppedAnimation<Color>(
+                                                            Colors.white,
+                                                          ),
+                                                      strokeWidth: 2.2,
+                                                    ),
+                                                  )
+                                                : Text(
+                                                    'Create Account',
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 15.5,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Colors.white,
+                                                      letterSpacing: 0.2,
                                                     ),
                                                   ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+
+                                        // Divider with "or continue with"
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Container(
+                                                height: 1,
+                                                color: const Color(0xFFE2E8F0),
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10.0,
+                                              ),
+                                              child: Text(
+                                                'or continue with',
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: const Color(0xFF94A3B8),
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Container(
+                                                height: 1,
+                                                color: const Color(0xFFE2E8F0),
+                                              ),
                                             ),
                                           ],
                                         ),
-                                ),
+                                        const SizedBox(height: 12),
+
+                                        // Sign up with Google Button (Official Vector SVG Logo)
+                                        Container(
+                                          width: double.infinity,
+                                          height: buttonHeight,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(24.0),
+                                            border: Border.all(
+                                              color: const Color(0xFF747775),
+                                              width: 1.0,
+                                            ),
+                                          ),
+                                          child: ElevatedButton(
+                                            onPressed: _isGoogleLoading
+                                                ? null
+                                                : () => _handleGoogleSignUp(),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.white,
+                                              foregroundColor: const Color(0xFF1F1F1F),
+                                              shadowColor: Colors.transparent,
+                                              elevation: 0,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(24.0),
+                                              ),
+                                              padding: EdgeInsets.zero,
+                                              alignment: Alignment.center,
+                                            ),
+                                            child: _isGoogleLoading
+                                                ? const SizedBox(
+                                                    height: 20,
+                                                    width: 20,
+                                                    child: CircularProgressIndicator(
+                                                      valueColor:
+                                                          AlwaysStoppedAnimation<Color>(
+                                                            Color(0xFF18314F),
+                                                          ),
+                                                      strokeWidth: 2.0,
+                                                    ),
+                                                  )
+                                                : Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment.center,
+                                                    children: [
+                                                      SvgPicture.string(
+                                                        googleLogoSvg,
+                                                        height: 20.0,
+                                                        width: 20.0,
+                                                      ),
+                                                      const SizedBox(width: 10.0),
+                                                      Text(
+                                                        'Sign Up with Google',
+                                                        style:
+                                                            GoogleFonts.plusJakartaSans(
+                                                              fontSize: 14.0,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: const Color(
+                                                                0xFF1F1F1F,
+                                                              ),
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),

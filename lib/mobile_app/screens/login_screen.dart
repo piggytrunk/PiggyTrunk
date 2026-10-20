@@ -165,6 +165,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handlePasswordSignIn() async {
     _clearErrors();
 
+    if (!await ConnectivityService.hasInternet()) {
+      if (mounted) {
+        showNoConnectionModal(context, onRetry: _handlePasswordSignIn);
+      }
+      return;
+    }
+
     final String identifier = _usernameController.text.trim();
     final String password = _passwordController.text;
 
@@ -195,14 +202,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _isLoading = true;
     });
-
-    if (!await ConnectivityService.hasInternet()) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        showNoConnectionModal(context, onRetry: _handlePasswordSignIn);
-      }
-      return;
-    }
 
     String emailToUse = identifier;
 
@@ -1585,24 +1584,33 @@ class _LoginScreenState extends State<LoginScreen> {
                                           height: buttonHeight,
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(16.0),
-                                            gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF18314F),
-                                      Color(0xFF243B53),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF18314F,
-                                      ).withValues(alpha: 0.3),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
+                                            gradient: isOnline
+                                                ? const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFF18314F),
+                                                      Color(0xFF243B53),
+                                                    ],
+                                                    begin: Alignment.centerLeft,
+                                                    end: Alignment.centerRight,
+                                                  )
+                                                : const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFF4B6079),
+                                                      Color(0xFF5A728F),
+                                                    ],
+                                                    begin: Alignment.centerLeft,
+                                                    end: Alignment.centerRight,
+                                                  ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: isOnline
+                                                    ? const Color(0xFF18314F).withValues(alpha: 0.3)
+                                                    : Colors.black.withValues(alpha: 0.08),
+                                                blurRadius: isOnline ? 12 : 4,
+                                                offset: isOnline ? const Offset(0, 4) : const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
                                 child: ElevatedButton(
                                   onPressed: (_isLoading || _isGoogleLoading)
                                       ? null
