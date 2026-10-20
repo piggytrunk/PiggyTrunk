@@ -302,12 +302,12 @@ class BatchDetailDrawer {
 
   static Widget _buildStatusValue(String rawStatus) {
     final sUpper = rawStatus.toUpperCase().trim();
+    final bool isFinished = sUpper == 'FINISHED' || sUpper == 'COMPLETED' || sUpper == 'HARVESTED';
     final bool isActive = sUpper == 'ACTIVE';
-    final bool isCompleted = sUpper == 'COMPLETED' || sUpper == 'HARVESTED';
 
     final Color badgeColor = isActive
-        ? PiggyTrunkTheme.ptSuccess
-        : (isCompleted ? const Color(0xFF3B82F6) : const Color(0xFF94A3B8));
+        ? const Color(0xFF10B981)
+        : (isFinished ? const Color(0xFF3B82F6) : const Color(0xFF94A3B8));
 
     final String displayText = sUpper == 'UNASSIGNED' ? 'STANDBY' : sUpper;
 
@@ -454,8 +454,10 @@ class _BatchHogsListState extends State<_BatchHogsList> {
     }
   }
 
-  static String _resolveStageName(dynamic stageVal) {
-    final stages = const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+  static String _resolveStageName(dynamic stageVal, [bool isBreeding = false]) {
+    final fatteningStages = const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+    final sowStages = const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation'];
+    final stages = isBreeding ? sowStages : fatteningStages;
     final id = int.tryParse(stageVal?.toString() ?? '');
     if (id != null && id >= 1 && id <= stages.length) {
       return stages[id - 1];
@@ -564,7 +566,9 @@ class _BatchHogsListState extends State<_BatchHogsList> {
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, idx) {
               final hog = _hogs[idx];
-              final stageName = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage']);
+              final rawType = (hog['pig_type'] ?? '').toString().trim();
+              final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+              final stageName = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], isBreed);
               final health = (hog['health_status'] ?? 'healthy').toString().toLowerCase();
               final isSick = health == 'sick' || health == 'fever' || health == 'injured';
               final isObserving = health.contains('observ');
@@ -615,7 +619,8 @@ class _BatchHogsListState extends State<_BatchHogsList> {
                         Builder(
                           builder: (context) {
                             final isComplete = stageName.toLowerCase() == 'selling' ||
-                                stageName.toLowerCase() == 'lactation';
+                                stageName.toLowerCase() == 'lactation' ||
+                                stageName.toLowerCase() == 'completed';
                             return Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(

@@ -100,6 +100,30 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         debugPrint('Error fetching raisers: $e');
       }
 
+      // 4. Fetch hogs for lifecycle completion resolution
+      List<dynamic> hogsData = [];
+      try {
+        hogsData = await _supabase.from('hogs').select('*');
+      } catch (e) {
+        debugPrint('Notice loading all hogs for batch status: $e. Fallback to specific fields...');
+        try {
+          hogsData = await _supabase
+              .from('hogs')
+              .select('hog_id, assignment_id, stage_id, status, health_status');
+        } catch (e2) {
+          debugPrint('Error fetching hogs for batch status: $e2');
+        }
+      }
+
+      final Map<String, List<Map<String, dynamic>>> assignmentHogsMap = {};
+      for (var h in hogsData) {
+        if (h is! Map) continue;
+        final aId = (h['assignment_id'] ?? '').toString();
+        if (aId.isNotEmpty) {
+          assignmentHogsMap.putIfAbsent(aId, () => []).add(Map<String, dynamic>.from(h));
+        }
+      }
+
       final Map<String, String> batchNamesMap = {
         for (var b in batchesData)
           (b['batch_id'] ?? b['id'] ?? '').toString(): (b['batch_name'] ?? 'Batch #${b['batch_id']}').toString()
@@ -168,15 +192,19 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         final rawStatus = (bMap['status'] ?? bMap['batch_status'] ?? '').toString().toLowerCase();
         if (rawStatus == 'archived' || rawStatus == 'deleted') continue;
 
-        // Find assignment for this batch safely
+        // Find assignments for this batch safely
         Map<String, dynamic>? matchingAssign;
+        final List<Map<String, dynamic>> allBatchAssigns = [];
         for (var a in assignmentsData) {
           if (a is Map && (a['batch_id']?.toString() == bId.toString() || a['id']?.toString() == bId.toString())) {
-            if ((a['status'] ?? '').toString().toLowerCase() == 'active') {
-              matchingAssign = Map<String, dynamic>.from(a);
-              break;
+            final aMap = Map<String, dynamic>.from(a);
+            allBatchAssigns.add(aMap);
+            final st = (aMap['status'] ?? '').toString().toLowerCase();
+            if (st == 'active') {
+              matchingAssign = aMap;
+            } else {
+              matchingAssign ??= aMap;
             }
-            matchingAssign ??= Map<String, dynamic>.from(a);
           }
         }
 
@@ -189,8 +217,46 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
           if (rawRaiserId != null) {
             raiserId = rawRaiserId;
             raiserName = raiserMap[rawRaiserId.toString()] ?? 'Hog Raiser';
-            batchStatus = 'Active';
+
+            // Gather all hogs assigned to this batch
+            final assignHogs = <Map<String, dynamic>>[];
+            final assignsToCheck = allBatchAssigns.isNotEmpty ? allBatchAssigns : [matchingAssign];
+            for (var assign in assignsToCheck) {
+              final aIdStr = (assign['assignment_id'] ?? assign['id'] ?? '').toString();
+              if (assignmentHogsMap.containsKey(aIdStr)) {
+                assignHogs.addAll(assignmentHogsMap[aIdStr]!);
+              }
+            }
+
+            final assignStatus = (matchingAssign['status'] ?? '').toString().toLowerCase();
+
+            bool isAllHogsFinished = false;
+            if (assignHogs.isNotEmpty) {
+              isAllHogsFinished = assignHogs.every((hog) {
+                final health = (hog['health_status'] ?? '').toString().toLowerCase();
+                if (health == 'dead') return true; // Dead hogs don't hold back batch completion
+
+                final sId = int.tryParse((hog['stage_id'] ?? '').toString());
+                final stageStr = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], false).toLowerCase();
+                final hogStatus = (hog['status'] ?? '').toString().toLowerCase();
+
+                final bool isStage6OrSelling = (sId != null && sId >= 6) ||
+                    stageStr.contains('selling') ||
+                    stageStr.contains('lactation') ||
+                    stageStr.contains('complete');
+
+                return isStage6OrSelling || hogStatus == 'completed' || hogStatus == 'archived';
+              });
+            }
+
+            if (rawStatus == 'completed' || rawStatus == 'finished' || assignStatus == 'completed' || assignStatus == 'finished' || isAllHogsFinished) {
+              batchStatus = 'Finished';
+            } else {
+              batchStatus = 'Active';
+            }
           }
+        } else if (rawStatus == 'completed' || rawStatus == 'finished') {
+          batchStatus = 'Finished';
         }
 
         parsedBatches.add({
@@ -238,6 +304,36 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     } else {
       AppToast.success(context, message);
     }
+  }
+
+  static String _resolveStageName(dynamic stageVal, bool isBreeding) {
+    final fatteningStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Finisher',
+      'Selling',
+    ];
+    final sowStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Breeder',
+      'Lactation',
+    ];
+    final list = isBreeding ? sowStages : fatteningStages;
+
+    final id = int.tryParse(stageVal?.toString() ?? '');
+    if (id != null && id >= 1 && id <= list.length) {
+      return list[id - 1];
+    }
+    final s = stageVal?.toString().trim() ?? '';
+    if (s.isNotEmpty && s != 'null' && s != 'N/A' && int.tryParse(s) == null) {
+      return s;
+    }
+    return 'Booster';
   }
 
   @override

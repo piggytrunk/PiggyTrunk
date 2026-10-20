@@ -670,7 +670,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _buildFilterChip('ALL', 'All Stages', isDark),
+          _buildFilterChip('ALL', 'All Investments', isDark),
           const SizedBox(width: 8),
           _buildFilterChip('PENDING', 'Pending', isDark),
           const SizedBox(width: 8),
@@ -1174,11 +1174,14 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
 
   Widget _buildPartnerTableRow(Map<String, dynamic> p, int index, bool isDark, Color cardBorder, Color titleColor, Color hintText) {
     final status = (p['status'] ?? 'active').toString().toLowerCase();
+    final isCompleted = status == 'completed' || status == 'finished';
     final isActive = status == 'active' || status == 'approved';
     final isPending = status == 'pending';
-    final Color statusColor = isActive
-        ? PiggyTrunkTheme.ptSuccess
-        : (isPending ? const Color(0xFFFFAA00) : const Color(0xFFFF758C));
+    final Color statusColor = isCompleted
+        ? const Color(0xFF3B82F6)
+        : (isActive
+            ? PiggyTrunkTheme.ptSuccess
+            : (isPending ? const Color(0xFFFFAA00) : const Color(0xFFFF758C)));
 
     final double amt = (p['amount'] as num?)?.toDouble() ?? 0.0;
     final dateStr = p['date_invested']?.toString() ?? '';

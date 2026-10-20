@@ -61,13 +61,13 @@ class CycleHistoryDrawer {
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC),
+                        color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.35) : const Color(0xFFDBEAFE),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
                         Icons.verified_rounded,
                         size: 18,
-                        color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -178,13 +178,13 @@ class CycleHistoryDrawer {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC),
+                                color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.35) : const Color(0xFFDBEAFE),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
                                 Icons.verified_rounded,
                                 size: 20,
-                                color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                                color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -368,13 +368,13 @@ class CycleHistoryDrawer {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? const Color(0xFF064E3B).withValues(alpha: 0.3)
-                      : const Color(0xFFDEF7EC).withValues(alpha: 0.6),
+                      ? const Color(0xFF1E3A8A).withValues(alpha: 0.3)
+                      : const Color(0xFFDBEAFE).withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: isDark
-                        ? const Color(0xFF059669).withValues(alpha: 0.4)
-                        : const Color(0xFF31C48D).withValues(alpha: 0.4),
+                        ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+                        : const Color(0xFF93C5FD).withValues(alpha: 0.6),
                     width: 1,
                   ),
                 ),
@@ -383,7 +383,7 @@ class CycleHistoryDrawer {
                     Icon(
                       Icons.check_circle_outline_rounded,
                       size: 16,
-                      color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                      color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -393,7 +393,7 @@ class CycleHistoryDrawer {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
-                          color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                          color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
                         ),
                       ),
                     ),

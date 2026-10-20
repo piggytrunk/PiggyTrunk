@@ -185,6 +185,25 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         debugPrint('Error fetching hog reports: $hrErr');
       }
 
+      // 4c. Fetch Hogs for lifecycle completion resolution
+      List<dynamic> allHogs = [];
+      try {
+        allHogs = await _supabase
+            .from('hogs')
+            .select('hog_id, assignment_id, stage_id, lifecycle_stage, pig_type, status');
+      } catch (hErr) {
+        debugPrint('Error fetching hogs for investment stage: $hErr');
+      }
+
+      final Map<String, List<Map<String, dynamic>>> hogsByAssignment = {};
+      for (var h in allHogs) {
+        if (h is! Map) continue;
+        final aId = (h['assignment_id'] ?? '').toString();
+        if (aId.isNotEmpty) {
+          hogsByAssignment.putIfAbsent(aId, () => []).add(Map<String, dynamic>.from(h));
+        }
+      }
+
       const double defaultFeedPrice = 1650.0;
 
       // 5. Fetch Direct Investment Records directly (ordered newest first)
@@ -362,6 +381,36 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         }
         rMap['health_reports'] = raiserHealthReports;
 
+        // F. Resolve lifecycle completion stage for this investment
+        final List<Map<String, dynamic>> linkedHogs = [];
+        for (var aId in batchAssignmentIds) {
+          if (hogsByAssignment.containsKey(aId)) {
+            linkedHogs.addAll(hogsByAssignment[aId]!);
+          }
+        }
+
+        bool allHogsFinished = false;
+        if (linkedHogs.isNotEmpty) {
+          allHogsFinished = linkedHogs.every((h) {
+            final rawType = (h['pig_type'] ?? rMap['hog_type'] ?? '').toString().trim();
+            final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+            final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+            final hStatus = (h['status'] ?? '').toString().toLowerCase();
+            return sName == 'selling' || sName == 'lactation' || sName == 'completed' || hStatus == 'completed' || hStatus == 'archived';
+          });
+        }
+
+        final rawStage = (rMap['stage'] ?? rMap['status'] ?? '').toString().toLowerCase();
+        if (rawStage == 'completed' || rawStage == 'finished' || allHogsFinished) {
+          rMap['stage'] = 'completed';
+        } else if (rawStage == 'archived') {
+          rMap['stage'] = 'archived';
+        } else if (matchedBatchId != null && matchedBatchId.isNotEmpty && matchedBatchId != 'unassigned') {
+          rMap['stage'] = 'active';
+        } else {
+          rMap['stage'] = rawStage.isNotEmpty ? rawStage : 'pending';
+        }
+
         loaded.add(Investment.fromJson(rMap));
       }
 
@@ -411,6 +460,37 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
 
           final partnerName = (userRec?['name'] ?? userRec?['email'] ?? 'Partner Investor #$pInvId').toString();
           final batchName = batchesMap[bId] ?? 'Batch #$bId';
+
+          // Check if the partner investment's batch is completed
+          final pBatchAssignIds = <String>{};
+          for (var a in assignmentsRaw) {
+            if (a is Map && (a['batch_id'] ?? '').toString() == bId) {
+              final aId = (a['assignment_id'] ?? a['id'])?.toString();
+              if (aId != null && aId.isNotEmpty) pBatchAssignIds.add(aId);
+            }
+          }
+          final pLinkedHogs = <Map<String, dynamic>>[];
+          for (var aId in pBatchAssignIds) {
+            if (hogsByAssignment.containsKey(aId)) {
+              pLinkedHogs.addAll(hogsByAssignment[aId]!);
+            }
+          }
+          final bool pBatchFinished = pLinkedHogs.isNotEmpty && pLinkedHogs.every((h) {
+            final health = (h['health_status'] ?? '').toString().toLowerCase();
+            if (health == 'dead') return true;
+            final sId = int.tryParse((h['stage_id'] ?? '').toString());
+            final rawType = (h['pig_type'] ?? '').toString().trim();
+            final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+            final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+            final hStatus = (h['status'] ?? '').toString().toLowerCase();
+            final bool isFinal = (sId != null && sId >= 6) || sName == 'selling' || sName == 'lactation' || sName == 'completed';
+            return isFinal || hStatus == 'completed' || hStatus == 'archived';
+          });
+
+          final rawPStatus = (pMap['status'] ?? 'pending').toString().toLowerCase();
+          if (pBatchFinished || rawPStatus == 'completed') {
+            pMap['status'] = 'completed';
+          }
 
           pMap['partner_name'] = partnerName;
           pMap['batch_name'] = batchName;
@@ -1112,5 +1192,35 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         _showThemedSnackBar('Delete failed: $e', isError: true);
       }
     }
+  }
+
+  static String _resolveStageName(dynamic stageVal, bool isBreeding) {
+    final fatteningStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Finisher',
+      'Selling',
+    ];
+    final sowStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Breeder',
+      'Lactation',
+    ];
+    final list = isBreeding ? sowStages : fatteningStages;
+
+    final id = int.tryParse(stageVal?.toString() ?? '');
+    if (id != null && id >= 1 && id <= list.length) {
+      return list[id - 1];
+    }
+    final s = stageVal?.toString().trim() ?? '';
+    if (s.isNotEmpty && s != 'null' && s != 'N/A' && int.tryParse(s) == null) {
+      return s;
+    }
+    return 'Booster';
   }
 }

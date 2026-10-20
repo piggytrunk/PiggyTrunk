@@ -420,6 +420,17 @@ class InvestmentDetailModal {
               _detailRow('Total Hogs', '${inv.totalHog} heads', hintText, titleColor),
               Divider(color: cardBorder.withValues(alpha: 0.35), height: 1),
               _detailRow('Investment Date', _formatDate(inv.investmentDate), hintText, titleColor),
+              Divider(color: cardBorder.withValues(alpha: 0.35), height: 1),
+              _detailRow(
+                'Lifecycle Stage',
+                inv.stage.toUpperCase(),
+                hintText,
+                inv.stage.toLowerCase() == 'active'
+                    ? const Color(0xFF10B981)
+                    : (inv.stage.toLowerCase() == 'completed' || inv.stage.toLowerCase() == 'finished'
+                        ? const Color(0xFF3B82F6)
+                        : titleColor),
+              ),
             ],
           ),
         ),
@@ -1123,7 +1134,8 @@ class _AssignedHogsSectionState extends State<_AssignedHogsSection> {
                         Builder(
                           builder: (context) {
                             final isComplete = stageName.toLowerCase() == 'selling' ||
-                                stageName.toLowerCase() == 'lactation';
+                                stageName.toLowerCase() == 'lactation' ||
+                                stageName.toLowerCase() == 'completed';
                             return Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(

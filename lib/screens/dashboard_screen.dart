@@ -1219,13 +1219,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 1.5),
                           decoration: BoxDecoration(
                             color: _isDark
-                                ? const Color(0xFF064E3B)
-                                : const Color(0xFFDEF7EC),
+                                ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
+                                : const Color(0xFFDBEAFE),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _isDark
-                                  ? const Color(0xFF059669).withValues(alpha: 0.4)
-                                  : const Color(0xFF31C48D).withValues(alpha: 0.4),
+                                  ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+                                  : const Color(0xFF93C5FD).withValues(alpha: 0.6),
                               width: 0.8,
                             ),
                           ),
@@ -1235,8 +1235,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
                               color: _isDark
-                                  ? const Color(0xFFA7F3D0)
-                                  : const Color(0xFF03543F),
+                                  ? const Color(0xFF93C5FD)
+                                  : const Color(0xFF1E40AF),
                             ),
                           ),
                         ),
@@ -1264,7 +1264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Icon(
                       Icons.check_circle_outline_rounded,
                       size: 40,
-                      color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.8),
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -1295,8 +1295,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         icon: const Icon(Icons.history_rounded, size: 15),
                         label: Text('View Finished Lifecycles (${completedRaisers.length})'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF10B981),
-                          side: const BorderSide(color: Color(0xFF10B981)),
+                          foregroundColor: const Color(0xFF3B82F6),
+                          side: const BorderSide(color: Color(0xFF3B82F6)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),

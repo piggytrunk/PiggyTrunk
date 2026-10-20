@@ -53,13 +53,20 @@ class BatchTableView extends StatelessWidget {
 
     final totalBatches = batches.length;
     final activeBatches = batches.where((b) => (b['status'] ?? '').toString().toUpperCase() == 'ACTIVE').length;
-    final assignedBatches = batches.where((b) => b['raiser_id'] != null && b['raiser_id'].toString() != 'unassigned').length;
-    final unassignedBatches = batches.where((b) => b['raiser_id'] == null || b['raiser_id'].toString() == 'unassigned').length;
+    final finishedBatches = batches.where((b) {
+      final s = (b['status'] ?? '').toString().toUpperCase();
+      return s == 'FINISHED' || s == 'COMPLETED';
+    }).length;
+    final unassignedBatches = batches.where((b) => (b['status'] ?? '').toString().toUpperCase() == 'UNASSIGNED' || b['raiser_id'] == null || b['raiser_id'].toString() == 'unassigned').length;
 
     final filteredBatches = batches.where((b) {
       final status = (b['status'] ?? 'ACTIVE').toString().toUpperCase();
-      if (selectedStatusFilter != 'ALL' && status != selectedStatusFilter) {
-        return false;
+      if (selectedStatusFilter != 'ALL') {
+        if (selectedStatusFilter == 'FINISHED') {
+          if (status != 'FINISHED' && status != 'COMPLETED') return false;
+        } else if (status != selectedStatusFilter) {
+          return false;
+        }
       }
       if (searchQuery.isNotEmpty) {
         final q = searchQuery.toLowerCase();
@@ -74,7 +81,7 @@ class BatchTableView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Metric Overview Cards
-        _buildMetricsRow(totalBatches, activeBatches, assignedBatches, unassignedBatches, isMobile, isDark),
+        _buildMetricsRow(totalBatches, activeBatches, finishedBatches, unassignedBatches, isMobile, isDark),
         const SizedBox(height: 24),
 
         // Main Table Card
@@ -199,7 +206,9 @@ class BatchTableView extends StatelessWidget {
                                     Text(
                                       selectedStatusFilter == 'ACTIVE'
                                           ? 'No active batches found.'
-                                          : 'No batches found matching criteria.',
+                                          : (selectedStatusFilter == 'FINISHED'
+                                              ? 'No finished batches found.'
+                                              : 'No batches found matching criteria.'),
                                       style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600, color: titleColor),
                                     ),
                                     if (errorMessage != null) ...[
@@ -231,7 +240,7 @@ class BatchTableView extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricsRow(int total, int active, int assigned, int unassigned, bool isMobile, bool isDark) {
+  Widget _buildMetricsRow(int total, int active, int finished, int unassigned, bool isMobile, bool isDark) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final use2x2 = isMobile || constraints.maxWidth < 780;
@@ -242,13 +251,13 @@ class BatchTableView extends StatelessWidget {
                 children: [
                   Expanded(child: _buildMetricCard('Total Batches', '$total', Icons.layers_rounded, isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
                   const SizedBox(width: 10),
-                  Expanded(child: _buildMetricCard('Active Batches', '$active', Icons.check_circle_rounded, PiggyTrunkTheme.ptSuccess, isDark, isMobile)),
+                  Expanded(child: _buildMetricCard('Active Batches', '$active', Icons.trending_up_rounded, const Color(0xFF10B981), isDark, isMobile)),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _buildMetricCard('Assigned Batches', '$assigned', Icons.people_outline_rounded, const Color(0xFFFFAA00), isDark, isMobile)),
+                  Expanded(child: _buildMetricCard('Finished Batches', '$finished', Icons.check_circle_rounded, const Color(0xFF3B82F6), isDark, isMobile)),
                   const SizedBox(width: 10),
                   Expanded(child: _buildMetricCard('Unassigned', '$unassigned', Icons.pending_outlined, const Color(0xFFF43F5E), isDark, isMobile)),
                 ],
@@ -260,9 +269,9 @@ class BatchTableView extends StatelessWidget {
           children: [
             Expanded(child: _buildMetricCard('Total Batches', '$total', Icons.layers_rounded, isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
             const SizedBox(width: 14),
-            Expanded(child: _buildMetricCard('Active Batches', '$active', Icons.check_circle_rounded, PiggyTrunkTheme.ptSuccess, isDark, isMobile)),
+            Expanded(child: _buildMetricCard('Active Batches', '$active', Icons.trending_up_rounded, const Color(0xFF10B981), isDark, isMobile)),
             const SizedBox(width: 14),
-            Expanded(child: _buildMetricCard('Assigned Batches', '$assigned', Icons.people_outline_rounded, const Color(0xFFFFAA00), isDark, isMobile)),
+            Expanded(child: _buildMetricCard('Finished Batches', '$finished', Icons.check_circle_rounded, const Color(0xFF3B82F6), isDark, isMobile)),
             const SizedBox(width: 14),
             Expanded(child: _buildMetricCard('Unassigned', '$unassigned', Icons.pending_outlined, const Color(0xFFF43F5E), isDark, isMobile)),
           ],
@@ -379,6 +388,8 @@ class BatchTableView extends StatelessWidget {
           _buildFilterPill('ALL', 'All Batches', isDark),
           const SizedBox(width: 8),
           _buildFilterPill('ACTIVE', 'Active', isDark),
+          const SizedBox(width: 8),
+          _buildFilterPill('FINISHED', 'Finished', isDark),
         ],
       ),
     );
@@ -501,8 +512,8 @@ class BatchTableView extends StatelessWidget {
 
     Color statusColor;
     if (status == 'ACTIVE') {
-      statusColor = PiggyTrunkTheme.ptSuccess;
-    } else if (status == 'COMPLETED' || status == 'HARVESTED') {
+      statusColor = const Color(0xFF10B981);
+    } else if (status == 'FINISHED' || status == 'COMPLETED' || status == 'HARVESTED') {
       statusColor = const Color(0xFF3B82F6);
     } else {
       statusColor = const Color(0xFF94A3B8);
