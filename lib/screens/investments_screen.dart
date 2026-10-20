@@ -126,15 +126,30 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
       // 1. Fetch Batches
       List<dynamic> batchesRaw = [];
       try {
-        batchesRaw = await _supabase.from('batches').select('batch_id, batch_name, date_created');
+        batchesRaw = await _supabase.from('batches').select('*');
       } catch (bErr) {
-        debugPrint('Error fetching batches: $bErr');
+        debugPrint('Error fetching batches with select *: $bErr');
+        try {
+          batchesRaw = await _supabase.from('batches').select('batch_id, batch_name, status, date_created');
+        } catch (_) {}
       }
 
-      final Map<String, String> batchesMap = {
-        for (var b in batchesRaw)
-          (b['batch_id'] ?? b['id'] ?? '').toString(): _cleanBatchName((b['batch_name'] ?? 'Batch #${b['batch_id']}').toString())
-      };
+      final Map<String, String> batchesMap = {};
+      final Map<String, String> batchNameToId = {};
+      final Map<String, String> batchStatusMap = {};
+      for (var b in batchesRaw) {
+        final bId = (b['batch_id'] ?? b['id'] ?? '').toString();
+        final bName = _cleanBatchName((b['batch_name'] ?? 'Batch #$bId').toString());
+        final st = (b['status'] ?? '').toString().toLowerCase();
+        if (bId.isNotEmpty) {
+          batchesMap[bId] = bName;
+          batchNameToId[bId] = bId;
+          if (st.isNotEmpty) batchStatusMap[bId] = st;
+        }
+        if (bName.isNotEmpty) {
+          batchNameToId[bName.toLowerCase()] = bId;
+        }
+      }
 
       // 2. Fetch Assignments
       List<dynamic> assignmentsRaw = [];
@@ -185,14 +200,17 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         debugPrint('Error fetching hog reports: $hrErr');
       }
 
-      // 4c. Fetch Hogs for lifecycle completion resolution
+      // 4c. Fetch Hogs for lifecycle completion resolution (resilient select)
       List<dynamic> allHogs = [];
       try {
-        allHogs = await _supabase
-            .from('hogs')
-            .select('hog_id, assignment_id, stage_id, lifecycle_stage, pig_type, status');
+        allHogs = await _supabase.from('hogs').select('*');
       } catch (hErr) {
-        debugPrint('Error fetching hogs for investment stage: $hErr');
+        debugPrint('Error fetching hogs with select * in investments: $hErr');
+        try {
+          allHogs = await _supabase
+              .from('hogs')
+              .select('hog_id, assignment_id, stage_id, status, health_status');
+        } catch (_) {}
       }
 
       final Map<String, List<Map<String, dynamic>>> hogsByAssignment = {};
@@ -251,8 +269,19 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           matchedBatchName = _cleanBatchName(rMap['batch_name'].toString());
         }
         if (rMap['batch_id'] != null && rMap['batch_id'].toString().isNotEmpty) {
-          matchedBatchId = rMap['batch_id'].toString();
-          matchedBatchName ??= batchesMap[matchedBatchId];
+          final rawBId = rMap['batch_id'].toString().trim();
+          if (batchesMap.containsKey(rawBId)) {
+            matchedBatchId = rawBId;
+            matchedBatchName ??= batchesMap[rawBId];
+          } else if (batchNameToId.containsKey(rawBId.toLowerCase())) {
+            matchedBatchId = batchNameToId[rawBId.toLowerCase()];
+            matchedBatchName ??= rawBId;
+          } else {
+            matchedBatchId = rawBId;
+          }
+        }
+        if ((matchedBatchId == null || matchedBatchId.isEmpty) && matchedBatchName != null) {
+          matchedBatchId = batchNameToId[matchedBatchName.toLowerCase()];
         }
 
         // B. Auto-generated batch matching record UUID
@@ -303,14 +332,28 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         final batchAssignmentIds = <String>{};
         if (matchedBatchId != null && matchedBatchId.isNotEmpty) {
           for (var a in assignmentsRaw) {
-            if (a is Map && (a['batch_id'] ?? '').toString() == matchedBatchId) {
-              final aId = (a['assignment_id'] ?? a['id'])?.toString();
-              if (aId != null && aId.isNotEmpty) batchAssignmentIds.add(aId);
+            if (a is Map) {
+              final aBatchId = (a['batch_id'] ?? '').toString();
+              if (aBatchId == matchedBatchId) {
+                final aId = (a['assignment_id'] ?? a['id'])?.toString();
+                if (aId != null && aId.isNotEmpty) batchAssignmentIds.add(aId);
+              }
             }
           }
         }
         if (matchedAssignmentId != null && matchedAssignmentId.isNotEmpty) {
           batchAssignmentIds.add(matchedAssignmentId);
+        }
+        if (raiserId.isNotEmpty) {
+          for (var a in assignmentsRaw) {
+            if (a is Map && (a['hog_raiser_id'] ?? '').toString() == raiserId) {
+              final aBatchId = (a['batch_id'] ?? '').toString();
+              if (matchedBatchId == null || aBatchId == matchedBatchId) {
+                final aId = (a['assignment_id'] ?? a['id'])?.toString();
+                if (aId != null && aId.isNotEmpty) batchAssignmentIds.add(aId);
+              }
+            }
+          }
         }
 
         // D. Calculate stocks spend and itemized history for this batch
@@ -390,18 +433,33 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         }
 
         bool allHogsFinished = false;
-        if (linkedHogs.isNotEmpty) {
-          allHogsFinished = linkedHogs.every((h) {
+        final livingHogs = linkedHogs.where((h) {
+          final health = (h['health_status'] ?? '').toString().toLowerCase();
+          return health != 'dead';
+        }).toList();
+
+        if (livingHogs.isNotEmpty) {
+          allHogsFinished = livingHogs.every((h) {
+            final sId = int.tryParse((h['stage_id'] ?? '').toString());
             final rawType = (h['pig_type'] ?? rMap['hog_type'] ?? '').toString().trim();
             final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
             final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
             final hStatus = (h['status'] ?? '').toString().toLowerCase();
-            return sName == 'selling' || sName == 'lactation' || sName == 'completed' || hStatus == 'completed' || hStatus == 'archived';
+
+            final bool isStage6OrSelling = (sId != null && sId >= 6) ||
+                sName.contains('selling') ||
+                sName.contains('lactation') ||
+                sName.contains('complete');
+
+            return isStage6OrSelling || hStatus == 'completed' || hStatus == 'archived';
           });
         }
 
+        final batchStatus = (matchedBatchId != null ? batchStatusMap[matchedBatchId] : null)?.toLowerCase();
+        final isBatchExplicitlyFinished = batchStatus == 'completed' || batchStatus == 'finished';
+
         final rawStage = (rMap['stage'] ?? rMap['status'] ?? '').toString().toLowerCase();
-        if (rawStage == 'completed' || rawStage == 'finished' || allHogsFinished) {
+        if (rawStage == 'completed' || rawStage == 'finished' || allHogsFinished || isBatchExplicitlyFinished) {
           rMap['stage'] = 'completed';
         } else if (rawStage == 'archived') {
           rMap['stage'] = 'archived';
@@ -459,14 +517,18 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           final userRec = usersMap[userId];
 
           final partnerName = (userRec?['name'] ?? userRec?['email'] ?? 'Partner Investor #$pInvId').toString();
-          final batchName = batchesMap[bId] ?? 'Batch #$bId';
+          final resolvedBatchId = batchNameToId[bId.toLowerCase()] ?? bId;
+          final batchName = batchesMap[resolvedBatchId] ?? batchesMap[bId] ?? 'Batch #$bId';
 
           // Check if the partner investment's batch is completed
           final pBatchAssignIds = <String>{};
           for (var a in assignmentsRaw) {
-            if (a is Map && (a['batch_id'] ?? '').toString() == bId) {
-              final aId = (a['assignment_id'] ?? a['id'])?.toString();
-              if (aId != null && aId.isNotEmpty) pBatchAssignIds.add(aId);
+            if (a is Map) {
+              final aBatchId = (a['batch_id'] ?? '').toString();
+              if (aBatchId == resolvedBatchId || aBatchId == bId) {
+                final aId = (a['assignment_id'] ?? a['id'])?.toString();
+                if (aId != null && aId.isNotEmpty) pBatchAssignIds.add(aId);
+              }
             }
           }
           final pLinkedHogs = <Map<String, dynamic>>[];
@@ -475,20 +537,20 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
               pLinkedHogs.addAll(hogsByAssignment[aId]!);
             }
           }
-          final bool pBatchFinished = pLinkedHogs.isNotEmpty && pLinkedHogs.every((h) {
-            final health = (h['health_status'] ?? '').toString().toLowerCase();
-            if (health == 'dead') return true;
+          final pLivingHogs = pLinkedHogs.where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead').toList();
+          final bool pBatchFinished = pLivingHogs.isNotEmpty && pLivingHogs.every((h) {
             final sId = int.tryParse((h['stage_id'] ?? '').toString());
             final rawType = (h['pig_type'] ?? '').toString().trim();
             final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
             final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
             final hStatus = (h['status'] ?? '').toString().toLowerCase();
-            final bool isFinal = (sId != null && sId >= 6) || sName == 'selling' || sName == 'lactation' || sName == 'completed';
+            final bool isFinal = (sId != null && sId >= 6) || sName.contains('selling') || sName.contains('lactation') || sName.contains('complete');
             return isFinal || hStatus == 'completed' || hStatus == 'archived';
           });
 
+          final pBatchStatus = (batchStatusMap[resolvedBatchId] ?? batchStatusMap[bId])?.toLowerCase();
           final rawPStatus = (pMap['status'] ?? 'pending').toString().toLowerCase();
-          if (pBatchFinished || rawPStatus == 'completed') {
+          if (pBatchFinished || pBatchStatus == 'completed' || pBatchStatus == 'finished' || rawPStatus == 'completed' || rawPStatus == 'finished') {
             pMap['status'] = 'completed';
           }
 
