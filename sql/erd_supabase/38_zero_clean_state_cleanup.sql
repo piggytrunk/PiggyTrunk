@@ -20,75 +20,58 @@
 
 BEGIN;
 
--- 1. Identify non-admin accounts to safely purge without touching Administrator identities
-CREATE TEMP TABLE temp_users_to_purge AS
-SELECT user_id, email, supabase_user_id
-FROM public.app_users
-WHERE LOWER(role) NOT IN ('admin', 'administrator', 'system administrator')
-  AND LOWER(email) NOT IN (
-    'admin@piggytrunk.com', 
-    'admin@gmail.com', 
-    'piggytrunk@gmail.com'
-  );
-
--- 2. Wipe ALL Notifications (Admin, Raiser, Partner) for a completely clean slate
+-- 1. Wipe ALL Notifications (Admin, Raiser, Partner) for a completely clean slate
 DELETE FROM public.admin_notifications;
 DELETE FROM public.raiser_notifications;
 DELETE FROM public.partner_notifications;
 
--- 3. Clear all Hog Raiser activity & dependency records (reverse foreign key order)
+-- 2. Clear all Hog Raiser activity & dependency records (reverse foreign key order)
 DELETE FROM public.stock_requests;
 DELETE FROM public.hog_reports;
 DELETE FROM public.hogs;
 DELETE FROM public.assignments;
 DELETE FROM public.hog_raisers;
 
--- 4. Clear all Partner Investor activity & investment records
+-- 3. Clear all Partner Investor activity & investment records
 DELETE FROM public.investments;
 DELETE FROM public.investment_records;
 DELETE FROM public.partner_investors;
 
--- 5. Clear all Cashier records and transactions performed by non-admins
+-- 4. Clear all Cashier records and transactions performed by non-admins
 DELETE FROM public.cashiers;
 DELETE FROM public.sales
-WHERE performed_by IN (SELECT user_id FROM temp_users_to_purge);
+WHERE performed_by IN (
+  SELECT user_id FROM public.app_users
+  WHERE LOWER(role) NOT IN ('admin', 'administrator', 'system administrator')
+    AND LOWER(email) NOT IN ('admin@piggytrunk.com', 'admin@gmail.com', 'piggytrunk@gmail.com')
+);
 
--- 6. Reset Batch shells so new cycles start cleanly from Batch 1
+-- 5. Reset Batch shells so new cycles start cleanly from Batch 1
 DELETE FROM public.batches;
 
--- 7. Delete non-admin app_users
-DELETE FROM public.app_users
-WHERE user_id IN (SELECT user_id FROM temp_users_to_purge);
-
--- 8. Delete non-admin users from Supabase Auth
+-- 6. Delete non-admin users from Supabase Auth FIRST (before app_users is deleted)
 -- (Allows re-registration with identical email addresses without "Already Registered" conflicts)
 DELETE FROM auth.users
-WHERE LOWER(email) IN (SELECT LOWER(email) FROM temp_users_to_purge)
-  AND LOWER(email) NOT IN (
-    'admin@piggytrunk.com', 
-    'admin@gmail.com', 
-    'piggytrunk@gmail.com'
-  );
-
--- Also remove any orphaned auth accounts with non-admin metadata that had no app_users row
-DELETE FROM auth.users
-WHERE LOWER(email) NOT IN (
-    'admin@piggytrunk.com', 
-    'admin@gmail.com', 
-    'piggytrunk@gmail.com'
-  )
+WHERE LOWER(email) NOT IN ('admin@piggytrunk.com', 'admin@gmail.com', 'piggytrunk@gmail.com')
   AND (
-    LOWER(COALESCE(raw_user_meta_data->>'role', raw_app_meta_data->>'role', '')) IN (
+    LOWER(email) IN (
+      SELECT LOWER(email) FROM public.app_users
+      WHERE LOWER(role) NOT IN ('admin', 'administrator', 'system administrator')
+    )
+    OR LOWER(COALESCE(raw_user_meta_data->>'role', raw_app_meta_data->>'role', '')) IN (
       'hog_raiser', 'raiser', 'partner', 'investor', 'partner_investor', 'cashier'
     )
   );
 
--- 9. Wipe all profile and avatar pictures from Supabase Storage
+-- 7. Delete non-admin app_users
+DELETE FROM public.app_users
+WHERE LOWER(role) NOT IN ('admin', 'administrator', 'system administrator')
+  AND LOWER(email) NOT IN ('admin@piggytrunk.com', 'admin@gmail.com', 'piggytrunk@gmail.com');
+
+-- 8. Wipe all profile and avatar pictures from Supabase Storage
 -- (Bucket 'profile_pictures' only; 'product-images' is completely untouched)
 DELETE FROM storage.objects
 WHERE bucket_id = 'profile_pictures';
-
-DROP TABLE temp_users_to_purge;
 
 COMMIT;
 
