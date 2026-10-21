@@ -68,10 +68,11 @@ DELETE FROM public.app_users
 WHERE LOWER(role) NOT IN ('admin', 'administrator', 'system administrator')
   AND LOWER(email) NOT IN ('admin@piggytrunk.com', 'admin@gmail.com', 'piggytrunk@gmail.com');
 
--- 8. Wipe all profile and avatar pictures from Supabase Storage
--- (Bucket 'profile_pictures' only; 'product-images' is completely untouched)
-DELETE FROM storage.objects
-WHERE bucket_id = 'profile_pictures';
+-- 8. Note on Storage:
+-- Supabase has a security trigger (storage.protect_delete()) that prevents direct SQL deletion
+-- from storage.objects. To wipe profile pictures:
+-- Go to Supabase Dashboard -> Storage -> Click 'profile_pictures' -> Click 'Empty bucket' (or select all and delete).
+-- (Leave 'product-images' untouched).
 
 COMMIT;
 
