@@ -43,6 +43,7 @@ Run these files sequentially in the Supabase SQL Editor, or run `sql/combined_sc
 
 ---
 
-### Cleaning an Existing Supabase Project
+### Cleaning & Synchronizing an Existing Supabase Project
 - `38_zero_clean_state_cleanup.sql` - Zero-clean state reset (clears hog raisers, partner investors, cashiers, profile avatars, and all notifications while preserving POS products, images, and admin account)
+- `39_sync_completed_batch_investment_status.sql` - Automatic sync trigger & backfill for completed batches, assignments, and investments when hogs reach terminal stage (Selling/Lactation)
 - If your Supabase project still has old prototype tables (`logs`, `supply`, `capital_infusions`, `hog_stage_logs`, `hog_stages`), run: `sql/cleanup_supabase_redundant_items.sql`

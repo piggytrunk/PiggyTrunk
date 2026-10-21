@@ -24,7 +24,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // KPI values
   int _activeRaisers = 0;
   int _batchCount = 0;
+  int _completedBatchesCount = 0;
   double _totalCapital = 0;
+  double _completedCapital = 0;
 
   // Allocation values
   double _fatteningCapital = 0;
@@ -90,7 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // 2. Fetch Batches directly for accurate batch count & name mapping
       List<dynamic> batchesRaw = [];
       try {
-        batchesRaw = await _supabase.from('batches').select('batch_id, batch_name');
+        batchesRaw = await _supabase.from('batches').select('batch_id, batch_name, status');
       } catch (bErr) {
         debugPrint('Notice loading batches: $bErr');
         try {
@@ -103,6 +105,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final Map<String, String> batchesMap = {
         for (var b in batchesRaw)
           (b['batch_id'] ?? b['id'] ?? '').toString(): (b['batch_name'] ?? 'Batch #${b['batch_id']}').toString()
+      };
+      final Map<String, String> batchStatusMap = {
+        for (var b in batchesRaw)
+          (b['batch_id'] ?? b['id'] ?? '').toString(): (b['status'] ?? b['batch_status'] ?? 'Active').toString()
       };
 
       // 3. Load investment records to compute Admin Initial Capital
@@ -121,28 +127,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
 
-      double calculatedInitialCapital = 0;
-      double calculatedFatteningInitialCapital = 0;
-      double calculatedSowInitialCapital = 0;
       final Map<String, Set<String>> raiserInvestmentTypesMap = {};
       final Map<String, DateTime> raiserLatestInvestmentDate = {};
       final Map<String, String> raiserBatchNameMap = {};
 
       for (var inv in invList) {
         if (inv is! Map) continue;
-        final rawCap = inv['initial_capital'];
-        final amt = rawCap is num
-            ? rawCap.toDouble()
-            : double.tryParse(rawCap?.toString() ?? '0') ?? 0;
-        calculatedInitialCapital += amt;
-
-        final ht = (inv['hog_type'] ?? '').toString().toLowerCase();
-        if (ht.contains('sow') || ht.contains('inahin')) {
-          calculatedSowInitialCapital += amt;
-        } else {
-          calculatedFatteningInitialCapital += amt;
-        }
-
         final rId = inv['hog_raiser_id']?.toString() ?? '';
         final rawHt = (inv['hog_type'] ?? '').toString().trim();
         // Collect ALL distinct pig types per raiser (not just first)
@@ -165,10 +155,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       // Also check partner investments in `investments` (and admin_notifications fallback)
+      List<dynamic> partnerInvRows = [];
       try {
-        final partnerInvRes = await _supabase.from('investments').select('amount, status');
+        final partnerInvRes = await _supabase.from('investments').select('amount, status, batch_id');
+        partnerInvRows = partnerInvRes as List? ?? [];
         double partnerAmt = 0;
-        for (var p in (partnerInvRes as List? ?? [])) {
+        for (var p in partnerInvRows) {
           if (p is! Map) continue;
           final st = (p['status'] ?? '').toString().toLowerCase();
           if (st == 'archived' || st == 'cancelled') continue;
@@ -185,15 +177,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             for (var n in (notifsRes as List? ?? [])) {
               if (n is! Map) continue;
               final meta = n['metadata'] as Map<String, dynamic>? ?? {};
-              partnerAmt += (meta['amount'] as num?)?.toDouble() ?? 0.0;
+              final amt = (meta['amount'] as num?)?.toDouble() ?? 0.0;
+              partnerAmt += amt;
+              partnerInvRows.add({'amount': amt, 'status': 'active'});
             }
           } catch (_) {}
-        }
-
-        if (calculatedInitialCapital == 0 && partnerAmt > 0) {
-          calculatedInitialCapital = partnerAmt;
-          calculatedFatteningInitialCapital = partnerAmt * 0.5;
-          calculatedSowInitialCapital = partnerAmt * 0.5;
         }
       } catch (piErr) {
         debugPrint('Notice loading partner investments: $piErr');
@@ -205,9 +193,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final Map<String, int> raiserSowStageIdMap = {};
       final Map<String, int> raiserFatteningStageIdMap = {};
       final Map<String, List<Map<String, dynamic>>> raiserHogsMap = {};
+      List<dynamic> assignmentsRes = [];
+      final Map<String, List<Map<String, dynamic>>> assignHogsMap = {};
 
       try {
-        List<dynamic> assignmentsRes = [];
         try {
           assignmentsRes = await _supabase
               .from('assignments')
@@ -219,10 +208,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final hogsRes = await _supabase
             .from('hogs')
-            .select('*')
-            .eq('status', 'active');
+            .select('*');
 
-        final Map<String, List<Map<String, dynamic>>> assignHogsMap = {};
         final Map<String, String> assignmentTypeMap = {};
         for (final assignment in assignmentsRes) {
           if (assignment is! Map) continue;
@@ -333,70 +320,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       const double defaultFeedPrice = 1650.0;
-      double calculatedStocksProvided = 0;
-      double calculatedFatteningStocks = 0;
-      double calculatedSowStocks = 0;
-
+      List<dynamic> stockReqRows = [];
       // 6. Load approved stock requests (Stocks provided for Hog Raisers)
       try {
         final stockReqRes = await _supabase
             .from('stock_requests')
             .select('request_id, hog_raiser_id, category, quantity, feed_type, status')
             .eq('status', 'approved');
-
-        for (var req in (stockReqRes as List? ?? [])) {
-          if (req is! Map) continue;
-          final qty = (req['quantity'] as num?)?.toDouble() ?? 1.0;
-          final fType = (req['feed_type'] ?? '').toString().trim().toLowerCase();
-          final cat = (req['category'] ?? '').toString().trim().toLowerCase();
-          final rId = (req['hog_raiser_id'] ?? '').toString();
-
-          final unitPrice = productPriceMap[fType] ??
-              productPriceMap[cat] ??
-              defaultFeedPrice;
-
-          final totalReqValue = qty * unitPrice;
-          calculatedStocksProvided += totalReqValue;
-
-          final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
-          final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
-          if (raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin')) {
-            calculatedSowStocks += totalReqValue;
-          } else {
-            calculatedFatteningStocks += totalReqValue;
-          }
-        }
+        stockReqRows = stockReqRes as List? ?? [];
       } catch (sErr) {
         debugPrint('Notice loading stock requests for dashboard: $sErr');
       }
 
+      List<dynamic> distSalesRows = [];
       // 7. Also include sales marked as raiser_distribution if any
       try {
         final distSalesRes = await _supabase
             .from('sales')
             .select('total_amount, hog_raiser_id, type')
             .eq('type', 'raiser_distribution');
-
-        for (var s in (distSalesRes as List? ?? [])) {
-          if (s is! Map) continue;
-          final amt = (s['total_amount'] as num?)?.toDouble() ?? 0.0;
-          final rId = (s['hog_raiser_id'] ?? '').toString();
-          calculatedStocksProvided += amt;
-          final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
-          final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
-          if (raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin')) {
-            calculatedSowStocks += amt;
-          } else {
-            calculatedFatteningStocks += amt;
-          }
-        }
+        distSalesRows = distSalesRes as List? ?? [];
       } catch (salesErr) {
         debugPrint('Notice loading distribution sales for dashboard: $salesErr');
       }
-
-      final double calculatedTotalCapital = calculatedInitialCapital + calculatedStocksProvided;
-      final double calculatedFatteningCapital = calculatedFatteningInitialCapital + calculatedFatteningStocks;
-      final double calculatedSowCapital = calculatedSowInitialCapital + calculatedSowStocks;
 
       // Filter active raisers accurately matching Hog Raiser screen
       final allRaiserMaps = (raisersRes as List? ?? []).whereType<Map>().map((r) => Map<String, dynamic>.from(r)).toList();
@@ -533,15 +479,209 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return idB.compareTo(idA);
         });
 
-        // Align with mobile app: if batches table is empty, each active raiser represents an active batch
+        final assignedRaisers = list.where(_isRaiserAssignedToBatch).toList();
+        final inProgressRaisers = assignedRaisers.where((r) => !_isRaiserCycleCompleted(r)).toList();
+        final completedRaisers = assignedRaisers.where((r) => _isRaiserCycleCompleted(r)).toList();
+
+        final Set<String> activeRaiserIds = inProgressRaisers.map((r) => (r['hog_raiser_id'] ?? '').toString()).toSet();
+        final Set<String> completedRaiserIds = completedRaisers.map((r) => (r['hog_raiser_id'] ?? '').toString()).toSet();
+
+        // 1. Identify active vs finished batches accurately
+        final Set<String> completedBatchIds = {};
+        final Set<String> completedBatchNames = {};
+        final Set<String> activeBatchIds = {};
+
+        for (var b in batchesRaw) {
+          if (b is! Map) continue;
+          final bId = (b['batch_id'] ?? b['id'] ?? '').toString();
+          final bName = (b['batch_name'] ?? '').toString().trim().toLowerCase();
+          final bStatus = (batchStatusMap[bId] ?? b['status'] ?? b['batch_status'] ?? '').toString().toLowerCase();
+
+          // Gather all hogs assigned to this batch across its assignments
+          final batchHogs = <Map<String, dynamic>>[];
+          for (var a in assignmentsRes) {
+            if (a is! Map) continue;
+            if ((a['batch_id'] ?? '').toString() == bId) {
+              final aId = (a['assignment_id'] ?? a['id'] ?? '').toString();
+              if (assignHogsMap.containsKey(aId)) {
+                batchHogs.addAll(assignHogsMap[aId]!);
+              }
+            }
+          }
+
+          bool allHogsDone = false;
+          if (batchHogs.isNotEmpty) {
+            allHogsDone = batchHogs.every((h) {
+              final health = (h['health_status'] ?? '').toString().toLowerCase();
+              if (health == 'dead') return true;
+              final sId = int.tryParse((h['stage_id'] ?? '').toString());
+              final rawType = (h['pig_type'] ?? '').toString().toLowerCase();
+              final isBreed = rawType.contains('sow') || rawType.contains('breed') || rawType.contains('inahin');
+              final stage = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+              final hStatus = (h['status'] ?? '').toString().toLowerCase();
+              return (sId != null && sId >= 6) ||
+                  stage == 'selling' ||
+                  stage == 'sold' ||
+                  stage == 'lactation' ||
+                  stage == 'completed' ||
+                  hStatus == 'completed' ||
+                  hStatus == 'archived';
+            });
+          }
+
+          if (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || allHogsDone) {
+            if (bId.isNotEmpty) completedBatchIds.add(bId);
+            if (bName.isNotEmpty) completedBatchNames.add(bName);
+          } else if (bId.isNotEmpty) {
+            activeBatchIds.add(bId);
+          }
+        }
+
+        // Also register any batch names completed by raisers
+        for (var cr in completedRaisers) {
+          final bName = (cr['batch_name'] ?? '').toString().trim().toLowerCase();
+          if (bName.isNotEmpty && bName != 'unassigned') {
+            completedBatchNames.add(bName);
+          }
+        }
+
+        // 2. Compute Active Capital vs Completed Capital
+        double calculatedActiveCapital = 0;
+        double calculatedActiveFatteningCapital = 0;
+        double calculatedActiveSowCapital = 0;
+        double calculatedCompletedCapital = 0;
+
+        for (var inv in invList) {
+          if (inv is! Map) continue;
+          final rawCap = inv['initial_capital'];
+          final amt = rawCap is num
+              ? rawCap.toDouble()
+              : double.tryParse(rawCap?.toString() ?? '0') ?? 0;
+
+          final invStage = (inv['stage'] ?? inv['status'] ?? '').toString().toLowerCase();
+          final rId = (inv['hog_raiser_id'] ?? '').toString();
+          final bId = (inv['batch_id'] ?? '').toString();
+          final bName = (inv['batch_name'] ?? '').toString().trim().toLowerCase();
+
+          final bool isInvCompleted = invStage == 'completed' ||
+              invStage == 'finished' ||
+              invStage == 'archived' ||
+              (bId.isNotEmpty && completedBatchIds.contains(bId)) ||
+              (bName.isNotEmpty && completedBatchNames.contains(bName)) ||
+              (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+
+          final ht = (inv['hog_type'] ?? '').toString().toLowerCase();
+          final isSow = ht.contains('sow') || ht.contains('inahin') || ht.contains('breed');
+
+          if (isInvCompleted) {
+            calculatedCompletedCapital += amt;
+          } else {
+            calculatedActiveCapital += amt;
+            if (isSow) {
+              calculatedActiveSowCapital += amt;
+            } else {
+              calculatedActiveFatteningCapital += amt;
+            }
+          }
+        }
+
+        // 3. Compute Active Stocks vs Completed Stocks
+        double calculatedActiveStocks = 0;
+        double calculatedActiveFatteningStocks = 0;
+        double calculatedActiveSowStocks = 0;
+        double calculatedCompletedStocks = 0;
+
+        for (var req in stockReqRows) {
+          if (req is! Map) continue;
+          final qty = (req['quantity'] as num?)?.toDouble() ?? 1.0;
+          final fType = (req['feed_type'] ?? '').toString().trim().toLowerCase();
+          final cat = (req['category'] ?? '').toString().trim().toLowerCase();
+          final rId = (req['hog_raiser_id'] ?? '').toString();
+
+          final unitPrice = productPriceMap[fType] ??
+              productPriceMap[cat] ??
+              defaultFeedPrice;
+
+          final totalReqValue = qty * unitPrice;
+          final bool isReqCompleted = (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+
+          final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
+          final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
+          final isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+
+          if (isReqCompleted) {
+            calculatedCompletedStocks += totalReqValue;
+          } else {
+            calculatedActiveStocks += totalReqValue;
+            if (isSow) {
+              calculatedActiveSowStocks += totalReqValue;
+            } else {
+              calculatedActiveFatteningStocks += totalReqValue;
+            }
+          }
+        }
+
+        // 4. Compute Distribution Sales
+        for (var s in distSalesRows) {
+          if (s is! Map) continue;
+          final amt = (s['total_amount'] as num?)?.toDouble() ?? 0.0;
+          final rId = (s['hog_raiser_id'] ?? '').toString();
+          final bool isDistCompleted = (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+
+          final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
+          final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
+          final isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+
+          if (isDistCompleted) {
+            calculatedCompletedStocks += amt;
+          } else {
+            calculatedActiveStocks += amt;
+            if (isSow) {
+              calculatedActiveSowStocks += amt;
+            } else {
+              calculatedActiveFatteningStocks += amt;
+            }
+          }
+        }
+
+        // 5. Compute Partner Investments
+        for (var p in partnerInvRows) {
+          if (p is! Map) continue;
+          final st = (p['status'] ?? '').toString().toLowerCase();
+          if (st == 'archived' || st == 'cancelled') continue;
+          final pAmt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+          final pBatchId = (p['batch_id'] ?? '').toString();
+
+          final bool isPartnerCompleted = st == 'completed' || (pBatchId.isNotEmpty && completedBatchIds.contains(pBatchId));
+          if (isPartnerCompleted) {
+            calculatedCompletedCapital += pAmt;
+          } else if (calculatedActiveCapital == 0 && calculatedCompletedCapital == 0) {
+            calculatedActiveCapital += pAmt;
+            calculatedActiveFatteningCapital += pAmt * 0.5;
+            calculatedActiveSowCapital += pAmt * 0.5;
+          }
+        }
+
+        final double calculatedTotalActiveCapital = calculatedActiveCapital + calculatedActiveStocks;
+        final double calculatedTotalCompletedCapital = calculatedCompletedCapital + calculatedCompletedStocks;
+        final double calculatedFatteningCapital = calculatedActiveFatteningCapital + calculatedActiveFatteningStocks;
+        final double calculatedSowCapital = calculatedActiveSowCapital + calculatedActiveSowStocks;
+
+        // Active batches count
         final calculatedBatchCount = batchesRaw.isNotEmpty
-            ? batchesRaw.length
-            : (invList.isNotEmpty ? invList.length : list.length);
+            ? activeBatchIds.length
+            : inProgressRaisers.length;
+
+        final calculatedCompletedBatchCount = completedBatchIds.isNotEmpty
+            ? completedBatchIds.length
+            : completedRaisers.length;
 
         setState(() {
-          _activeRaisers = list.length;
+          _activeRaisers = inProgressRaisers.length;
           _batchCount = calculatedBatchCount;
-          _totalCapital = calculatedTotalCapital;
+          _completedBatchesCount = calculatedCompletedBatchCount;
+          _totalCapital = calculatedTotalActiveCapital;
+          _completedCapital = calculatedTotalCompletedCapital;
           _fatteningCapital = calculatedFatteningCapital;
           _sowCapital = calculatedSowCapital;
           _activeRaisersList = list;
@@ -677,16 +817,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return idB.compareTo(idA);
       });
 
-      final calculatedFallbackBatches = batches.isNotEmpty
-          ? batches.length
-          : (investmentRows.isNotEmpty ? investmentRows.length : cleanedActiveRaisers.length);
+      final assignedRaisers = cleanedActiveRaisers.where(_isRaiserAssignedToBatch).toList();
+      final inProgressRaisers = assignedRaisers.where((r) => !_isRaiserCycleCompleted(r)).toList();
+      final completedRaisers = assignedRaisers.where((r) => _isRaiserCycleCompleted(r)).toList();
+
+      final calculatedFallbackBatches = inProgressRaisers.isNotEmpty
+          ? (batches.isNotEmpty ? batches.length : inProgressRaisers.length)
+          : 0;
 
       setState(() {
-        _activeRaisers = cleanedActiveRaisers.length;
+        _activeRaisers = inProgressRaisers.length;
         _batchCount = calculatedFallbackBatches;
-        _totalCapital = totalCapital;
-        _fatteningCapital = fatteningCapital;
-        _sowCapital = sowCapital;
+        _completedBatchesCount = completedRaisers.length;
+        _totalCapital = inProgressRaisers.isEmpty ? 0 : totalCapital;
+        _completedCapital = inProgressRaisers.isEmpty ? totalCapital : 0;
+        _fatteningCapital = inProgressRaisers.isEmpty ? 0 : fatteningCapital;
+        _sowCapital = inProgressRaisers.isEmpty ? 0 : sowCapital;
         _activeRaisersList = cleanedActiveRaisers;
       });
     } catch (_) {
@@ -838,10 +984,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildKpiCardsRow() {
     final isMobile = Responsive.isMobile(context);
     final kpiData = [
-      {'label': 'NUMBER OF HOG BATCH', 'value': _batchCount.toString()},
+      {
+        'label': 'NUMBER OF HOG BATCH',
+        'value': _batchCount.toString(),
+        'subtitle': _batchCount == 0 && _completedBatchesCount > 0
+            ? '$_completedBatchesCount finished batch${_completedBatchesCount == 1 ? '' : 'es'}'
+            : (_completedBatchesCount > 0
+                ? '$_completedBatchesCount finished'
+                : ''),
+      },
       {
         'label': 'TOTAL CURRENT INVESTMENT',
         'value': _formatCurrency(_totalCapital),
+        'subtitle': _totalCapital == 0 && _completedCapital > 0
+            ? 'Completed / Lifetime: ${_formatCurrency(_completedCapital)}'
+            : (_completedCapital > 0
+                ? 'Completed: ${_formatCurrency(_completedCapital)}'
+                : ''),
       },
     ];
 
@@ -851,14 +1010,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return Column(
         children: [
           _buildKpiCard(
-            label: kpiData[0]['label'] as String,
-            value: kpiData[0]['value'] as String,
+            label: kpiData[0]['label'] ?? '',
+            value: kpiData[0]['value'] ?? '',
+            subtitle: kpiData[0]['subtitle'],
             isMobile: isMobile,
           ),
           const SizedBox(height: 12),
           _buildKpiCard(
-            label: kpiData[1]['label'] as String,
-            value: kpiData[1]['value'] as String,
+            label: kpiData[1]['label'] ?? '',
+            value: kpiData[1]['value'] ?? '',
+            subtitle: kpiData[1]['subtitle'],
             isMobile: isMobile,
           ),
         ],
@@ -869,16 +1030,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Expanded(
           child: _buildKpiCard(
-            label: kpiData[0]['label'] as String,
-            value: kpiData[0]['value'] as String,
+            label: kpiData[0]['label'] ?? '',
+            value: kpiData[0]['value'] ?? '',
+            subtitle: kpiData[0]['subtitle'],
             isMobile: isMobile,
           ),
         ),
         SizedBox(width: isMobile ? 12 : 20),
         Expanded(
           child: _buildKpiCard(
-            label: kpiData[1]['label'] as String,
-            value: kpiData[1]['value'] as String,
+            label: kpiData[1]['label'] ?? '',
+            value: kpiData[1]['value'] ?? '',
+            subtitle: kpiData[1]['subtitle'],
             isMobile: isMobile,
           ),
         ),
@@ -890,6 +1053,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildKpiCard({
     required String label,
     required String value,
+    String? subtitle,
     bool isMobile = false,
   }) {
     return Container(
@@ -927,6 +1091,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
+          if (subtitle != null && subtitle.isNotEmpty) ...[
+            SizedBox(height: isMobile ? 4 : 6),
+            Text(
+              subtitle,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: isMobile ? 11 : 12,
+                fontWeight: FontWeight.w500,
+                color: _mutedDark,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -975,13 +1150,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            '$_activeRaisers active raiser${_activeRaisers == 1 ? '' : 's'}',
+            _activeRaisers > 0
+                ? '$_activeRaisers active raiser${_activeRaisers == 1 ? '' : 's'}'
+                : '0 active raisers (all cycles finished)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: isMobile ? 11 : 12,
               fontWeight: FontWeight.w500,
               color: _mutedDark,
             ),
           ),
+          if (_activeRaisers == 0 && _completedCapital > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: _isDark
+                    ? PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.12)
+                    : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _isDark
+                      ? PiggyTrunkTheme.ptBorderDark
+                      : PiggyTrunkTheme.ptBorder,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: _isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptPrimary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'All feeding cycles are currently completed. Capital will be allocated once new batches are assigned.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isMobile ? 11 : 12,
+                        fontWeight: FontWeight.w500,
+                        color: _isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: isMobile ? 14 : 20),
           if (isVeryNarrow)
             Column(
@@ -1074,16 +1289,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
     if (raiserHogs.isNotEmpty) {
       return raiserHogs.every((h) {
+        final health = (h['health_status'] ?? '').toString().toLowerCase();
+        if (health == 'dead') return true;
+
+        final sId = int.tryParse((h['stage_id'] ?? '').toString());
         final rawHType = (h['pig_type'] ?? '').toString().trim();
-        final hIsBreed = rawHType.toLowerCase().contains('sow') || rawHType.toLowerCase().contains('breed');
+        final hIsBreed = rawHType.toLowerCase().contains('sow') ||
+            rawHType.toLowerCase().contains('breed') ||
+            rawHType.toLowerCase().contains('inahin');
         final stage = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], hIsBreed).toLowerCase();
-        return stage == 'selling' || stage == 'lactation' || stage == 'completed';
+        final hogStatus = (h['status'] ?? '').toString().toLowerCase();
+
+        return (sId != null && sId >= 6) ||
+            stage == 'selling' ||
+            stage == 'sold' ||
+            stage == 'lactation' ||
+            stage == 'completed' ||
+            hogStatus == 'completed' ||
+            hogStatus == 'archived';
       });
     }
     final rawType = (raiser['pig_type'] ?? '').toString().trim();
-    final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+    final isBreed = rawType.toLowerCase().contains('sow') ||
+        rawType.toLowerCase().contains('breed') ||
+        rawType.toLowerCase().contains('inahin');
     final currentStage = _resolveStageName(raiser['lifecycle_stage'], isBreed).toLowerCase();
-    return currentStage == 'selling' || currentStage == 'lactation' || currentStage == 'completed';
+    final sId = int.tryParse((raiser['lifecycle_stage'] ?? '').toString());
+    return (sId != null && sId >= 6) ||
+        currentStage == 'selling' ||
+        currentStage == 'sold' ||
+        currentStage == 'lactation' ||
+        currentStage == 'completed';
   }
 
   bool _isRaiserAssignedToBatch(Map<String, dynamic> raiser) {
@@ -1219,13 +1455,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 1.5),
                           decoration: BoxDecoration(
                             color: _isDark
-                                ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
-                                : const Color(0xFFDBEAFE),
+                                ? PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.18)
+                                : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _isDark
-                                  ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
-                                  : const Color(0xFF93C5FD).withValues(alpha: 0.6),
+                                  ? PiggyTrunkTheme.ptBorderDark.withValues(alpha: 0.6)
+                                  : PiggyTrunkTheme.ptBorder,
                               width: 0.8,
                             ),
                           ),
@@ -1235,8 +1471,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
                               color: _isDark
-                                  ? const Color(0xFF93C5FD)
-                                  : const Color(0xFF1E40AF),
+                                  ? PiggyTrunkTheme.ptMutedDark
+                                  : PiggyTrunkTheme.ptPrimary,
                             ),
                           ),
                         ),
@@ -1264,7 +1500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Icon(
                       Icons.check_circle_outline_rounded,
                       size: 40,
-                      color: const Color(0xFF3B82F6).withValues(alpha: 0.8),
+                      color: (_isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.8),
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -1295,8 +1531,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         icon: const Icon(Icons.history_rounded, size: 15),
                         label: Text('View Finished Lifecycles (${completedRaisers.length})'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF3B82F6),
-                          side: const BorderSide(color: Color(0xFF3B82F6)),
+                          foregroundColor: _isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary,
+                          side: BorderSide(color: _isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptPrimary),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
