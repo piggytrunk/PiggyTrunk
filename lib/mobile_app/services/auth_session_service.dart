@@ -107,6 +107,12 @@ class AuthSessionService {
               'targetRoute': '/onboarding',
               'isPending': true,
             };
+          } else {
+            // Account was removed in the backend: wipe stale local mobile session
+            try {
+              await clearSession();
+              await _supabase.auth.signOut();
+            } catch (_) {}
           }
         }
       }
@@ -157,6 +163,13 @@ class AuthSessionService {
               'targetRoute': '/onboarding',
               'isPending': true,
             };
+          } else {
+            // Account was removed in the backend: disconnect stale Google session
+            try {
+              await clearSession();
+              await googleSignIn.signOut();
+              await _supabase.auth.signOut();
+            } catch (_) {}
           }
         }
       } catch (googleErr) {
@@ -182,6 +195,12 @@ class AuthSessionService {
             'targetRoute': '/onboarding',
             'isPending': true,
           };
+        } else {
+          // Account was removed in the backend: wipe stale local secure storage
+          try {
+            await clearSession();
+            await _supabase.auth.signOut();
+          } catch (_) {}
         }
       }
     } catch (e) {
