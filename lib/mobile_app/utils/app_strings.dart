@@ -199,6 +199,15 @@ class AppStrings {
   String get changePhotoOption => isFilipino ? 'Larawan ng Profile' : 'Profile Photo';
   String get uploadNewPhoto => isFilipino ? 'Mag-upload ng Bagong Larawan' : 'Upload New Photo';
   String get restoreDefaultLogo => isFilipino ? 'Ibalik ang Default na Logo' : 'Restore Default Logo';
+  String get profilePictureUploadFailed => isFilipino
+      ? 'Hindi na-upload ang larawan ng profile. Pakisubukang muli.'
+      : 'Failed to upload profile photo. Please try again.';
+  String get profilePictureUploadOffline => isFilipino
+      ? 'Kailangan ng koneksyon sa internet upang mag-upload ng profile photo.'
+      : 'Internet connection is required to upload profile photo.';
+  String get offlineNotificationTitle => isFilipino
+      ? 'Walang Koneksyon sa Internet'
+      : 'No Internet Connection';
   String get no => isFilipino ? 'Hindi' : 'No';
   String get yesReset => isFilipino ? 'Oo, I-reset' : 'Yes, Reset';
   String get noWeightRecorded => isFilipino ? 'Walang tala ng timbang' : 'No weight recorded';

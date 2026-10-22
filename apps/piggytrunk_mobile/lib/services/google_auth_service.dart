@@ -163,20 +163,6 @@ class GoogleAuthService {
       final String currentStatus = (existingUser['status'] ?? 'Pending').toString();
       final existingUserId = existingUser['user_id'];
 
-      // If user signed up via Google with an explicitly selected role (e.g. Cashier)
-      // but was defaulted to 'hog_raiser' by the trigger while still Pending, heal role
-      if (isSignUpMode &&
-          targetRole != null &&
-          targetRole.isNotEmpty &&
-          currentStatus == 'Pending' &&
-          currentRole != targetRole) {
-        return await completeGoogleRegistration(
-          email: email,
-          selectedRole: targetRole,
-          fullName: nameToUse,
-        );
-      }
-
       // Link supabase_user_id if not linked yet
       try {
         await _supabase
@@ -255,7 +241,7 @@ class GoogleAuthService {
       if (newUserId != null) {
         if (selectedRole == 'hog_raiser' || selectedRole == 'raiser') {
           try {
-            await _supabase.from('hog_raisers').upsert({
+            await _supabase.from('hog_raisers').insert({
               'user_id': newUserId,
               'name': nameToUse,
               'phone': 'N/A',
@@ -264,85 +250,48 @@ class GoogleAuthService {
               'account_status': 'Pending',
               'pig_type': 'N/A',
               'lifecycle_stage': 'N/A',
-            }, onConflict: 'user_id');
+            });
           } catch (raiserErr) {
             debugPrint('Hog raiser auto-create notice: $raiserErr');
           }
         } else if (selectedRole == 'partner' || selectedRole == 'investor') {
           try {
-            await _supabase.from('partner_investors').upsert({
+            await _supabase.from('partner_investors').insert({
               'user_id': newUserId,
-            }, onConflict: 'user_id');
+            });
           } catch (partnerErr) {
             debugPrint('Partner investor auto-create notice: $partnerErr');
           }
         } else if (selectedRole == 'cashier') {
           try {
-            await _supabase.from('cashiers').upsert({
+            await _supabase.from('cashiers').insert({
               'user_id': newUserId,
               'status': 'Pending',
-              'date_hired': DateTime.now().toIso8601String().split('T').first,
-            }, onConflict: 'user_id');
+            });
           } catch (cashierErr) {
-            try {
-              await _supabase.from('cashiers').upsert({
-                'user_id': newUserId,
-                'date_hired': DateTime.now().toIso8601String().split('T').first,
-              }, onConflict: 'user_id');
-            } catch (_) {}
             debugPrint('Cashier auto-create notice: $cashierErr');
           }
         }
 
-        // Also update auth.users metadata with chosen role so future sessions retain it
-        try {
-          await _supabase.auth.updateUser(
-            UserAttributes(data: {'role': selectedRole, 'full_name': nameToUse}),
-          );
-        } catch (_) {}
-
-        // Send or Update Notification to Admin Web
+        // Send Notification to Admin Web
         try {
           final String roleDisplay = selectedRole == 'hog_raiser' || selectedRole == 'raiser'
               ? 'Hog Raiser'
               : (selectedRole == 'partner' || selectedRole == 'investor' ? 'Partner Investor' : 'Cashier');
-
-          // Check if trigger created a default registration notification (e.g. as Hog Raiser)
-          final existingNotifs = await _supabase
-              .from('admin_notifications')
-              .select('notification_id')
-              .eq('type', 'user_registration')
-              .or('metadata->>email.eq.$email,message.ilike.%$email%');
-
-          if (existingNotifs.isNotEmpty) {
-            final notifId = existingNotifs.first['notification_id'];
-            await _supabase.from('admin_notifications').update({
-              'title': 'New User Registration',
-              'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
-              'is_read': false,
-              'metadata': {
-                'user_id': newUserId,
-                'email': email,
-                'name': nameToUse,
-                'role': selectedRole,
-              },
-            }).eq('notification_id', notifId);
-          } else {
-            await _supabase.from('admin_notifications').insert({
-              'title': 'New User Registration',
-              'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
-              'type': 'user_registration',
-              'is_read': false,
-              'metadata': {
-                'user_id': newUserId,
-                'email': email,
-                'name': nameToUse,
-                'role': selectedRole,
-              },
-            });
-          }
+          await _supabase.from('admin_notifications').insert({
+            'title': 'New User Registration',
+            'message': '$nameToUse ($email) registered as $roleDisplay and is pending approval.',
+            'type': 'user_registration',
+            'is_read': false,
+            'metadata': {
+              'user_id': newUserId,
+              'email': email,
+              'name': nameToUse,
+              'role': selectedRole,
+            },
+          });
         } catch (notifErr) {
-          debugPrint('Admin notification insert/update notice: $notifErr');
+          debugPrint('Admin notification insert notice: $notifErr');
         }
 
         // Trigger Registration Email via Gmail SMTP

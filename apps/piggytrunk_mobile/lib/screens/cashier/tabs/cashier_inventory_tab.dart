@@ -610,26 +610,6 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   }
 
   Widget _buildArchiveToggle() {
-    final Color bgColor;
-    final Color contentColor;
-    final Border? border;
-
-    if (_isDark) {
-      bgColor = Colors.white;
-      contentColor = PiggyTrunkTheme.ptPrimary;
-      border = null;
-    } else {
-      if (_isArchiveMode) {
-        bgColor = PiggyTrunkTheme.ptPrimary;
-        contentColor = Colors.white;
-        border = null;
-      } else {
-        bgColor = const Color(0xFFF1F5F9);
-        contentColor = _mutedColor;
-        border = Border.all(color: _cardBorder, width: 1.0);
-      }
-    }
-
     return InkWell(
       onTap: () {
         setState(() {
@@ -643,35 +623,35 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: bgColor,
+          color: _isArchiveMode
+              ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+              : (_isDark ? const Color(0xFF1A2B44) : const Color(0xFFF1F5F9)),
           borderRadius: BorderRadius.circular(10),
-          border: border,
-          boxShadow: _isDark
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
+          border: Border.all(
+            color: _isArchiveMode ? Colors.transparent : _cardBorder,
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
-              _isArchiveMode ? Icons.arrow_back_rounded : Icons.archive_outlined,
+              _isArchiveMode ? Icons.inventory_2_rounded : Icons.archive_outlined,
               size: 16,
-              color: contentColor,
+              color: _isArchiveMode
+                  ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
+                  : _mutedColor,
             ),
             const SizedBox(width: 6),
             Text(
-              _isArchiveMode ? 'Back to Inventory' : 'View Archived',
+              _isArchiveMode ? 'Archived Mode' : 'View Archived',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: contentColor,
+                color: _isArchiveMode
+                    ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
+                    : _mutedColor,
               ),
             ),
           ],

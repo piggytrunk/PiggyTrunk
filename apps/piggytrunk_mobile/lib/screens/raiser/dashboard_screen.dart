@@ -5,21 +5,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_session_service.dart';
-import '../../services/connectivity_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 import '../../widgets/piggy_toast.dart';
-import '../../widgets/address_autocomplete_field.dart';
 
 import 'tabs/raiser_home_tab.dart';
 import 'tabs/raiser_request_tab.dart';
 import 'tabs/raiser_hogs_tab.dart';
 import 'tabs/raiser_profile_tab.dart';
 import 'widgets/raiser_dashboard_skeleton.dart';
-import 'widgets/raiser_liquid_bottom_bar.dart';
 
 class MobileDashboardScreen extends StatefulWidget {
   const MobileDashboardScreen({super.key});
@@ -60,17 +58,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   void _subscribeToAssignmentsRealtime() {
     try {
       _dashboardAssignmentsChannel = Supabase.instance.client
-          .channel(
-            'public:dashboard_assignments_${DateTime.now().millisecondsSinceEpoch}',
-          )
+          .channel('public:dashboard_assignments_${DateTime.now().millisecondsSinceEpoch}')
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'assignments',
             callback: (payload) {
-              debugPrint(
-                'Dashboard realtime: assignments updated, refreshing silently...',
-              );
+              debugPrint('Dashboard realtime: assignments updated, refreshing silently...');
               if (mounted) _fetchRaiserData(showLoading: false);
             },
           )
@@ -79,31 +73,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             schema: 'public',
             table: 'batches',
             callback: (payload) {
-              debugPrint(
-                'Dashboard realtime: batches updated, refreshing silently...',
-              );
-              if (mounted) _fetchRaiserData(showLoading: false);
-            },
-          )
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'raiser_notifications',
-            callback: (payload) {
-              debugPrint(
-                'Dashboard realtime: raiser_notifications updated, refreshing silently...',
-              );
-              if (mounted) _fetchRaiserData(showLoading: false);
-            },
-          )
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'investments',
-            callback: (payload) {
-              debugPrint(
-                'Dashboard realtime: investments updated, refreshing silently...',
-              );
+              debugPrint('Dashboard realtime: batches updated, refreshing silently...');
               if (mounted) _fetchRaiserData(showLoading: false);
             },
           )
@@ -129,24 +99,15 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       if (user == null) {
         debugPrint('DEBUG ERROR: No logged in Supabase Auth user.');
         if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/onboarding',
-            (route) => false,
-          );
+          Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (route) => false);
         }
         return;
       }
-      debugPrint(
-        'DEBUG INFO: Logged in user Auth ID: ${user.id}, Email: ${user.email}',
-      );
+      debugPrint('DEBUG INFO: Logged in user Auth ID: ${user.id}, Email: ${user.email}');
 
       // Initialize native notification listener for Hog Raiser
       NotificationService().requestPermission();
-      NotificationService().startRoleRealtimeListener(
-        role: 'raiser',
-        userId: user.id,
-      );
+      NotificationService().startRoleRealtimeListener(role: 'raiser', userId: user.id);
 
       // 1. Fetch user profile from app_users
       var appUser = await Supabase.instance.client
@@ -189,8 +150,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       }
 
       final userId = appUser['user_id'];
-      final fallbackName =
-          (appUser['name'] ?? user.email ?? 'Hog Raiser') as String;
+      final fallbackName = (appUser['name'] ?? user.email ?? 'Hog Raiser') as String;
 
       // 2. Fetch raiser profile
       var raiser = await Supabase.instance.client
@@ -243,69 +203,36 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         throw Exception('Raiser ID is null!');
       }
 
-      // Keep native notification listener synced with both Auth UUID and integer hog_raiser_id
-      NotificationService().startRoleRealtimeListener(
-        role: 'raiser',
-        userId: user.id,
-        secondaryId: raiserId.toString(),
-      );
-
       // 3. Fetch total capital invested and total hogs from investment_records
       List<dynamic> capitalRes = [];
       try {
         capitalRes = await Supabase.instance.client
             .from('investment_records')
-            .select('*')
-            .eq('hog_raiser_id', raiserId.toString())
-            .order('investment_date', ascending: true);
+            .select('initial_capital, total_hog, hog_type, batch_id, batch_name, stage')
+            .eq('hog_raiser_id', raiserId.toString());
       } catch (_) {
         try {
           capitalRes = await Supabase.instance.client
               .from('investment_records')
-              .select('*')
+              .select('initial_capital, total_hog, hog_type')
               .eq('hog_raiser_id', raiserId.toString());
-        } catch (_) {
-          capitalRes = [];
-        }
+        } catch (_) {}
       }
 
       final invRows = List<Map<String, dynamic>>.from(capitalRes);
-      invRows.sort((a, b) {
-        final dateA = (a['investment_date'] ?? a['created_at'] ?? '')
-            .toString();
-        final dateB = (b['investment_date'] ?? b['created_at'] ?? '')
-            .toString();
-        final c = dateA.compareTo(dateB);
-        if (c != 0) return c;
-        final idA = int.tryParse((a['id'] ?? '').toString()) ?? 0;
-        final idB = int.tryParse((b['id'] ?? '').toString()) ?? 0;
-        return idA.compareTo(idB);
-      });
-
       double totalCapital = 0.0;
-      final List<String> investmentHogTypes = [];
       for (var row in invRows) {
-        final cap = (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
-        final count = (row['total_hog'] as num?)?.toInt() ?? 0;
-        final rawHType = (row['hog_type'] ?? 'Fattening').toString().trim();
-        final hType =
-            rawHType.toLowerCase().contains('sow') ||
-                rawHType.toLowerCase().contains('breed')
-            ? 'Sow'
-            : 'Fattening';
-        totalCapital += cap;
-        for (int i = 0; i < count; i++) {
-          investmentHogTypes.add(hType);
-        }
+        totalCapital += (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
       }
 
-      // 4. Fetch all assignments for this raiser (both active and completed)
+      // 4. Fetch assignments with flexible status matching
       List<dynamic> assignmentsRes = [];
       try {
         assignmentsRes = await Supabase.instance.client
             .from('assignments')
             .select('*, hog_types(*), batches(*)')
-            .eq('hog_raiser_id', raiserId);
+            .eq('hog_raiser_id', raiserId)
+            .or('status.eq.active,status.eq.Active,status.eq.assigned');
       } catch (_) {
         try {
           assignmentsRes = await Supabase.instance.client
@@ -315,12 +242,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         } catch (_) {}
       }
 
-      // Pre-fetch all batches safely to avoid losing assignments if relational join returns list or null
       List<dynamic> allBatchesRaw = [];
       try {
-        allBatchesRaw = await Supabase.instance.client
-            .from('batches')
-            .select('*');
+        allBatchesRaw = await Supabase.instance.client.from('batches').select('*');
       } catch (_) {}
       final Map<String, Map<String, dynamic>> allBatchesMap = {};
       for (var bRow in allBatchesRaw) {
@@ -336,9 +260,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         Map<String, dynamic>? b;
         if (a['batches'] is Map) {
           b = Map<String, dynamic>.from(a['batches'] as Map);
-        } else if (a['batches'] is List &&
-            (a['batches'] as List).isNotEmpty &&
-            (a['batches'] as List).first is Map) {
+        } else if (a['batches'] is List && (a['batches'] as List).isNotEmpty && (a['batches'] as List).first is Map) {
           b = Map<String, dynamic>.from((a['batches'] as List).first as Map);
         }
         if (b == null && a['batch_id'] != null) {
@@ -346,9 +268,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           if (b != null) a['batches'] = b;
         }
 
-        final bStatus = (b?['status'] ?? b?['batch_status'] ?? 'Active')
-            .toString()
-            .toLowerCase();
+        final bStatus = (b?['status'] ?? b?['batch_status'] ?? 'Active').toString().toLowerCase();
         if (bStatus != 'archived' && bStatus != 'deleted') {
           assignments.add(a);
         }
@@ -357,13 +277,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       // Self-healing: If assignments is empty but investment_records has batch info for this raiser
       if (assignments.isEmpty && invRows.isNotEmpty) {
         final latestInvWithBatch = invRows.reversed.firstWhere(
-          (inv) =>
-              (inv['batch_name'] ?? '').toString().trim().isNotEmpty &&
-              inv['batch_name'] != 'Unassigned',
+          (inv) => (inv['batch_name'] ?? '').toString().trim().isNotEmpty && inv['batch_name'] != 'Unassigned',
           orElse: () => invRows.last,
         );
-        final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch')
-            .toString();
+        final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch').toString();
         final bId = latestInvWithBatch['batch_id'];
         assignments.add({
           'assignment_id': null,
@@ -371,7 +288,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           'batch_name': bName,
           'status': 'active',
           'is_cycle_completed': false,
-          'batches': {'batch_id': bId, 'batch_name': bName, 'status': 'Active'},
+          'batches': {
+            'batch_id': bId,
+            'batch_name': bName,
+            'status': 'Active',
+          },
           'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
           'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
         });
@@ -389,13 +310,15 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           hogsRes = await Supabase.instance.client
               .from('hogs')
               .select('*')
-              .inFilter('assignment_id', activeAssignmentIds);
+              .inFilter('assignment_id', activeAssignmentIds)
+              .eq('status', 'active');
         } catch (_) {
           try {
             hogsRes = await Supabase.instance.client
                 .from('hogs')
                 .select('*, assignments!inner(*)')
-                .eq('assignments.hog_raiser_id', raiserId);
+                .eq('assignments.hog_raiser_id', raiserId)
+                .eq('status', 'active');
           } catch (_) {}
         }
       }
@@ -405,7 +328,8 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           final fallbackHogs = await Supabase.instance.client
               .from('hogs')
               .select('*, assignments!inner(*)')
-              .eq('assignments.hog_raiser_id', raiserId);
+              .eq('assignments.hog_raiser_id', raiserId)
+              .eq('status', 'active');
           if (fallbackHogs.isNotEmpty) {
             hogsRes = fallbackHogs;
           }
@@ -413,10 +337,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       }
 
       var hogs = List<Map<String, dynamic>>.from(hogsRes)
-          .where(
-            (h) =>
-                (h['health_status'] ?? '').toString().toLowerCase() != 'dead',
-          )
+          .where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
           .toList();
 
       hogs.sort((a, b) {
@@ -425,24 +346,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         return aId.compareTo(bId);
       });
 
-      // Ensure any orphan hogs for this raiser are associated with an active assignment
+      // Ensure any orphan hogs for this raiser are associated with the active assignment
       if (assignments.isNotEmpty && hogs.isNotEmpty) {
-        final validAssignIds = assignments
-            .map((a) => (a['assignment_id'] ?? a['id'])?.toString())
-            .whereType<String>()
-            .toSet();
-        final defaultActiveAssign = assignments.firstWhere(
-          (a) =>
-              a['is_cycle_completed'] != true &&
-              (a['status'] ?? '').toString().toLowerCase() != 'completed',
-          orElse: () => assignments.first,
-        );
-        final defaultAssignId =
-            defaultActiveAssign['assignment_id'] ?? defaultActiveAssign['id'];
+        final validAssignIds = assignments.map((a) => (a['assignment_id'] ?? a['id'])?.toString()).whereType<String>().toSet();
+        final defaultAssignId = assignments.first['assignment_id'] ?? assignments.first['id'];
         for (var h in hogs) {
           final hAId = h['assignment_id']?.toString();
-          if (hAId == null ||
-              (!validAssignIds.contains(hAId) && defaultAssignId != null)) {
+          if (hAId == null || !validAssignIds.contains(hAId)) {
             h['assignment_id'] = defaultAssignId;
           }
         }
@@ -474,24 +384,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         }
 
         if (assignedBatchType.isNotEmpty) {
-          // The batch's assignment is the authoritative type for hogs in that batch!
-          hog['pig_type'] =
-              assignedBatchType.toLowerCase().contains('sow') ||
-                  assignedBatchType.toLowerCase().contains('breed')
+          hog['pig_type'] = assignedBatchType.toLowerCase().contains('sow') || assignedBatchType.toLowerCase().contains('breed')
               ? 'Sow'
               : 'Fattening';
         } else {
-          final rawHogType =
-              (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '')
-                  .toString()
-                  .trim();
-          if (rawHogType.isNotEmpty &&
-              rawHogType != 'null' &&
-              rawHogType != 'None' &&
-              rawHogType != 'N/A') {
-            hog['pig_type'] =
-                rawHogType.toLowerCase().contains('sow') ||
-                    rawHogType.toLowerCase().contains('breed')
+          final rawHogType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '').toString().trim();
+          if (rawHogType.isNotEmpty && rawHogType != 'null' && rawHogType != 'None' && rawHogType != 'N/A') {
+            hog['pig_type'] = rawHogType.toLowerCase().contains('sow') || rawHogType.toLowerCase().contains('breed')
                 ? 'Sow'
                 : 'Fattening';
           } else {
@@ -500,71 +399,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         }
       }
 
-      // Mark cycle completion for each assignment based on status or terminal hog stages
-      for (var a in assignments) {
-        final aIdStr = (a['assignment_id'] ?? a['id'])?.toString();
-        final b = a['batches'] is Map ? a['batches'] as Map : null;
-        final bStatus = (b?['status'] ?? b?['batch_status'] ?? '')
-            .toString()
-            .toLowerCase();
-
-        final assignHogs = hogs
-            .where((h) => h['assignment_id']?.toString() == aIdStr)
-            .toList();
-        final rawHogType = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-            .toString()
-            .toLowerCase();
-        final isSow =
-            rawHogType.contains('sow') || rawHogType.contains('breed');
-
-        final isExplicitlyCompleted =
-            bStatus == 'completed' ||
-            bStatus == 'sold' ||
-            bStatus == 'finished' ||
-            bStatus == 'harvested' ||
-            (a['status'] ?? '').toString().toLowerCase() == 'completed' ||
-            (a['status'] ?? '').toString().toLowerCase() == 'finished';
-
-        if (isExplicitlyCompleted) {
-          a['is_cycle_completed'] = true;
-        } else if (assignHogs.isNotEmpty) {
-          // If there are hogs in this batch, the cycle is completed if ALL hogs reached final terminal stage or are marked completed!
-          final allHogsAtFinalStage = assignHogs.every((h) {
-            final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
-            final s =
-                (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
-            return hStatus == 'completed' ||
-                (isSow
-                    ? (s == 'lactation' || s == '6' || s.contains('lactat'))
-                    : (s == 'selling' ||
-                          s == 'sold' ||
-                          s == '6' ||
-                          s.contains('sell')));
-          });
-          a['is_cycle_completed'] = allHogsAtFinalStage;
-        } else {
-          final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '')
-              .toString()
-              .trim()
-              .toLowerCase();
-          bool stageCompleted = false;
-          if (isSow &&
-              (assignStage == 'lactation' || assignStage.contains('lactat'))) {
-            stageCompleted = true;
-          } else if (!isSow &&
-              (assignStage == 'selling' ||
-                  assignStage == 'sold' ||
-                  assignStage.contains('sell'))) {
-            stageCompleted = true;
-          }
-          a['is_cycle_completed'] = stageCompleted;
-        }
-      }
-
-      // 6. Fetch stock requests & product price catalog
+      // 6. Fetch stock requests & calculate distributed stocks spend
       List<dynamic> requestsRes = [];
       try {
         requestsRes = await Supabase.instance.client
@@ -610,16 +445,12 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           final pCat = (p['category'] ?? '').toString().trim().toLowerCase();
           final pPrice = (p['price'] as num?)?.toDouble() ?? 0.0;
           if (pName.isNotEmpty && pPrice > 0) productPriceMap[pName] = pPrice;
-          if (pCat.isNotEmpty &&
-              pPrice > 0 &&
-              !productPriceMap.containsKey(pCat)) {
+          if (pCat.isNotEmpty && pPrice > 0 && !productPriceMap.containsKey(pCat)) {
             productPriceMap[pCat] = pPrice;
           }
         }
       } catch (pErr) {
-        debugPrint(
-          'Notice fetching product prices from inventory_products: $pErr',
-        );
+        debugPrint('Notice fetching product prices from inventory_products: $pErr');
       }
 
       if (productPriceMap.isEmpty) {
@@ -633,9 +464,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             final pCat = (p['category'] ?? '').toString().trim().toLowerCase();
             final pPrice = (p['price'] as num?)?.toDouble() ?? 0.0;
             if (pName.isNotEmpty && pPrice > 0) productPriceMap[pName] = pPrice;
-            if (pCat.isNotEmpty &&
-                pPrice > 0 &&
-                !productPriceMap.containsKey(pCat)) {
+            if (pCat.isNotEmpty && pPrice > 0 && !productPriceMap.containsKey(pCat)) {
               productPriceMap[pCat] = pPrice;
             }
           }
@@ -645,206 +474,55 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       }
 
       const double defaultFeedPrice = 1650.0;
+      double totalStocksSpend = 0.0;
+      final List<Map<String, dynamic>> providedStocks = [];
 
-      // 7. Calculate Per-Assignment Capital & Stock Spend (Strict Isolation)
-      for (var a in assignments) {
-        final aId = (a['assignment_id'] ?? a['id'])?.toString();
-        final aBatchId = a['batch_id']?.toString();
-        final aBatchName =
-            (a['batches']?['batch_name'] ?? a['batch_name'] ?? '')
-                .toString()
-                .trim()
-                .toLowerCase();
-        final aRawType = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-            .toString()
-            .trim()
-            .toLowerCase();
-        final aIsSow = aRawType.contains('sow') || aRawType.contains('breed');
+      for (var req in requests) {
+        final status = (req['status'] ?? '').toString().toLowerCase();
+        if (status == 'approved' || status == 'completed' || status == 'distributed') {
+          final qty = (req['quantity'] as num?)?.toDouble() ?? 1.0;
+          final fType = (req['feed_type'] ?? '').toString().trim();
+          final cat = (req['category'] ?? '').toString().trim();
+          final fTypeLower = fType.toLowerCase();
+          final catLower = cat.toLowerCase();
 
-        // Match investment record(s) for this assignment
-        List<Map<String, dynamic>> matchingInvs = invRows.where((row) {
-          final bId = row['batch_id']?.toString();
-          final bName = (row['batch_name'] ?? '')
-              .toString()
-              .trim()
-              .toLowerCase();
-          return (aBatchId != null && bId == aBatchId) ||
-              (aBatchName.isNotEmpty && bName == aBatchName);
-        }).toList();
-
-        // Fallback match by hog type if no direct batch match
-        if (matchingInvs.isEmpty && invRows.isNotEmpty) {
-          matchingInvs = invRows.where((row) {
-            final rawHType = (row['hog_type'] ?? '')
-                .toString()
-                .trim()
-                .toLowerCase();
-            final rowIsSow =
-                rawHType.contains('sow') || rawHType.contains('breed');
-            return aIsSow ? rowIsSow : !rowIsSow;
-          }).toList();
-        }
-
-        // If only 1 assignment exists overall, use all records
-        if (matchingInvs.isEmpty && assignments.length == 1) {
-          matchingInvs = invRows;
-        }
-
-        final assignCapital = matchingInvs.fold<double>(
-          0.0,
-          (sum, row) =>
-              sum + ((row['initial_capital'] as num?)?.toDouble() ?? 0.0),
-        );
-
-        // Match requests strictly for this assignment
-        double assignSpend = 0.0;
-        final List<Map<String, dynamic>> assignProvidedStocks = [];
-
-        for (var req in requests) {
-          final reqAssignId =
-              (req['assignment_id'] ?? req['assignments']?['assignment_id'])
-                  ?.toString();
-          final reqBatchId = req['assignments']?['batch_id']?.toString();
-
-          bool belongsToThisAssign = false;
-          if (aId != null && reqAssignId != null && reqAssignId == aId) {
-            belongsToThisAssign = true;
-          } else if (aBatchId != null &&
-              reqBatchId != null &&
-              reqBatchId == aBatchId) {
-            belongsToThisAssign = true;
-          } else if (reqAssignId == null && assignments.length == 1) {
-            belongsToThisAssign = true;
-          } else if (reqAssignId == null &&
-              a['is_cycle_completed'] == true &&
-              assignments.any((other) => other['is_cycle_completed'] != true)) {
-            // Legacy requests without assignment_id belong to completed/historical batch, NOT to the fresh active batch
-            belongsToThisAssign = true;
-          }
-
-          if (!belongsToThisAssign) continue;
-
-          final status = (req['status'] ?? '').toString().toLowerCase();
-          if (status == 'approved' ||
-              status == 'completed' ||
-              status == 'distributed') {
-            final qty = (req['quantity'] as num?)?.toDouble() ?? 1.0;
-            final fType = (req['feed_type'] ?? '').toString().trim();
-            final cat = (req['category'] ?? '').toString().trim();
-            final fTypeLower = fType.toLowerCase();
-            final catLower = cat.toLowerCase();
-
-            double unitPrice =
-                productPriceMap[fTypeLower] ?? productPriceMap[catLower] ?? 0.0;
-            if (unitPrice == 0.0 && fTypeLower.isNotEmpty) {
-              for (var entry in productPriceMap.entries) {
-                if (entry.key.isNotEmpty &&
-                    (fTypeLower.contains(entry.key) ||
-                        entry.key.contains(fTypeLower))) {
-                  unitPrice = entry.value;
-                  break;
-                }
+          double unitPrice = productPriceMap[fTypeLower] ?? productPriceMap[catLower] ?? 0.0;
+          if (unitPrice == 0.0 && fTypeLower.isNotEmpty) {
+            for (var entry in productPriceMap.entries) {
+              if (entry.key.isNotEmpty &&
+                  (fTypeLower.contains(entry.key) || entry.key.contains(fTypeLower))) {
+                unitPrice = entry.value;
+                break;
               }
             }
-            if (unitPrice == 0.0) unitPrice = defaultFeedPrice;
-
-            final totalAmount = qty * unitPrice;
-            assignSpend += totalAmount;
-
-            assignProvidedStocks.add({
-              'request_id': req['request_id'],
-              'product_name': fType.isNotEmpty
-                  ? fType
-                  : (cat.isNotEmpty ? cat : 'Feeds / Supplies'),
-              'category': cat.isNotEmpty ? cat : 'Feeds',
-              'quantity': qty.toInt(),
-              'unit_price': unitPrice,
-              'total_amount': totalAmount,
-              'request_date': req['request_date'] ?? req['created_at'],
-              'decision_date': req['decision_date'],
-              'status': req['status'] ?? 'approved',
-              'notes': req['notes'] ?? '',
-            });
           }
+          if (unitPrice == 0.0) {
+            unitPrice = defaultFeedPrice;
+          }
+
+          final totalAmount = qty * unitPrice;
+          totalStocksSpend += totalAmount;
+
+          providedStocks.add({
+            'request_id': req['request_id'],
+            'product_name': fType.isNotEmpty ? fType : (cat.isNotEmpty ? cat : 'Feeds / Supplies'),
+            'category': cat.isNotEmpty ? cat : 'Feeds',
+            'quantity': qty.toInt(),
+            'unit_price': unitPrice,
+            'total_amount': totalAmount,
+            'request_date': req['request_date'] ?? req['created_at'],
+            'decision_date': req['decision_date'],
+            'status': req['status'] ?? 'approved',
+            'notes': req['notes'] ?? '',
+          });
         }
-
-        final double assignRemaining = assignCapital > 0
-            ? (assignCapital - assignSpend).clamp(0.0, double.infinity)
-            : 0.0;
-
-        a['initial_capital'] = assignCapital;
-        a['stocks_spend'] = assignSpend;
-        a['remaining_capital'] = assignRemaining;
-        a['provided_stocks'] = assignProvidedStocks;
-        a['is_investment_depleted'] =
-            assignRemaining <= 0 && (assignCapital > 0 || assignSpend > 0);
       }
 
-      // Sort assignments:
-      // 1. Active / non-completed batches first, completed batches last
-      // 2. Pig Type: Fattening (0) ALWAYS first, Sow/Breeding (1) ALWAYS second
-      // 3. Natural order: earliest assignment_id first (aId.compareTo(bId))
-      assignments.sort((a, b) {
-        final aDone = a['is_cycle_completed'] == true;
-        final bDone = b['is_cycle_completed'] == true;
-        if (!aDone && bDone) return -1;
-        if (aDone && !bDone) return 1;
-
-        final aType =
-            (a['hog_types'] is Map
-                ? a['hog_types']['type_name']
-                : (a['hog_types'] is List && (a['hog_types'] as List).isNotEmpty
-                      ? (a['hog_types'] as List).first['type_name']
-                      : null)) ??
-            a['pig_type'] ??
-            '';
-        final bType =
-            (b['hog_types'] is Map
-                ? b['hog_types']['type_name']
-                : (b['hog_types'] is List && (b['hog_types'] as List).isNotEmpty
-                      ? (b['hog_types'] as List).first['type_name']
-                      : null)) ??
-            b['pig_type'] ??
-            '';
-
-        int getTypePriority(dynamic t) {
-          final s = t.toString().toLowerCase();
-          if (s.contains('fatten')) return 0;
-          if (s.contains('sow') || s.contains('breed')) return 1;
-          return 2;
-        }
-
-        final aPrio = getTypePriority(aType);
-        final bPrio = getTypePriority(bType);
-        if (aPrio != bPrio) return aPrio.compareTo(bPrio);
-
-        final aId = a['assignment_id'] is num
-            ? (a['assignment_id'] as num).toInt()
-            : 0;
-        final bId = b['assignment_id'] is num
-            ? (b['assignment_id'] as num).toInt()
-            : 0;
-        return aId.compareTo(bId);
-      });
-
-      // Primary assignment is the first active (non-completed) batch, or first batch if all completed
-      final primaryAssign = assignments.isNotEmpty
-          ? assignments.firstWhere(
-              (a) => a['is_cycle_completed'] != true,
-              orElse: () => assignments.first,
-            )
-          : null;
-
-      final double combinedInvestedAmount =
-          (primaryAssign?['remaining_capital'] as num?)?.toDouble() ?? 0.0;
-      totalCapital =
-          (primaryAssign?['initial_capital'] as num?)?.toDouble() ?? 0.0;
-      final double totalStocksSpend =
-          (primaryAssign?['stocks_spend'] as num?)?.toDouble() ?? 0.0;
-      final List<Map<String, dynamic>> providedStocks =
-          List<Map<String, dynamic>>.from(
-            primaryAssign?['provided_stocks'] ?? [],
-          );
+      // Option B: Deductive / Remaining Capital Budget model (Pabawas)
+      // Initial Capital is the allocated budget; approved stock requests deduct from this budget.
+      final double combinedInvestedAmount = totalCapital > 0
+          ? (totalCapital - totalStocksSpend).clamp(0.0, double.infinity)
+          : 0.0;
 
       // 7. Fetch health reports
       final reportsRes = await Supabase.instance.client
@@ -865,8 +543,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       // Clean up trigger duplicate notifications from DB in the background
       final hasApprovedStockNotif = rawNotifications.any((n) {
         final t = (n['title'] ?? '').toString();
-        return t.contains('Stock Request Approved') ||
-            t.contains('Kahilingan ng Stock');
+        return t.contains('Stock Request Approved') || t.contains('Kahilingan ng Stock');
       });
       if (hasApprovedStockNotif) {
         try {
@@ -888,14 +565,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         final notifId = (n['notification_id'] ?? n['id']) as int?;
         final title = (n['title'] ?? '').toString().trim();
         final msg = (n['message'] ?? n['content'] ?? '').toString().trim();
-        final type = (n['type'] ?? n['category'] ?? '')
-            .toString()
-            .trim()
-            .toLowerCase();
+        final type = (n['type'] ?? n['category'] ?? '').toString().trim().toLowerCase();
 
         // 1. Suppress redundant stock trigger item if approved stock exists
-        final isTriggerDuplicate =
-            (title == 'Stock Request Update') &&
+        final isTriggerDuplicate = (title == 'Stock Request Update') &&
             (msg.contains('Feeds has been') ||
                 msg.contains('Medicines has been') ||
                 msg.contains('Vitamins has been') ||
@@ -905,28 +578,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           continue;
         }
 
-        // 2. Batch assignment duplicate check (only deduplicate batch_assigned triggers)
-        final batchId =
-            (n['metadata'] is Map ? (n['metadata']['batch_id'] ?? '') : '')
-                .toString()
-                .trim();
-        final isBatchNotif = type == 'batch_assigned';
+        // 2. Batch assignment duplicate check (same batch assigned triggers multiple times for multi-hog types)
+        final batchId = (n['metadata'] is Map ? (n['metadata']['batch_id'] ?? '') : '').toString().trim();
+        final isBatchNotif = type == 'batch_assigned' ||
+            title.toLowerCase().contains('batch') ||
+            msg.toLowerCase().contains('batch');
 
         final String dedupKey;
         if (isBatchNotif && batchId.isNotEmpty) {
           dedupKey = 'batch_$batchId';
         } else if (isBatchNotif) {
-          // Extract batch name from message (e.g. BATCH NI REJIE)
-          final batchMatch = RegExp(
-            r'(batch[\w\s\-]+)',
-            caseSensitive: false,
-          ).firstMatch(msg);
-          final extractedBatch = batchMatch != null
-              ? batchMatch.group(1)?.toLowerCase().trim()
-              : '';
-          dedupKey = extractedBatch != null && extractedBatch.isNotEmpty
-              ? 'batch_$extractedBatch'
-              : '$title|$msg';
+          final batchMatch = RegExp(r'(batch[\w\s\-]+)', caseSensitive: false).firstMatch(msg);
+          final extractedBatch = batchMatch != null ? batchMatch.group(1)?.toLowerCase().trim() : '';
+          dedupKey = extractedBatch != null && extractedBatch.isNotEmpty ? 'batch_$extractedBatch' : '$title|$msg';
         } else {
           dedupKey = '$title|$msg';
         }
@@ -954,15 +618,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       }
 
       // Resolve email, pig type, lifecycle stage and avatar with fallbacks
-      final resolvedEmail =
-          (raiser['email'] != null &&
+      final resolvedEmail = (raiser['email'] != null &&
               raiser['email'].toString().trim().isNotEmpty &&
               raiser['email'] != 'N/A')
           ? raiser['email'].toString().trim()
-          : ((appUser['email'] != null &&
-                    appUser['email'].toString().trim().isNotEmpty)
-                ? appUser['email'].toString().trim()
-                : (user.email ?? 'N/A'));
+          : ((appUser['email'] != null && appUser['email'].toString().trim().isNotEmpty)
+              ? appUser['email'].toString().trim()
+              : (user.email ?? 'N/A'));
 
       String? resolvedAvatar;
 
@@ -986,11 +648,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       ];
       for (final u in possibleDbUrls) {
         final s = u?.toString().trim();
-        if (s != null &&
-            s.isNotEmpty &&
-            s != 'N/A' &&
-            s != 'null' &&
-            !isGoogleAvatar(s)) {
+        if (s != null && s.isNotEmpty && s != 'N/A' && s != 'null' && !isGoogleAvatar(s)) {
           resolvedAvatar = s;
           break;
         }
@@ -999,9 +657,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       // 2. Check Supabase Storage profile_pictures/avatars bucket for uploaded avatar
       if (resolvedAvatar == null) {
         try {
-          final storageFiles = await Supabase.instance.client.storage
-              .from('profile_pictures')
-              .list(path: 'avatars');
+          final storageFiles = await Supabase.instance.client.storage.from('profile_pictures').list(path: 'avatars');
           final rIdStr = raiserId.toString();
           final uIdStr = userId.toString();
           for (final file in storageFiles) {
@@ -1010,9 +666,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             if (match != null) {
               final matchedId = match.group(1)!;
               if (matchedId == rIdStr || matchedId == uIdStr) {
-                resolvedAvatar = Supabase.instance.client.storage
-                    .from('profile_pictures')
-                    .getPublicUrl('avatars/$fname');
+                resolvedAvatar = Supabase.instance.client.storage.from('profile_pictures').getPublicUrl('avatars/$fname');
                 break;
               }
             }
@@ -1042,22 +696,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       String resolvedStage = 'No Active Batch';
 
       if (assignments.isNotEmpty) {
-        final activeAssignmentsList = assignments
-            .where((a) => a['is_cycle_completed'] != true)
-            .toList();
-        final targetAssignments = activeAssignmentsList.isNotEmpty
-            ? activeAssignmentsList
-            : assignments;
-
         final List<String> activeTypes = [];
-        for (var a in targetAssignments) {
-          final tName =
-              (a['hog_types'] is Map
+        for (var a in assignments) {
+          final tName = (a['hog_types'] is Map
                   ? a['hog_types']['type_name']
-                  : (a['hog_types'] is List &&
-                            (a['hog_types'] as List).isNotEmpty
-                        ? (a['hog_types'] as List).first['type_name']
-                        : null)) ??
+                  : (a['hog_types'] is List && (a['hog_types'] as List).isNotEmpty
+                      ? (a['hog_types'] as List).first['type_name']
+                      : null)) ??
               a['pig_type'];
           if (tName != null && tName.toString().trim().isNotEmpty) {
             activeTypes.add(tName.toString().trim());
@@ -1065,36 +710,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         }
 
         if (activeTypes.isNotEmpty) {
-          final hasSow = activeTypes.any(
-            (t) =>
-                t.toLowerCase().contains('sow') ||
-                t.toLowerCase().contains('breed'),
-          );
-          final hasFattening = activeTypes.any(
-            (t) => t.toLowerCase().contains('fatten'),
-          );
+          final hasSow = activeTypes.any((t) => t.toLowerCase().contains('sow') || t.toLowerCase().contains('breed'));
+          final hasFattening = activeTypes.any((t) => t.toLowerCase().contains('fatten'));
           if (hasSow && hasFattening) {
-            // Keep the profile's assignment order consistent with the screen:
-            // Fattening is shown before Sow / Breeding.
-            resolvedPigType = 'Fattening and Sow';
-          } else if (hasSow) {
-            resolvedPigType = 'Sow';
-          } else {
-            resolvedPigType = 'Fattening';
-          }
-        } else if (investmentHogTypes.isNotEmpty) {
-          final hasSow = investmentHogTypes.any(
-            (t) =>
-                t.toLowerCase().contains('sow') ||
-                t.toLowerCase().contains('breed'),
-          );
-          final hasFattening = investmentHogTypes.any(
-            (t) => t.toLowerCase().contains('fatten'),
-          );
-          if (hasSow && hasFattening) {
-            // Keep the profile's assignment order consistent with the screen:
-            // Fattening is shown before Sow / Breeding.
-            resolvedPigType = 'Fattening and Sow';
+            resolvedPigType = 'Sow & Fattening';
           } else if (hasSow) {
             resolvedPigType = 'Sow';
           } else {
@@ -1104,147 +723,61 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           resolvedPigType = 'Fattening';
         }
 
-        final targetAssign = primaryAssign ?? assignments[0];
-        final pAssignIdStr =
-            (targetAssign['assignment_id'] ?? targetAssign['id'])?.toString();
-        final pAssignHogs = hogs
-            .where((h) => h['assignment_id']?.toString() == pAssignIdStr)
-            .toList();
-
-        final targetAssignType =
-            (targetAssign['hog_types'] is Map
-                ? targetAssign['hog_types']['type_name']
-                : (targetAssign['hog_types'] is List &&
-                          (targetAssign['hog_types'] as List).isNotEmpty
-                      ? (targetAssign['hog_types'] as List).first['type_name']
-                      : null)) ??
-            targetAssign['pig_type'] ??
-            resolvedPigType;
-        final isTargetSow =
-            targetAssignType.toString().toLowerCase().contains('sow') ||
-            targetAssignType.toString().toLowerCase().contains('breed');
-
-        String mapStageIdToName(dynamic raw, bool isSow) {
-          if (raw == null) return 'Booster';
-          final s = raw.toString().trim();
-          final id = int.tryParse(s);
-          if (id != null) {
-            final fatteningStages = const [
-              'Booster',
-              'Pre-Starter',
-              'Starter',
-              'Grower',
-              'Finisher',
-              'Selling',
-            ];
-            final sowStages = const [
-              'Booster',
-              'Pre-Starter',
-              'Starter',
-              'Grower',
-              'Breeder',
-              'Lactation',
-            ];
-            final list = isSow ? sowStages : fatteningStages;
-            if (id >= 1 && id <= list.length) return list[id - 1];
-          }
-          if (s.isNotEmpty &&
-              s != 'null' &&
-              s != 'N/A' &&
-              int.tryParse(s) == null) {
-            return s;
-          }
-          return 'Booster';
-        }
-
-        final hasSow = assignments.any((a) {
-          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-              .toString()
-              .toLowerCase();
-          return t.contains('sow') || t.contains('breed');
-        });
-        final hasFattening = assignments.any((a) {
-          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-              .toString()
-              .toLowerCase();
-          return t.contains('fatten');
-        });
-
-        if (targetAssign['is_cycle_completed'] == true &&
-            !assignments.any((a) => a['is_cycle_completed'] != true)) {
-          resolvedStage = 'Completed Cycle';
-        } else if (hasSow && hasFattening) {
-          final fatAssign = assignments.firstWhere((a) {
-            final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-                .toString()
-                .toLowerCase();
-            return t.contains('fatten');
-          }, orElse: () => assignments.first);
-          final sowAssign = assignments.firstWhere((a) {
-            final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-                .toString()
-                .toLowerCase();
-            return t.contains('sow') || t.contains('breed');
-          }, orElse: () => assignments.last);
-
-          final fatHogs = hogs
-              .where(
-                (h) =>
-                    h['assignment_id']?.toString() ==
-                    (fatAssign['assignment_id'] ?? fatAssign['id'])?.toString(),
-              )
-              .toList();
-          final sowHogs = hogs
-              .where(
-                (h) =>
-                    h['assignment_id']?.toString() ==
-                    (sowAssign['assignment_id'] ?? sowAssign['id'])?.toString(),
-              )
-              .toList();
-
-          final fatRaw = fatHogs.isNotEmpty
-              ? (fatHogs[0]['stage_id'] ?? fatHogs[0]['lifecycle_stage'])
-              : fatAssign['lifecycle_stage'];
-          final sowRaw = sowHogs.isNotEmpty
-              ? (sowHogs[0]['stage_id'] ?? sowHogs[0]['lifecycle_stage'])
-              : sowAssign['lifecycle_stage'];
-
-          final fatStage = mapStageIdToName(fatRaw, false);
-          final sowStage = mapStageIdToName(sowRaw, true);
-
-          if (fatStage.toLowerCase() == sowStage.toLowerCase()) {
-            resolvedStage = fatStage;
-          } else {
-            resolvedStage = 'Fattening: $fatStage • Sow: $sowStage';
-          }
-        } else if (pAssignHogs.isNotEmpty) {
-          final dbStage =
-              pAssignHogs[0]['stage_id'] ??
-              pAssignHogs[0]['lifecycle_stage'] ??
-              pAssignHogs[0]['stage'];
-          resolvedStage = mapStageIdToName(dbStage, isTargetSow);
-        } else {
-          final assignStage =
-              targetAssign['lifecycle_stage']?.toString() ??
-              targetAssign['current_stage']?.toString();
-          if (assignStage != null &&
-              assignStage.isNotEmpty &&
-              assignStage.toLowerCase() != 'lactation' &&
-              assignStage.toLowerCase() != 'selling') {
-            resolvedStage = mapStageIdToName(assignStage, isTargetSow);
-          } else {
-            resolvedStage = 'Booster';
-          }
-        }
+        resolvedStage = assignments[0]['lifecycle_stage']?.toString() ??
+            assignments[0]['current_stage']?.toString() ??
+            (raiser['lifecycle_stage'] != null &&
+                    raiser['lifecycle_stage'].toString().trim().isNotEmpty &&
+                    raiser['lifecycle_stage'] != 'N/A'
+                ? raiser['lifecycle_stage'].toString().trim()
+                : 'Active Cycle');
       }
 
-      final Map<String, dynamic> combinedRaiserData = Map<String, dynamic>.from(
-        raiser,
-      );
+      final Map<String, dynamic> combinedRaiserData = Map<String, dynamic>.from(raiser);
       combinedRaiserData['email'] = resolvedEmail;
       combinedRaiserData['avatar_url'] = resolvedAvatar;
       combinedRaiserData['pig_type'] = resolvedPigType;
       combinedRaiserData['lifecycle_stage'] = resolvedStage;
+
+      // Sort assignments:
+      // 1. Active (non-completed) batches first, completed batches last
+      // 2. Pig Type: Fattening (0) ALWAYS first, Sow/Breeding (1) ALWAYS second
+      // 3. Natural order: earliest assignment_id first
+      assignments.sort((a, b) {
+        final aDone = a['is_cycle_completed'] == true;
+        final bDone = b['is_cycle_completed'] == true;
+        if (!aDone && bDone) return -1;
+        if (aDone && !bDone) return 1;
+
+        final aType = (a['hog_types'] is Map
+                ? a['hog_types']['type_name']
+                : (a['hog_types'] is List && (a['hog_types'] as List).isNotEmpty
+                    ? (a['hog_types'] as List).first['type_name']
+                    : null)) ??
+            a['pig_type'] ??
+            '';
+        final bType = (b['hog_types'] is Map
+                ? b['hog_types']['type_name']
+                : (b['hog_types'] is List && (b['hog_types'] as List).isNotEmpty
+                    ? (b['hog_types'] as List).first['type_name']
+                    : null)) ??
+            b['pig_type'] ??
+            '';
+
+        int getTypePriority(dynamic t) {
+          final s = t.toString().toLowerCase();
+          if (s.contains('fatten')) return 0;
+          if (s.contains('sow') || s.contains('breed')) return 1;
+          return 2;
+        }
+
+        final aPrio = getTypePriority(aType);
+        final bPrio = getTypePriority(bType);
+        if (aPrio != bPrio) return aPrio.compareTo(bPrio);
+
+        final aId = a['assignment_id'] is num ? (a['assignment_id'] as num).toInt() : 0;
+        final bId = b['assignment_id'] is num ? (b['assignment_id'] as num).toInt() : 0;
+        return aId.compareTo(bId);
+      });
 
       if (mounted) {
         setState(() {
@@ -1261,39 +794,24 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           if (_activeAssignments.isNotEmpty) {
             final currentSelected = _selectedAssignmentId != null
                 ? _activeAssignments.firstWhere(
-                    (a) =>
-                        BigInt.from(a['assignment_id'] as num) ==
-                        _selectedAssignmentId,
+                    (a) => BigInt.from(a['assignment_id'] as num) == _selectedAssignmentId,
                     orElse: () => {},
                   )
                 : <String, dynamic>{};
-            final isCurrentCompleted =
-                currentSelected.isNotEmpty &&
-                currentSelected['is_cycle_completed'] == true;
-            final hasNonCompleted = _activeAssignments.any(
-              (a) => a['is_cycle_completed'] != true,
-            );
-            final currentIsFattening =
-                currentSelected.isNotEmpty &&
-                (currentSelected['hog_types']?['type_name'] ??
-                        currentSelected['pig_type'] ??
-                        '')
+            final isCurrentCompleted = currentSelected.isNotEmpty && currentSelected['is_cycle_completed'] == true;
+            final hasNonCompleted = _activeAssignments.any((a) => a['is_cycle_completed'] != true);
+            final currentIsFattening = currentSelected.isNotEmpty &&
+                (currentSelected['hog_types']?['type_name'] ?? currentSelected['pig_type'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains('fatten');
             final hasFattening = _activeAssignments.any((a) {
-              final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
-                  .toString()
-                  .toLowerCase();
+              final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
               return t.contains('fatten') && a['is_cycle_completed'] != true;
             });
 
-            if (currentSelected.isEmpty ||
-                (isCurrentCompleted && hasNonCompleted) ||
-                (hasFattening && !currentIsFattening)) {
-              _selectedAssignmentId = BigInt.from(
-                _activeAssignments[0]['assignment_id'] as num,
-              );
+            if (currentSelected.isEmpty || (isCurrentCompleted && hasNonCompleted) || (hasFattening && !currentIsFattening)) {
+              _selectedAssignmentId = BigInt.from(_activeAssignments[0]['assignment_id'] as num);
             }
           } else {
             _selectedAssignmentId = null;
@@ -1348,181 +866,18 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     }
   }
 
-  Future<void> _checkAndNotifyAdminIfFinalStage(
-    String targetStage, [
-    dynamic targetHogId,
-  ]) async {
-    final sLower = targetStage.trim().toLowerCase();
-    final isFinal = sLower == 'selling' || sLower == 'lactation';
-    if (!isFinal) return;
-
-    final raiserName = (_raiserData['name'] ?? 'Hog Raiser').toString().trim();
-    final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
-
-    String pigType = 'Fattening';
-    if (targetHogId != null && _hogsList.isNotEmpty) {
-      final matchedHog = _hogsList.firstWhere(
-        (h) =>
-            h['hog_id'] == targetHogId ||
-            h['hog_id']?.toString() == targetHogId.toString(),
-        orElse: () => <String, dynamic>{},
-      );
-      if (matchedHog.isNotEmpty) {
-        final raw =
-            (matchedHog['pig_type'] ??
-                    matchedHog['type_name'] ??
-                    matchedHog['type'] ??
-                    '')
-                .toString()
-                .trim()
-                .toLowerCase();
-        if (raw == 'sow' || raw.contains('breed')) {
-          pigType = 'Sow';
-        }
-      }
-    }
-    if (pigType == 'Fattening' && _activeAssignments.isNotEmpty) {
-      final assign = _activeAssignments.first;
-      final ht = assign['hog_types'];
-      if (ht is Map && ht['type_name'] != null) {
-        pigType = ht['type_name'].toString();
-      } else if (assign['pig_type'] != null) {
-        pigType = assign['pig_type'].toString();
-      } else if (_raiserData['pig_type'] != null) {
-        pigType = _raiserData['pig_type'].toString();
-      }
-    }
-
-    String batchName = 'Active Batch';
-    dynamic batchId;
-    if (_activeAssignments.isNotEmpty) {
-      final assign = _activeAssignments.first;
-      final b = assign['batches'];
-      if (b is Map) {
-        batchName = (b['batch_name'] ?? 'Batch #${b['batch_id']}').toString();
-        batchId = b['batch_id'] ?? b['id'];
-      } else {
-        batchId = assign['batch_id'];
-        batchName = 'Batch #$batchId';
-      }
-    }
-
-    final notifTitle = pigType.toLowerCase().contains('sow')
-        ? 'Batch Cycle Completed (Sow)'
-        : 'Batch Ready for Selling / Harvest (Fattening)';
-
-    final notifMessage = pigType.toLowerCase().contains('sow')
-        ? '$raiserName has reached the final stage ($targetStage) for $batchName (Sow). Ready for batch cycle completion.'
-        : '$raiserName has reached the final stage ($targetStage) for $batchName (Fattening). Ready for harvest & batch completion.';
-
-    try {
-      final existing = await Supabase.instance.client
-          .from('admin_notifications')
-          .select('notification_id')
-          .eq('type', 'batch')
-          .eq('is_read', false)
-          .like('message', '%$raiserName%')
-          .like('message', '%$targetStage%')
-          .limit(1);
-
-      if ((existing as List).isEmpty) {
-        await Supabase.instance.client.from('admin_notifications').insert({
-          'title': notifTitle,
-          'message': notifMessage,
-          'type': 'batch',
-          'is_read': false,
-          'metadata': {
-            'hog_raiser_id': raiserId,
-            'raiser_name': raiserName,
-            'batch_id': batchId,
-            'batch_name': batchName,
-            'pig_type': pigType,
-            'stage': targetStage,
-            'timestamp': DateTime.now().toIso8601String(),
-          },
-        });
-        debugPrint(
-          'Automatic milestone notification sent to admin: $batchName ($pigType - $targetStage)',
-        );
-
-        // Also notify partner investors who funded this batch
-        if (batchId != null) {
-          try {
-            final partnerInvs = await Supabase.instance.client
-                .from('investments')
-                .select('partner_investor_id')
-                .eq('batch_id', batchId);
-            for (var inv in partnerInvs) {
-              final pId = inv['partner_investor_id'];
-              if (pId != null) {
-                try {
-                  await Supabase.instance.client
-                      .from('partner_notifications')
-                      .insert({
-                        'partner_investor_id': pId,
-                        'title': notifTitle,
-                        'message':
-                            '$batchName has reached $targetStage. Ready for harvest & payout distribution!',
-                        'type': 'stage',
-                        'is_read': false,
-                      });
-                } catch (_) {}
-              }
-            }
-          } catch (_) {}
-        }
-      }
-    } catch (e) {
-      debugPrint('Notice sending milestone notification to admin: $e');
-    }
-  }
-
-  Future<void> _updateLifecycleStage(
-    String targetStage, [
-    dynamic targetHogId,
-  ]) async {
+  Future<void> _updateLifecycleStage(String targetStage) async {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
 
     setState(() => _isLoading = true);
     try {
-      if (targetHogId != null) {
-        final sLower = targetStage.trim().toLowerCase();
-        int stageNum = 1;
-        if (sLower == 'booster') {
-          stageNum = 1;
-        } else if (sLower == 'pre-starter' || sLower == 'pre starter') {
-          stageNum = 2;
-        } else if (sLower == 'starter') {
-          stageNum = 3;
-        } else if (sLower == 'grower') {
-          stageNum = 4;
-        } else if (sLower == 'finisher' || sLower == 'breeder') {
-          stageNum = 5;
-        } else if (sLower == 'selling' || sLower == 'lactation') {
-          stageNum = 6;
-        }
-
-        await Supabase.instance.client
-            .from('hogs')
-            .update({
-              'stage_id': stageNum,
-              'last_updated': DateTime.now().toIso8601String(),
-            })
-            .eq('hog_id', targetHogId);
-      } else {
-        await Supabase.instance.client
-            .from('hog_raisers')
-            .update({'lifecycle_stage': targetStage})
-            .eq('hog_raiser_id', raiserId);
-      }
+      await Supabase.instance.client
+          .from('hog_raisers')
+          .update({'lifecycle_stage': targetStage})
+          .eq('hog_raiser_id', raiserId);
 
       await _fetchRaiserData();
-
-      if (targetStage.trim().toLowerCase() == 'selling' ||
-          targetStage.trim().toLowerCase() == 'lactation') {
-        _checkAndNotifyAdminIfFinalStage(targetStage, targetHogId);
-      }
 
       if (mounted) {
         PiggyToast.showSuccess(
@@ -1544,11 +899,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     }
   }
 
-  Future<void> _submitHogReport(
-    BigInt hogId,
-    String reportType,
-    String notes,
-  ) async {
+  Future<void> _submitHogReport(BigInt hogId, String reportType, String notes) async {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
 
@@ -1589,9 +940,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         } catch (_) {}
       }
 
-      final batchId = _activeAssignments.isNotEmpty
-          ? _activeAssignments[0]['batch_id']
-          : null;
+      final batchId = _activeAssignments.isNotEmpty ? _activeAssignments[0]['batch_id'] : null;
 
       final Map<String, dynamic> reportData = {
         'hog_raiser_id': raiserId,
@@ -1608,10 +957,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       await Supabase.instance.client.from('hog_reports').insert(reportData);
 
       String nextHealth = 'Healthy';
-      if (reportType == 'Sick' ||
-          reportType == 'Food Poisoning' ||
-          reportType == 'Fever' ||
-          reportType == 'Diarrhea') {
+      if (reportType == 'Sick' || reportType == 'Food Poisoning' || reportType == 'Fever' || reportType == 'Diarrhea') {
         nextHealth = 'Sick';
       } else if (reportType == 'Dead') {
         nextHealth = 'Dead';
@@ -1641,7 +987,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       await _fetchRaiserData();
     } catch (e) {
       if (mounted) {
-        PiggyToast.showError(context, 'Error: ${e.toString()}');
+        PiggyToast.showError(
+          context,
+          'Error: ${e.toString()}',
+        );
       }
     } finally {
       if (mounted) {
@@ -1653,22 +1002,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   Future<void> _handleSignOut() async {
     await AuthSessionService().clearSession();
     if (mounted) {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/onboarding',
-        (route) => false,
-      );
+      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (route) => false);
     }
   }
 
   Future<void> _pickAndUploadAvatar() async {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
-
-    if (!await ConnectivityService.hasInternet()) {
-      _showOfflineProfileUploadToast();
-      return;
-    }
 
     try {
       final ImagePicker picker = ImagePicker();
@@ -1681,29 +1021,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
       if (image == null) return;
 
-      if (!await ConnectivityService.hasInternet()) {
-        _showOfflineProfileUploadToast();
-        return;
-      }
-
       setState(() => _isLoading = true);
 
       final bytes = await image.readAsBytes();
-      final fileName =
-          'avatar-$raiserId-${DateTime.now().millisecondsSinceEpoch}.png';
+      final fileName = 'avatar-$raiserId-${DateTime.now().millisecondsSinceEpoch}.png';
       final filePath = 'avatars/$fileName';
 
-      await Supabase.instance.client.storage
-          .from('profile_pictures')
-          .uploadBinary(
-            filePath,
-            bytes,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
-          );
+      await Supabase.instance.client.storage.from('profile_pictures').uploadBinary(
+        filePath,
+        bytes,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+      );
 
-      final publicUrl = Supabase.instance.client.storage
-          .from('profile_pictures')
-          .getPublicUrl(filePath);
+      final publicUrl = Supabase.instance.client.storage.from('profile_pictures').getPublicUrl(filePath);
 
       // 1. Update Supabase Auth user metadata (always supported)
       try {
@@ -1716,10 +1046,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
       // 2. Update hog_raisers & app_users tables
       try {
-        await Supabase.instance.client
-            .from('hog_raisers')
-            .update({'avatar_url': publicUrl})
-            .eq('hog_raiser_id', raiserId);
+        await Supabase.instance.client.from('hog_raisers').update({
+          'avatar_url': publicUrl,
+        }).eq('hog_raiser_id', raiserId);
       } catch (dbErr) {
         debugPrint('DB hog_raisers column update notice: $dbErr');
       }
@@ -1727,10 +1056,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       final userId = _raiserData['user_id'];
       if (userId != null) {
         try {
-          await Supabase.instance.client
-              .from('app_users')
-              .update({'avatar_url': publicUrl})
-              .eq('user_id', userId);
+          await Supabase.instance.client.from('app_users').update({
+            'avatar_url': publicUrl,
+          }).eq('user_id', userId);
         } catch (_) {}
       }
 
@@ -1747,14 +1075,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       await _fetchRaiserData();
     } catch (e) {
       if (mounted) {
-        if (ConnectivityService.isNetworkError(e)) {
-          _showOfflineProfileUploadToast();
-        } else {
-          PiggyToast.showError(
-            context,
-            AppStrings.of(context).profilePictureUploadFailed,
-          );
-        }
+        PiggyToast.showError(
+          context,
+          'Error uploading image: ${e.toString()}',
+        );
       }
     } finally {
       if (mounted) {
@@ -1763,25 +1087,8 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     }
   }
 
-  void _showOfflineProfileUploadToast() {
-    if (!mounted) return;
-    final strings = AppStrings.of(context);
-    PiggyToast.showWarning(
-      context,
-      strings.profilePictureUploadOffline,
-      title: strings.offlineNotificationTitle,
-      duration: const Duration(seconds: 4),
-    );
-  }
-
   Future<void> _restoreDefaultAvatar() async {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
-    if (raiserId == null) return;
-
-    if (!await ConnectivityService.hasInternet()) {
-      _showOfflineProfileUploadToast();
-      return;
-    }
     if (raiserId == null) return;
 
     // Show Tagalog Confirmation Dialog
@@ -1791,9 +1098,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         return AlertDialog(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
           actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           title: Row(
@@ -1804,11 +1109,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                   color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.refresh_rounded,
-                  color: Color(0xFFD97706),
-                  size: 20,
-                ),
+                child: const Icon(Icons.refresh_rounded, color: Color(0xFFD97706), size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1838,13 +1139,8 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: Color(0xFFCBD5E1),
-                        width: 1.2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1865,9 +1161,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                       backgroundColor: _brandColor,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1899,19 +1193,17 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       } catch (_) {}
 
       try {
-        await Supabase.instance.client
-            .from('hog_raisers')
-            .update({'avatar_url': null})
-            .eq('hog_raiser_id', raiserId);
+        await Supabase.instance.client.from('hog_raisers').update({
+          'avatar_url': null,
+        }).eq('hog_raiser_id', raiserId);
       } catch (_) {}
 
       final userId = _raiserData['user_id'];
       if (userId != null) {
         try {
-          await Supabase.instance.client
-              .from('app_users')
-              .update({'avatar_url': null})
-              .eq('user_id', userId);
+          await Supabase.instance.client.from('app_users').update({
+            'avatar_url': null,
+          }).eq('user_id', userId);
         } catch (_) {}
       }
 
@@ -1928,284 +1220,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       await _fetchRaiserData();
     } catch (e) {
       if (mounted) {
-        if (ConnectivityService.isNetworkError(e)) {
-          _showOfflineProfileUploadToast();
-        } else {
-          PiggyToast.showError(
-            context,
-            AppStrings.of(context).profilePictureUploadFailed,
-          );
-        }
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _resetProfileToDefault() async {
-    if (!await ConnectivityService.hasInternet()) {
-      _showOfflineProfileUploadToast();
-      return;
-    }
-    if (!mounted) return;
-    final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
-    final userId = _raiserData['user_id'];
-    final strings = AppStrings.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dialogBg = isDark ? const Color(0xFF151F2E) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFECF2FF) : _brandColor;
-    final mutedTextColor = isDark
-        ? const Color(0xFF94A3B8)
-        : const Color(0xFF475569);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: dialogBg,
-          surfaceTintColor: dialogBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.refresh_rounded,
-                  color: Color(0xFFD97706),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  strings.resetAccountDetailsTitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 17,
-                    color: titleColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            strings.resetAccountDetailsBody,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14,
-              color: mutedTextColor,
-              height: 1.5,
-            ),
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: isDark
-                            ? const Color(0xFF334155)
-                            : const Color(0xFFCBD5E1),
-                        width: 1.2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    child: Text(
-                      strings.cancel,
-                      style: GoogleFonts.plusJakartaSans(
-                        color: mutedTextColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _brandColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    child: Text(
-                      strings.yesReset,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+        PiggyToast.showError(
+          context,
+          'Error restoring image: ${e.toString()}',
         );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      final currentEmail = (_raiserData['email'] ?? user?.email ?? '')
-          .toString()
-          .trim();
-
-      // Resolve registered name
-      String defaultName = "";
-      if (user != null) {
-        final meta = user.userMetadata ?? {};
-        final reg =
-            (meta['registered_name'] ??
-                    meta['original_name'] ??
-                    meta['initial_name'])
-                ?.toString()
-                .trim();
-        if (reg != null &&
-            reg.isNotEmpty &&
-            reg.toLowerCase() != 'hog raiser') {
-          defaultName = reg;
-        }
-      }
-
-      if (defaultName.isEmpty && currentEmail.isNotEmpty) {
-        try {
-          final notif = await Supabase.instance.client
-              .from('admin_notifications')
-              .select('metadata')
-              .eq('type', 'user_registration')
-              .filter('metadata->>email', 'eq', currentEmail)
-              .order('created_at', ascending: true)
-              .limit(1)
-              .maybeSingle();
-
-          if (notif != null && notif['metadata'] != null) {
-            final meta = notif['metadata'];
-            if (meta is Map && meta['name'] != null) {
-              final n = meta['name'].toString().trim();
-              if (n.isNotEmpty && n.toLowerCase() != 'hog raiser') {
-                defaultName = n;
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (defaultName.isEmpty && currentEmail.contains('@')) {
-        final prefix = currentEmail.split('@').first.trim();
-        if (prefix.isNotEmpty) {
-          final parts = prefix.replaceAll(RegExp(r'[._\-]'), ' ').split(' ');
-          defaultName = parts
-              .where((p) => p.isNotEmpty)
-              .map((p) => p[0].toUpperCase() + p.substring(1).toLowerCase())
-              .join(' ');
-        }
-      }
-
-      if (defaultName.isEmpty) defaultName = "Hog Raiser";
-
-      String defaultFirst = defaultName;
-      String defaultLast = "";
-      final nameParts = defaultName
-          .trim()
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .split(' ');
-      if (nameParts.length > 1) {
-        defaultFirst = nameParts.first;
-        defaultLast = nameParts.sublist(1).join(' ');
-      }
-
-      // Update auth user metadata
-      if (user != null) {
-        try {
-          await Supabase.instance.client.auth.updateUser(
-            UserAttributes(
-              data: {
-                'first_name': defaultFirst,
-                'middle_initial': '',
-                'last_name': defaultLast,
-                'full_name': defaultName,
-                'name': defaultName,
-                'registered_name': defaultName,
-                'avatar_url': null,
-                'picture': null,
-              },
-            ),
-          );
-        } catch (_) {}
-      }
-
-      // Update app_users
-      if (userId != null) {
-        try {
-          await Supabase.instance.client
-              .from('app_users')
-              .update({'name': defaultName})
-              .eq('user_id', userId);
-        } catch (_) {}
-      }
-
-      // Update hog_raisers
-      if (raiserId != null) {
-        try {
-          await Supabase.instance.client
-              .from('hog_raisers')
-              .update({
-                'name': defaultName,
-                'phone': 'N/A',
-                'address': 'N/A',
-                'avatar_url': null,
-              })
-              .eq('hog_raiser_id', raiserId);
-        } catch (_) {}
-      }
-
-      if (mounted) {
-        setState(() {
-          _raiserData['name'] = defaultName;
-          _raiserData['phone'] = 'N/A';
-          _raiserData['address'] = 'N/A';
-          _raiserData.remove('avatar_url');
-        });
-
-        PiggyToast.showSuccess(context, strings.accountDetailsRestoredSuccess);
-      }
-
-      await _fetchRaiserData();
-    } catch (e) {
-      debugPrint('Error resetting raiser profile: $e');
-      if (mounted) {
-        if (ConnectivityService.isNetworkError(e)) {
-          _showOfflineProfileUploadToast();
-        } else {
-          PiggyToast.showError(
-            context,
-            AppStrings.of(context).profilePictureUploadFailed,
-          );
-        }
       }
     } finally {
       if (mounted) {
@@ -2216,62 +1234,20 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
   void _showEditProfileDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentName = (_raiserData['name'] ?? '').toString();
-    final currentPhone = (_raiserData['phone'] ?? '').toString();
-    final currentAddress = (_raiserData['address'] ?? '').toString();
+    final currentName = _raiserData['name'] ?? '';
+    final currentPhone = _raiserData['phone'] ?? '';
+    final currentAddress = _raiserData['address'] ?? '';
 
-    // Parse First, Middle Initial, and Last Name from auth metadata or currentName
-    final userMeta =
-        Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
-    String prefillFirst = (userMeta['first_name'] ?? '').toString().trim();
-    String prefillMiddle =
-        (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '')
-            .toString()
-            .trim();
-    String prefillLast = (userMeta['last_name'] ?? '').toString().trim();
-
-    if (prefillFirst.isEmpty &&
-        prefillLast.isEmpty &&
-        currentName.isNotEmpty &&
-        currentName != 'Hog Raiser' &&
-        currentName != 'N/A') {
-      final nameClean = currentName.trim().replaceAll(RegExp(r'\s+'), ' ');
-      final parts = nameClean.split(' ');
-      if (parts.length == 1) {
-        prefillFirst = parts[0];
-      } else if (parts.length == 2) {
-        prefillFirst = parts[0];
-        prefillLast = parts[1];
-      } else if (parts.length >= 3) {
-        if (parts[1].endsWith('.') || parts[1].length <= 2) {
-          prefillFirst = parts[0];
-          prefillMiddle = parts[1].replaceAll('.', '');
-          prefillLast = parts.sublist(2).join(' ');
-        } else {
-          prefillFirst = parts.sublist(0, parts.length - 1).join(' ');
-          prefillLast = parts.last;
-        }
-      }
-    }
-
-    final firstNameCtrl = TextEditingController(text: prefillFirst);
-    final middleInitialCtrl = TextEditingController(text: prefillMiddle);
-    final lastNameCtrl = TextEditingController(text: prefillLast);
-    final phoneController = TextEditingController(
-      text: currentPhone == 'N/A' ? '' : currentPhone,
-    );
-    final addressController = TextEditingController(
-      text: currentAddress == 'N/A' ? '' : currentAddress,
-    );
+    final nameController = TextEditingController(text: currentName == 'N/A' ? '' : currentName);
+    final phoneController = TextEditingController(text: currentPhone == 'N/A' ? '' : currentPhone);
+    final addressController = TextEditingController(text: currentAddress == 'N/A' ? '' : currentAddress);
 
     final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
     final titleColor = isDark ? Colors.white : _brandColor;
-    final borderColor = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFE2E8F0);
-    final hintColor = isDark
-        ? const Color(0xFF94A3B8)
-        : PiggyTrunkTheme.ptMuted;
+    final inputBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final hintColor = isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted;
+    final fieldIconColor = isDark ? Colors.white70 : hintColor;
     final actionColor = isDark ? Colors.white : _brandColor;
 
     showModalBottomSheet(
@@ -2281,55 +1257,33 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       builder: (ctx) {
         final strings = AppStrings.of(ctx);
         bool isDetectingGps = false;
-        String? firstNameError;
-        String? lastNameError;
-        String? phoneError;
-
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             Future<void> autoDetectGps() async {
               setModalState(() => isDetectingGps = true);
-              final result = await LocationService.instance.getCurrentAddress(
-                requestPermission: true,
-              );
+              final result = await LocationService.instance.getCurrentAddress(requestPermission: true);
               setModalState(() => isDetectingGps = false);
 
-              if (result.success &&
-                  result.address != null &&
-                  result.address!.trim().isNotEmpty) {
+              if (result.success && result.address != null && result.address!.trim().isNotEmpty) {
                 addressController.text = result.address!.trim();
                 if (ctx.mounted) {
-                  PiggyToast.showSuccess(
-                    ctx,
-                    '${strings.locationDetectedToast} ${result.address}',
-                  );
+                  PiggyToast.showSuccess(ctx, '${strings.locationDetectedToast} ${result.address}');
                 }
               } else if (result.isPermanentlyDenied) {
                 if (ctx.mounted) {
                   showDialog(
                     context: ctx,
                     builder: (dCtx) => AlertDialog(
-                      backgroundColor: isDark
-                          ? const Color(0xFF1E293B)
-                          : Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       title: Row(
                         children: [
-                          const Icon(
-                            Icons.location_off_rounded,
-                            color: Color(0xFFF59E0B),
-                            size: 24,
-                          ),
+                          const Icon(Icons.location_off_rounded, color: Color(0xFFF59E0B), size: 24),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               strings.locationDisabledTitle,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
+                              style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800),
                             ),
                           ),
                         ],
@@ -2338,21 +1292,14 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                         strings.locationDisabledDesc,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13.5,
-                          color: isDark
-                              ? Colors.white70
-                              : const Color(0xFF475569),
+                          color: isDark ? Colors.white70 : const Color(0xFF475569),
                           height: 1.45,
                         ),
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(dCtx),
-                          child: Text(
-                            strings.cancel,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                          child: Text(strings.cancel, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700)),
                         ),
                         ElevatedButton(
                           onPressed: () {
@@ -2362,16 +1309,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF007AFF),
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          child: Text(
-                            strings.openSettings,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+                          child: Text(strings.openSettings, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
@@ -2380,611 +1320,381 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
               } else if (ctx.mounted) {
                 PiggyToast.showWarning(
                   ctx,
-                  result.errorMessage ??
-                      'Could not detect location. You can type it manually.',
+                  result.errorMessage ?? 'Could not detect location. You can type it manually.',
                 );
               }
             }
-
             return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
               child: Container(
                 decoration: BoxDecoration(
                   color: sheetBg,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.5 : 0.15,
-                      ),
+                      color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
                       blurRadius: 20,
                       offset: const Offset(0, -4),
                     ),
                   ],
                 ),
                 child: SafeArea(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Drag Handle Pill
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF475569) : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Header Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Top Drag Handle Pill
-                        Center(
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xFF475569)
-                                  : Colors.grey[300],
-                              borderRadius: BorderRadius.circular(2),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.person_outline_rounded,
+                                color: isDark ? Colors.white : _brandColor,
+                                size: 20,
+                              ),
                             ),
+                            const SizedBox(width: 12),
+                            Text(
+                              strings.editProfileTitle,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                                color: titleColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : hintColor, size: 22),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Divider(color: borderColor, height: 1),
+                    const SizedBox(height: 18),
+
+                    // 1. Pangalan
+                    Text(
+                      strings.fullName,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: titleColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: nameController,
+                      textCapitalization: TextCapitalization.words,
+                      inputFormatters: const [CapitalizeWordsInputFormatter()],
+                      style: GoogleFonts.plusJakartaSans(fontSize: 14, color: titleColor, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        hintText: strings.enterFullNameHint,
+                        hintStyle: GoogleFonts.plusJakartaSans(fontSize: 13, color: hintColor),
+                        prefixIcon: Icon(Icons.badge_outlined, color: fieldIconColor, size: 20),
+                        filled: true,
+                        fillColor: inputBg,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: actionColor, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 2. Phone Number (Numerical Only!)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          strings.phoneLabel,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        Text(
+                          strings.numbersOnlyNotice,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.white60 : hintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(11),
+                      ],
+                      style: GoogleFonts.plusJakartaSans(fontSize: 14, color: titleColor, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        hintText: '09XXXXXXXXX',
+                        hintStyle: GoogleFonts.plusJakartaSans(fontSize: 13, color: hintColor),
+                        prefixIcon: Icon(Icons.phone_iphone_rounded, color: fieldIconColor, size: 20),
+                        filled: true,
+                        fillColor: inputBg,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: actionColor, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
-                        // Header Row
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
+                    // 3. Address
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          strings.address,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: isDetectingGps ? null : autoDetectGps,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: isDark
-                                        ? const Color(0xFF1E293B)
-                                        : const Color(0xFFEFF6FF),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isDark
-                                          ? const Color(0xFF334155)
-                                          : const Color(0xFFDBEAFE),
-                                      width: 1,
+                                if (isDetectingGps)
+                                  SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.8,
+                                      color: actionColor,
                                     ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.my_location_rounded,
+                                    size: 14,
+                                    color: actionColor,
                                   ),
-                                  child: Icon(
-                                    Icons.person_outline_rounded,
-                                    color: isDark ? Colors.white : _brandColor,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 4),
                                 Text(
-                                  strings.editProfileTitle,
+                                  isDetectingGps ? strings.detectingGps : strings.autoDetectLocation,
                                   style: GoogleFonts.plusJakartaSans(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 18,
-                                    color: titleColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: actionColor,
                                   ),
                                 ),
                               ],
                             ),
-                            IconButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              icon: Icon(
-                                Icons.close_rounded,
-                                color: isDark ? Colors.white70 : hintColor,
-                                size: 22,
-                              ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Divider(color: borderColor, height: 1),
-                        const SizedBox(height: 18),
-
-                        // 1. First Name & Middle Initial Row
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildRaiserFieldHeaderRow(
-                                    label: strings.firstNameLabel,
-                                    titleColor: titleColor,
-                                  ),
-                                  _buildRaiserInputField(
-                                    context,
-                                    controller: firstNameCtrl,
-                                    hintText: 'e.g. Juan',
-                                    icon: Icons.person_outline_rounded,
-                                    hasError: firstNameError != null,
-                                    inputFormatters: const [
-                                      NameInputFormatter(),
-                                    ],
-                                    onChanged: (_) {
-                                      if (firstNameError != null)
-                                        setModalState(
-                                          () => firstNameError = null,
-                                        );
-                                    },
-                                  ),
-                                  _buildRaiserInlineErrorText(firstNameError),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildRaiserFieldHeaderRow(
-                                    label: strings.middleInitialLabel,
-                                    titleColor: titleColor,
-                                    trailing: Text(
-                                      strings.optionalLabel,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: hintColor,
-                                      ),
-                                    ),
-                                  ),
-                                  _buildRaiserInputField(
-                                    context,
-                                    controller: middleInitialCtrl,
-                                    hintText: 'M.',
-                                    maxLength: 2,
-                                    icon: Icons.edit_note_rounded,
-                                    textCapitalization:
-                                        TextCapitalization.characters,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.allow(
-                                        RegExp(r'[a-zA-Z\u00D1\u00F1]'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // 2. Last Name Field
-                        _buildRaiserFieldHeaderRow(
-                          label: strings.lastNameLabel,
-                          titleColor: titleColor,
-                        ),
-                        _buildRaiserInputField(
-                          context,
-                          controller: lastNameCtrl,
-                          hintText: 'e.g. Dela Cruz',
-                          icon: Icons.badge_outlined,
-                          hasError: lastNameError != null,
-                          inputFormatters: const [NameInputFormatter()],
-                          onChanged: (_) {
-                            if (lastNameError != null)
-                              setModalState(() => lastNameError = null);
-                          },
-                        ),
-                        _buildRaiserInlineErrorText(lastNameError),
-                        const SizedBox(height: 14),
-
-                        // 3. Phone Number Field
-                        _buildRaiserFieldHeaderRow(
-                          label: strings.phoneLabel,
-                          titleColor: titleColor,
-                          trailing: Text(
-                            strings.phoneHelperNotice,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: hintColor,
-                            ),
                           ),
-                        ),
-                        _buildRaiserInputField(
-                          context,
-                          controller: phoneController,
-                          hintText: '09XXXXXXXXX',
-                          icon: Icons.phone_iphone_rounded,
-                          keyboardType: TextInputType.phone,
-                          hasError: phoneError != null,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(11),
-                          ],
-                          onChanged: (_) {
-                            if (phoneError != null)
-                              setModalState(() => phoneError = null);
-                          },
-                        ),
-                        _buildRaiserInlineErrorText(phoneError),
-                        const SizedBox(height: 14),
-
-                        // 4. Address Field with Auto-Detect Action
-                        _buildRaiserFieldHeaderRow(
-                          label: strings.address,
-                          titleColor: titleColor,
-                          trailing: InkWell(
-                            onTap: isDetectingGps ? null : autoDetectGps,
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isDetectingGps)
-                                    SizedBox(
-                                      width: 12,
-                                      height: 12,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.8,
-                                        color: actionColor,
-                                      ),
-                                    )
-                                  else
-                                    Icon(
-                                      Icons.my_location_rounded,
-                                      size: 14,
-                                      color: actionColor,
-                                    ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    isDetectingGps
-                                        ? strings.detectingGps
-                                        : strings.autoDetectLocation,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: actionColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        AddressAutocompleteField(
-                          controller: addressController,
-                          isDetectingGps: isDetectingGps,
-                          onAutoDetect: autoDetectGps,
-                          hintText: strings.tapToDetectGpsAddress,
-                          onChanged: (_) {
-                            setModalState(() {});
-                          },
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(
-                                    color: isDark
-                                        ? const Color(0xFF334155)
-                                        : borderColor,
-                                    width: 1.2,
-                                  ),
-                                  backgroundColor: isDark
-                                      ? const Color(0xFF1E293B)
-                                      : Colors.transparent,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  strings.cancel,
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 14,
-                                    color: isDark ? Colors.white : hintColor,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  final first = firstNameCtrl.text.trim();
-                                  final middle = middleInitialCtrl.text
-                                      .trim()
-                                      .replaceAll('.', '')
-                                      .toUpperCase();
-                                  final last = lastNameCtrl.text.trim();
-                                  final newPhone = phoneController.text.trim();
-                                  final newAddr = addressController.text.trim();
-
-                                  // Validate First Name (letters, spaces, accents, ñ/Ñ only)
-                                  String? fErr;
-                                  if (first.isEmpty) {
-                                    fErr = strings.firstNameRequired;
-                                  } else if (!RegExp(
-                                    r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$",
-                                  ).hasMatch(first)) {
-                                    fErr = strings.nameInvalidCharacters;
-                                  }
-
-                                  // Validate Last Name (letters, spaces, accents, ñ/Ñ only)
-                                  String? lErr;
-                                  if (last.isEmpty) {
-                                    lErr = strings.lastNameRequired;
-                                  } else if (!RegExp(
-                                    r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$",
-                                  ).hasMatch(last)) {
-                                    lErr = strings.nameInvalidCharacters;
-                                  }
-
-                                  // Validate Phone (optional, but if provided must start with 09 and be 11 digits)
-                                  String? pErr;
-                                  if (newPhone.isNotEmpty) {
-                                    if (!newPhone.startsWith('09')) {
-                                      pErr = strings.phoneMustStart09;
-                                    } else if (newPhone.length != 11) {
-                                      pErr = strings.phoneMustBe11Digits;
-                                    }
-                                  }
-
-                                  if (fErr != null ||
-                                      lErr != null ||
-                                      pErr != null) {
-                                    setModalState(() {
-                                      firstNameError = fErr;
-                                      lastNameError = lErr;
-                                      phoneError = pErr;
-                                    });
-                                    return;
-                                  }
-
-                                  final newCombinedName = [
-                                    first,
-                                    if (middle.isNotEmpty) '$middle.',
-                                    last,
-                                  ].where((p) => p.isNotEmpty).join(' ');
-
-                                  Navigator.pop(ctx);
-                                  await _updateProfile(
-                                    newCombinedName,
-                                    newPhone,
-                                    newAddr,
-                                    firstName: first,
-                                    middleInitial: middle,
-                                    lastName: last,
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? Colors.white
-                                      : _brandColor,
-                                  foregroundColor: isDark
-                                      ? const Color(0xFF0F172A)
-                                      : Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  strings.saveChanges,
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: addressController,
+                      readOnly: false,
+                      style: GoogleFonts.plusJakartaSans(fontSize: 14, color: titleColor, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        hintText: strings.enterAddressHint,
+                        hintStyle: GoogleFonts.plusJakartaSans(fontSize: 13, color: hintColor),
+                        prefixIcon: Icon(Icons.location_on_outlined, color: fieldIconColor, size: 20),
+                        suffixIcon: isDetectingGps
+                            ? Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: actionColor),
+                                ),
+                              )
+                            : IconButton(
+                                icon: Icon(
+                                  Icons.my_location_rounded,
+                                  color: actionColor,
+                                  size: 18,
+                                ),
+                                tooltip: strings.autoDetectLocation,
+                                onPressed: isDetectingGps ? null : autoDetectGps,
+                              ),
+                        filled: true,
+                        fillColor: inputBg,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: actionColor, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: isDark ? const Color(0xFF334155) : borderColor, width: 1.2),
+                              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.transparent,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(
+                              strings.cancel,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                color: isDark ? Colors.white : hintColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final newName = nameController.text.trim();
+                              final newPhone = phoneController.text.trim();
+                              final newAddr = addressController.text.trim();
+
+                              if (newName.isEmpty) {
+                                PiggyToast.showWarning(
+                                  context,
+                                  strings.pleaseEnterFullName,
+                                );
+                                return;
+                              }
+
+                              if (newPhone.isNotEmpty && (newPhone.length != 11 || !newPhone.startsWith('09'))) {
+                                PiggyToast.showWarning(
+                                  context,
+                                  strings.invalidPhoneNumber,
+                                );
+                                return;
+                              }
+
+                              Navigator.pop(ctx);
+                              await _updateProfile(
+                                newName,
+                                newPhone,
+                                newAddr,
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.white : _brandColor,
+                              foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(
+                              strings.saveChanges,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
-  }
+  },
+);
+}
 
-  Widget _buildRaiserFieldHeaderRow({
-    required String label,
-    required Color titleColor,
-    Widget? trailing,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: titleColor,
-            ),
-          ),
-          ?trailing,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRaiserInlineErrorText(String? errorText) {
-    if (errorText == null || errorText.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, left: 4),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            size: 13,
-            color: Color(0xFFEF4444),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              errorText,
-              style: GoogleFonts.plusJakartaSans(
-                color: const Color(0xFFEF4444),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRaiserInputField(
-    BuildContext context, {
-    required TextEditingController controller,
-    required String hintText,
-    IconData? icon,
-    Widget? suffixIcon,
-    bool hasError = false,
-    bool readOnly = false,
-    VoidCallback? onTap,
-    int? maxLength,
-    ValueChanged<String>? onChanged,
-    TextInputType? keyboardType,
-    TextCapitalization textCapitalization = TextCapitalization.words,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveFormatters =
-        inputFormatters ??
-        (keyboardType == TextInputType.phone
-            ? null
-            : const [CapitalizeWordsInputFormatter()]);
-    final errorBorderColor = const Color(0xFFEF4444);
-    final normalBorderColor = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFE2E8F0);
-
-    return TextField(
-      controller: controller,
-      readOnly: readOnly,
-      enableInteractiveSelection: !readOnly,
-      showCursor: !readOnly,
-      onTap: onTap,
-      keyboardType: readOnly ? TextInputType.none : keyboardType,
-      textCapitalization: textCapitalization,
-      maxLength: maxLength,
-      inputFormatters: effectiveFormatters,
-      onChanged: onChanged,
-      style: GoogleFonts.plusJakartaSans(
-        color: isDark ? Colors.white : _brandColor,
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
-      ),
-      decoration: InputDecoration(
-        counterText: '',
-        hintText: hintText,
-        hintStyle: GoogleFonts.plusJakartaSans(
-          color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-          fontWeight: FontWeight.w500,
-          fontSize: 13.5,
-        ),
-        prefixIcon: icon != null
-            ? Icon(
-                icon,
-                size: 20,
-                color: hasError
-                    ? errorBorderColor
-                    : (isDark ? Colors.white70 : _brandColor),
-              )
-            : null,
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: icon != null ? 14 : 16,
-          vertical: 13,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: hasError ? errorBorderColor : normalBorderColor,
-            width: hasError ? 1.4 : 1.0,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: hasError
-                ? errorBorderColor
-                : (isDark ? Colors.white : _brandColor),
-            width: 1.5,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _updateProfile(
-    String newName,
-    String newPhone,
-    String newAddress, {
-    String? firstName,
-    String? middleInitial,
-    String? lastName,
-  }) async {
+  Future<void> _updateProfile(String newName, String newPhone, String newAddress) async {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
 
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client
-          .from('hog_raisers')
-          .update({'name': newName, 'phone': newPhone, 'address': newAddress})
-          .eq('hog_raiser_id', raiserId);
+      await Supabase.instance.client.from('hog_raisers').update({
+        'name': newName,
+        'phone': newPhone,
+        'address': newAddress,
+      }).eq('hog_raiser_id', raiserId);
 
       final userId = _raiserData['user_id'];
       if (userId != null) {
         try {
-          await Supabase.instance.client
-              .from('app_users')
-              .update({'name': newName})
-              .eq('user_id', userId);
-        } catch (_) {}
-      }
-
-      // Keep Supabase auth user metadata synchronized
-      if (firstName != null && lastName != null) {
-        try {
-          await Supabase.instance.client.auth.updateUser(
-            UserAttributes(
-              data: {
-                'first_name': firstName,
-                'middle_initial': middleInitial ?? '',
-                'last_name': lastName,
-                'full_name': newName,
-                'name': newName,
-              },
-            ),
-          );
+          await Supabase.instance.client.from('app_users').update({
+            'name': newName,
+          }).eq('user_id', userId);
         } catch (_) {}
       }
 
@@ -2998,7 +1708,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       await _fetchRaiserData();
     } catch (e) {
       if (mounted) {
-        PiggyToast.showError(context, 'Error: ${e.toString()}');
+        PiggyToast.showError(
+          context,
+          'Error: ${e.toString()}',
+        );
       }
     } finally {
       if (mounted) {
@@ -3014,8 +1727,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     _hasCheckedLocationPrompt = true;
 
     final currentAddress = (_raiserData['address'] ?? '').toString().trim();
-    final bool hasValidAddress =
-        currentAddress.isNotEmpty &&
+    final bool hasValidAddress = currentAddress.isNotEmpty &&
         currentAddress != 'N/A' &&
         currentAddress != 'Not Set' &&
         currentAddress != 'Farm Location Not Set';
@@ -3032,16 +1744,12 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
     // Option 1: Directly trigger native Android OS location permission dialog
     try {
-      final result = await LocationService.instance.getCurrentAddress(
-        requestPermission: true,
-      );
+      final result = await LocationService.instance.getCurrentAddress(requestPermission: true);
 
       // Save prompt flag so we don't prompt repeatedly on every screen load
       await prefs.setBool(promptKey, true);
 
-      if (result.success &&
-          result.address != null &&
-          result.address!.trim().isNotEmpty) {
+      if (result.success && result.address != null && result.address!.trim().isNotEmpty) {
         final detectedAddress = result.address!.trim();
         final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
 
@@ -3097,8 +1805,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
         // If on Home tab, require double-tap within 2 seconds to exit app safely
         final now = DateTime.now();
-        if (_lastBackPressTime == null ||
-            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
           _lastBackPressTime = now;
           PiggyToast.showInfo(
             context,
@@ -3113,13 +1820,14 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       child: Builder(
         builder: (context) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          final scaffoldBg = isDark
-              ? PiggyTrunkTheme.ptBgDark
-              : PiggyTrunkTheme.ptBg;
+          final strings = AppStrings.of(context);
+          final scaffoldBg = isDark ? PiggyTrunkTheme.ptBgDark : PiggyTrunkTheme.ptBg;
+          final navBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
+          final navSelectedColor = isDark ? Colors.white : _brandColor;
+          final navUnselectedColor = isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xffa0aec0);
 
           final rawAddress = (_raiserData['address'] ?? '').toString().trim();
-          final bool isAddressMissing =
-              rawAddress.isEmpty ||
+          final bool isAddressMissing = rawAddress.isEmpty ||
               rawAddress == 'N/A' ||
               rawAddress == 'null' ||
               rawAddress == 'Not Set' ||
@@ -3127,10 +1835,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
           return Scaffold(
             backgroundColor: scaffoldBg,
-            extendBody: true,
             body: _isLoading
                 ? SafeArea(
-                    child: RaiserDashboardSkeleton(currentIndex: _currentIndex),
+                    child: RaiserDashboardSkeleton(
+                      currentIndex: _currentIndex,
+                    ),
                   )
                 : SafeArea(
                     child: IndexedStack(
@@ -3149,8 +1858,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                           reportsList: _reportsList,
                           errorMessage: _errorMessage,
                           onRefresh: _fetchRaiserData,
-                          onNavigateToTab: (index) =>
-                              setState(() => _currentIndex = index),
+                          onNavigateToTab: (index) => setState(() => _currentIndex = index),
                           onMarkNotificationAsRead: _markNotificationAsRead,
                           onMarkAllRead: _markAllRead,
                           onUpdateLifecycleStage: _updateLifecycleStage,
@@ -3159,9 +1867,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                           activeAssignments: _activeAssignments,
                           raiserData: _raiserData,
                           requestsList: _requestsList,
-                          investedAmount: _investedAmount,
-                          initialCapital: _initialCapital,
-                          stocksSpendAmount: _stocksSpendAmount,
                           onRefresh: _fetchRaiserData,
                         ),
                         RaiserHogsTab(
@@ -3182,17 +1887,79 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                           raiserData: _raiserData,
                           onPickAndUploadAvatar: _pickAndUploadAvatar,
                           onRestoreDefaultAvatar: _restoreDefaultAvatar,
-                          onResetProfile: _resetProfileToDefault,
                           onShowEditProfileDialog: _showEditProfileDialog,
                           onHandleSignOut: _handleSignOut,
                         ),
                       ],
                     ),
                   ),
-            bottomNavigationBar: RaiserLiquidBottomBar(
-              currentIndex: _currentIndex,
-              isAddressMissing: isAddressMissing,
-              onTap: (index) => setState(() => _currentIndex = index),
+            bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: BottomNavigationBar(
+                currentIndex: _currentIndex,
+                onTap: (index) => setState(() => _currentIndex = index),
+                type: BottomNavigationBarType.fixed,
+                backgroundColor: navBg,
+                selectedItemColor: navSelectedColor,
+                unselectedItemColor: navUnselectedColor,
+                selectedLabelStyle: GoogleFonts.plusJakartaSans(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+                unselectedLabelStyle: GoogleFonts.plusJakartaSans(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+                items: [
+                  BottomNavigationBarItem(
+                    icon: SvgPicture.asset(
+                      'assets/icons/sidebar/dashboard.svg',
+                      width: 22,
+                      height: 22,
+                      colorFilter: ColorFilter.mode(navUnselectedColor, BlendMode.srcIn),
+                    ),
+                    activeIcon: SvgPicture.asset(
+                      'assets/icons/sidebar/dashboard.svg',
+                      width: 22,
+                      height: 22,
+                      colorFilter: ColorFilter.mode(navSelectedColor, BlendMode.srcIn),
+                    ),
+                    label: strings.navDashboard,
+                  ),
+                  BottomNavigationBarItem(
+                    icon: const Icon(Icons.description_outlined),
+                    label: strings.navRequest,
+                  ),
+                  BottomNavigationBarItem(
+                    icon: const Icon(Icons.pets),
+                    label: strings.navHogs,
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Badge(
+                      isLabelVisible: isAddressMissing,
+                      backgroundColor: const Color(0xFFDC2626),
+                      smallSize: 8,
+                      child: const Icon(Icons.person_outline_rounded),
+                    ),
+                    activeIcon: Badge(
+                      isLabelVisible: isAddressMissing,
+                      backgroundColor: const Color(0xFFDC2626),
+                      smallSize: 8,
+                      child: const Icon(Icons.person_rounded),
+                    ),
+                    label: strings.navProfile,
+                  ),
+                ],
+              ),
             ),
           );
         },

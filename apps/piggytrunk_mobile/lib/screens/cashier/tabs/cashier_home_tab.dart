@@ -14,7 +14,6 @@ class CashierHomeTab extends StatelessWidget {
   final List<Map<String, dynamic>> pendingRequests;
   final List<Map<String, dynamic>> salesLogs;
   final Set<String> readNotificationIds;
-  final DateTime? lastMarkAllReadTime;
   final VoidCallback onNavigateToPOS;
   final VoidCallback onNavigateToInventory;
   final VoidCallback onNavigateToRequests;
@@ -35,7 +34,6 @@ class CashierHomeTab extends StatelessWidget {
     required this.pendingRequests,
     required this.salesLogs,
     required this.readNotificationIds,
-    this.lastMarkAllReadTime,
     required this.onNavigateToPOS,
     required this.onNavigateToInventory,
     required this.onNavigateToRequests,
@@ -86,19 +84,6 @@ class CashierHomeTab extends StatelessWidget {
     return count;
   }
 
-  bool _isItemRead(String id, dynamic dateValue) {
-    if (readNotificationIds.contains(id)) return true;
-    if (lastMarkAllReadTime != null && dateValue != null) {
-      try {
-        final dt = DateTime.parse(dateValue.toString()).toLocal();
-        if (!dt.isAfter(lastMarkAllReadTime!)) {
-          return true;
-        }
-      } catch (_) {}
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -123,10 +108,8 @@ class CashierHomeTab extends StatelessWidget {
     for (final req in pendingRequests) {
       final st = (req['status'] ?? '').toString().toLowerCase();
       if (st == 'pending' || st == 'for_approval' || st.isEmpty) {
-        final raw = req['request_id'] ?? req['id'];
-        final id = 'req_${raw ?? ''}';
-        final date = req['created_at'] ?? req['request_date'];
-        if (!_isItemRead(id, date)) totalUnread++;
+        final id = 'req_${req['id'] ?? req['request_id']}';
+        if (!readNotificationIds.contains(id)) totalUnread++;
       }
     }
     for (final p in lowStockProducts) {
@@ -134,10 +117,8 @@ class CashierHomeTab extends StatelessWidget {
       if (!readNotificationIds.contains(id)) totalUnread++;
     }
     for (final sale in salesLogs.take(5)) {
-      final raw = sale['sale_id'] ?? sale['id'];
-      final id = 'sale_${raw ?? ''}';
-      final date = sale['sale_date'] ?? sale['created_at'];
-      if (!_isItemRead(id, date)) totalUnread++;
+      final id = 'sale_${sale['id']}';
+      if (!readNotificationIds.contains(id)) totalUnread++;
     }
 
     final List<POSProduct> fastMoving = allProducts
@@ -195,7 +176,6 @@ class CashierHomeTab extends StatelessWidget {
                       lowStockProducts: lowStockProducts,
                       salesLogs: salesLogs,
                       readNotificationIds: readNotificationIds,
-                      lastMarkAllReadTime: lastMarkAllReadTime,
                       onNavigateToRequests: onNavigateToRequests,
                       onNavigateToInventory: onNavigateToInventory,
                       onShowSalesHistory: onShowSalesHistory,
