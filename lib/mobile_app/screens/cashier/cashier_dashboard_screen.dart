@@ -19,6 +19,7 @@ import 'widgets/cashier_empty_state.dart';
 import 'widgets/cashier_dashboard_skeleton.dart';
 import 'widgets/cashier_liquid_bottom_bar.dart';
 import '../../services/auth_session_service.dart';
+import '../../services/connectivity_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 import '../../services/location_service.dart';
@@ -26,6 +27,7 @@ import '../../utils/sale_id_formatter.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import '../../widgets/piggy_toast.dart';
+import '../../widgets/address_autocomplete_field.dart';
 
 class CashierDashboardScreen extends StatefulWidget {
   const CashierDashboardScreen({super.key});
@@ -137,7 +139,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     final user = _supabase.auth.currentUser;
     if (user != null) {
       NotificationService().requestPermission();
-      NotificationService().startRoleRealtimeListener(role: 'cashier', userId: user.id);
+      NotificationService().startRoleRealtimeListener(
+        role: 'cashier',
+        userId: user.id,
+      );
     }
     await _loadReadNotifications();
     await _fetchProfile();
@@ -155,8 +160,12 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       final savedList = prefs.getStringList('cashier_read_notifications');
       final savedTimeStr = prefs.getString('cashier_last_mark_all_read_time');
 
-      final secureTimeStr = await AuthSessionService().readKey('cashier_last_mark_all_read_time');
-      final secureIdsStr = await AuthSessionService().readKey('cashier_read_notifications');
+      final secureTimeStr = await AuthSessionService().readKey(
+        'cashier_last_mark_all_read_time',
+      );
+      final secureIdsStr = await AuthSessionService().readKey(
+        'cashier_read_notifications',
+      );
 
       // Check Cloud Supabase user_metadata (critical for app reinstallation or fresh install)
       User? user = _supabase.auth.currentUser;
@@ -197,7 +206,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         prefs.setStringList('cashier_read_notifications', loadedIds.toList());
       }
       if (savedTimeStr == null && parsedTime != null) {
-        prefs.setString('cashier_last_mark_all_read_time', parsedTime.toIso8601String());
+        prefs.setString(
+          'cashier_last_mark_all_read_time',
+          parsedTime.toIso8601String(),
+        );
       }
 
       if (mounted) {
@@ -218,12 +230,18 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       final prefs = await SharedPreferences.getInstance();
       final idList = _readNotificationIds.toList();
       await prefs.setStringList('cashier_read_notifications', idList);
-      await AuthSessionService().writeKey('cashier_read_notifications', jsonEncode(idList));
+      await AuthSessionService().writeKey(
+        'cashier_read_notifications',
+        jsonEncode(idList),
+      );
       String? isoTime;
       if (_lastMarkAllReadTime != null) {
         isoTime = _lastMarkAllReadTime!.toIso8601String();
         await prefs.setString('cashier_last_mark_all_read_time', isoTime);
-        await AuthSessionService().writeKey('cashier_last_mark_all_read_time', isoTime);
+        await AuthSessionService().writeKey(
+          'cashier_last_mark_all_read_time',
+          isoTime,
+        );
       }
 
       // Sync to Supabase Auth user_metadata so read state persists across app reinstalls
@@ -231,18 +249,20 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       if (user != null) {
         try {
           // Cap recent IDs to 150 to keep auth user metadata compact and fast
-          final cappedIds = idList.length > 150 ? idList.sublist(idList.length - 150) : idList;
+          final cappedIds = idList.length > 150
+              ? idList.sublist(idList.length - 150)
+              : idList;
           final Map<String, dynamic> updateData = {
             'cashier_read_notifications': cappedIds,
           };
           if (isoTime != null) {
             updateData['cashier_last_mark_all_read_time'] = isoTime;
           }
-          await _supabase.auth.updateUser(
-            UserAttributes(data: updateData),
-          );
+          await _supabase.auth.updateUser(UserAttributes(data: updateData));
         } catch (metaErr) {
-          debugPrint('Notice syncing read notifications to user metadata: $metaErr');
+          debugPrint(
+            'Notice syncing read notifications to user metadata: $metaErr',
+          );
         }
       }
     } catch (e) {
@@ -263,7 +283,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
       if (user == null && effectiveEmail.isEmpty) {
         if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (route) => false);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/onboarding',
+            (route) => false,
+          );
         }
         return;
       }
@@ -273,8 +297,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       // Extract Auth Metadata if available
       final meta = user?.userMetadata;
       if (meta != null) {
-        if (_lastMarkAllReadTime == null && meta['cashier_last_mark_all_read_time'] != null) {
-          final pTime = DateTime.tryParse(meta['cashier_last_mark_all_read_time'].toString());
+        if (_lastMarkAllReadTime == null &&
+            meta['cashier_last_mark_all_read_time'] != null) {
+          final pTime = DateTime.tryParse(
+            meta['cashier_last_mark_all_read_time'].toString(),
+          );
           if (pTime != null && mounted) {
             setState(() => _lastMarkAllReadTime = pTime);
           }
@@ -357,16 +384,29 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       if (resolvedName.isEmpty && effectiveEmail.isNotEmpty) {
         final prefix = effectiveEmail.split('@').first;
         final parts = prefix.replaceAll(RegExp(r'[._-]'), ' ').split(' ');
-        resolvedName = parts.where((p) => p.isNotEmpty).map((p) => p[0].toUpperCase() + p.substring(1)).join(' ');
+        resolvedName = parts
+            .where((p) => p.isNotEmpty)
+            .map((p) => p[0].toUpperCase() + p.substring(1))
+            .join(' ');
       }
 
       // 2. Resolve Phone & Address from user metadata
-      final metaPhone = (meta?['phone'] ?? meta?['phone_number'] ?? meta?['contact_number'])?.toString().trim();
+      final metaPhone =
+          (meta?['phone'] ?? meta?['phone_number'] ?? meta?['contact_number'])
+              ?.toString()
+              .trim();
       if (metaPhone != null && metaPhone.isNotEmpty && metaPhone != 'null') {
         resolvedPhone = metaPhone;
       }
-      final metaAddress = (meta?['address'] ?? meta?['store_address'] ?? meta?['branch_address'])?.toString().trim();
-      if (metaAddress != null && metaAddress.isNotEmpty && metaAddress != 'null') {
+      final metaAddress =
+          (meta?['address'] ??
+                  meta?['store_address'] ??
+                  meta?['branch_address'])
+              ?.toString()
+              .trim();
+      if (metaAddress != null &&
+          metaAddress.isNotEmpty &&
+          metaAddress != 'null') {
         resolvedAddress = metaAddress;
       }
 
@@ -377,16 +417,24 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final keyAddr = 'cashier_address_${user?.id ?? effectiveEmail}';
         final localPhone = prefs.getString(keyPhone)?.trim();
         final localAddr = prefs.getString(keyAddr)?.trim();
-        if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A') && localPhone != null && localPhone.isNotEmpty) {
+        if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A') &&
+            localPhone != null &&
+            localPhone.isNotEmpty) {
           resolvedPhone = localPhone;
         }
-        if ((resolvedAddress == 'Not set' || resolvedAddress == 'N/A') && localAddr != null && localAddr.isNotEmpty) {
+        if ((resolvedAddress == 'Not set' || resolvedAddress == 'N/A') &&
+            localAddr != null &&
+            localAddr.isNotEmpty) {
           resolvedAddress = localAddr;
         }
       } catch (_) {}
 
       // 4. Resolve Phone & Address from admin_notifications if still not set
-      if ((resolvedPhone == 'Not set' || resolvedPhone == 'N/A' || resolvedAddress == 'Not set' || resolvedAddress == 'N/A') && effectiveEmail.isNotEmpty) {
+      if ((resolvedPhone == 'Not set' ||
+              resolvedPhone == 'N/A' ||
+              resolvedAddress == 'Not set' ||
+              resolvedAddress == 'N/A') &&
+          effectiveEmail.isNotEmpty) {
         try {
           final notifs = await _supabase
               .from('admin_notifications')
@@ -399,15 +447,24 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
             if (m is Map) {
               final mEmail = m['email']?.toString().toLowerCase().trim();
               final mUid = m['user_id']?.toString();
-              if (mEmail == effectiveEmail.toLowerCase() || (_appUserId != null && mUid == _appUserId.toString())) {
+              if (mEmail == effectiveEmail.toLowerCase() ||
+                  (_appUserId != null && mUid == _appUserId.toString())) {
                 if (resolvedPhone == 'Not set' || resolvedPhone == 'N/A') {
-                  final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
+                  final nPhone =
+                      (m['phone'] ?? m['contact_number'] ?? m['phone_number'])
+                          ?.toString()
+                          .trim();
                   if (nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
                     resolvedPhone = nPhone;
                   }
                 }
                 if (resolvedAddress == 'Not set' || resolvedAddress == 'N/A') {
-                  final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
+                  final nAddr =
+                      (m['address'] ??
+                              m['store_address'] ??
+                              m['branch_address'])
+                          ?.toString()
+                          .trim();
                   if (nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
                     resolvedAddress = nAddr;
                   }
@@ -429,7 +486,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         resolvedAvatar = cAv;
       }
       if (resolvedAvatar == null) {
-        final metaAv = (meta?['avatar_url'] ?? meta?['picture'])?.toString().trim();
+        final metaAv = (meta?['avatar_url'] ?? meta?['picture'])
+            ?.toString()
+            .trim();
         if (metaAv != null &&
             metaAv.isNotEmpty &&
             metaAv != 'null' &&
@@ -546,7 +605,8 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         if (uid.isNotEmpty) appUsersMap[uid] = Map<String, dynamic>.from(u);
         if (suid.isNotEmpty) appUsersMap[suid] = Map<String, dynamic>.from(u);
         final uEmail = (u['email'] ?? '').toString().toLowerCase().trim();
-        if (uEmail.isNotEmpty) appUsersMap[uEmail] = Map<String, dynamic>.from(u);
+        if (uEmail.isNotEmpty)
+          appUsersMap[uEmail] = Map<String, dynamic>.from(u);
       }
 
       // 3. Fetch admin_notifications registration metadata for accurate signup names
@@ -586,9 +646,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final uId = (r['user_id'])?.toString() ?? '';
         final rEmail = (r['email'] ?? '').toString().toLowerCase().trim();
 
-        final uInfo = (uId.isNotEmpty ? appUsersMap[uId] : null) ??
+        final uInfo =
+            (uId.isNotEmpty ? appUsersMap[uId] : null) ??
             (rEmail.isNotEmpty ? appUsersMap[rEmail] : null);
-        final notifInfo = (uId.isNotEmpty ? notifRegMap[uId] : null) ??
+        final notifInfo =
+            (uId.isNotEmpty ? notifRegMap[uId] : null) ??
             (rEmail.isNotEmpty ? notifRegMap[rEmail] : null);
 
         final suid = (uInfo?['supabase_user_id'])?.toString() ?? '';
@@ -596,9 +658,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final rDbName = (r['name'] ?? '').toString().trim();
         final fName = (r['first_name'] ?? '').toString().trim();
         final lName = (r['last_name'] ?? '').toString().trim();
-        final combinedRaiserName = [fName, lName].where((s) => s.isNotEmpty).join(' ').trim();
+        final combinedRaiserName = [
+          fName,
+          lName,
+        ].where((s) => s.isNotEmpty).join(' ').trim();
         final appUserName = (uInfo?['name'] ?? '').toString().trim();
-        final notifName = (notifInfo?['name'] ?? notifInfo?['full_name'] ?? '').toString().trim();
+        final notifName = (notifInfo?['name'] ?? notifInfo?['full_name'] ?? '')
+            .toString()
+            .trim();
 
         String resolvedName = 'Hog Raiser';
         if (rDbName.isNotEmpty &&
@@ -616,22 +683,54 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
             notifName.toLowerCase() != 'hog raiser') {
           resolvedName = notifName;
         } else {
-          final effEmail = rEmail.isNotEmpty ? rEmail : (uInfo?['email'] ?? '').toString().toLowerCase().trim();
+          final effEmail = rEmail.isNotEmpty
+              ? rEmail
+              : (uInfo?['email'] ?? '').toString().toLowerCase().trim();
           if (effEmail.isNotEmpty) {
-            final prefix = effEmail.split('@').first.replaceAll('.', ' ').replaceAll('_', ' ').trim();
+            final prefix = effEmail
+                .split('@')
+                .first
+                .replaceAll('.', ' ')
+                .replaceAll('_', ' ')
+                .trim();
             if (prefix.isNotEmpty && prefix.toLowerCase() != 'raiser') {
-              resolvedName = prefix.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+              resolvedName = prefix
+                  .split(' ')
+                  .map(
+                    (w) => w.isNotEmpty
+                        ? '${w[0].toUpperCase()}${w.substring(1)}'
+                        : '',
+                  )
+                  .join(' ');
             }
           }
         }
 
-        String resolvedPhone = (r['phone'] ?? uInfo?['phone'] ?? notifInfo?['phone'] ?? notifInfo?['contact_number'] ?? '').toString().trim();
-        if (resolvedPhone == 'null' || resolvedPhone == 'N/A') resolvedPhone = '';
+        String resolvedPhone =
+            (r['phone'] ??
+                    uInfo?['phone'] ??
+                    notifInfo?['phone'] ??
+                    notifInfo?['contact_number'] ??
+                    '')
+                .toString()
+                .trim();
+        if (resolvedPhone == 'null' || resolvedPhone == 'N/A')
+          resolvedPhone = '';
 
-        String resolvedAddress = (r['address'] ?? uInfo?['address'] ?? notifInfo?['address'] ?? '').toString().trim();
-        if (resolvedAddress == 'null' || resolvedAddress == 'N/A') resolvedAddress = '';
+        String resolvedAddress =
+            (r['address'] ?? uInfo?['address'] ?? notifInfo?['address'] ?? '')
+                .toString()
+                .trim();
+        if (resolvedAddress == 'null' || resolvedAddress == 'N/A')
+          resolvedAddress = '';
 
-        String resolvedAvatar = (r['avatar_url'] ?? uInfo?['avatar_url'] ?? notifInfo?['avatar_url'] ?? '').toString().trim();
+        String resolvedAvatar =
+            (r['avatar_url'] ??
+                    uInfo?['avatar_url'] ??
+                    notifInfo?['avatar_url'] ??
+                    '')
+                .toString()
+                .trim();
         if (resolvedAvatar == 'null') resolvedAvatar = '';
 
         final profile = {
@@ -639,7 +738,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           'phone': resolvedPhone,
           'address': resolvedAddress,
           'avatar_url': resolvedAvatar,
-          'email': rEmail.isNotEmpty ? rEmail : (uInfo?['email'] ?? '').toString().trim(),
+          'email': rEmail.isNotEmpty
+              ? rEmail
+              : (uInfo?['email'] ?? '').toString().trim(),
         };
 
         if (rId.isNotEmpty) raisersMap[rId] = profile;
@@ -679,7 +780,12 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final bId = a['batch_id']?.toString() ?? '';
         final rId = a['hog_raiser_id']?.toString() ?? '';
         final status = (a['status'] ?? '').toString().toLowerCase();
-        final rawHogType = (a['hog_types'] is Map ? a['hog_types']['type_name'] : a['pig_type'])?.toString() ?? '';
+        final rawHogType =
+            (a['hog_types'] is Map
+                    ? a['hog_types']['type_name']
+                    : a['pig_type'])
+                ?.toString() ??
+            '';
 
         if (aId.isNotEmpty) {
           if (bId.isNotEmpty && batchNameMap.containsKey(bId)) {
@@ -705,7 +811,8 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         if (r is! Map) continue;
         final rMap = Map<String, dynamic>.from(r);
 
-        String rId = (rMap['hog_raiser_id'] ?? rMap['user_id'] ?? '').toString();
+        String rId = (rMap['hog_raiser_id'] ?? rMap['user_id'] ?? '')
+            .toString();
         final aId = (rMap['assignment_id'] ?? '').toString();
 
         if ((rId.isEmpty || rId == '0' || rId == 'null') && aId.isNotEmpty) {
@@ -713,11 +820,18 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         }
 
         String resolvedBatch = 'Unassigned';
-        final joinedAssignment = rMap['assignments'] is Map ? rMap['assignments'] as Map : null;
-        final joinedBatch = joinedAssignment?['batches'] is Map ? joinedAssignment!['batches'] as Map : null;
-        final joinedBatchName = (joinedBatch?['batch_name'] ?? '').toString().trim();
+        final joinedAssignment = rMap['assignments'] is Map
+            ? rMap['assignments'] as Map
+            : null;
+        final joinedBatch = joinedAssignment?['batches'] is Map
+            ? joinedAssignment!['batches'] as Map
+            : null;
+        final joinedBatchName = (joinedBatch?['batch_name'] ?? '')
+            .toString()
+            .trim();
 
-        if (joinedBatchName.isNotEmpty && joinedBatchName.toLowerCase() != 'null') {
+        if (joinedBatchName.isNotEmpty &&
+            joinedBatchName.toLowerCase() != 'null') {
           resolvedBatch = joinedBatchName;
         } else if (aId.isNotEmpty && assignToBatchMap.containsKey(aId)) {
           resolvedBatch = assignToBatchMap[aId]!;
@@ -725,10 +839,16 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           resolvedBatch = raiserToActiveBatchMap[rId]!;
         }
 
-        final hType = assignToTypeMap[aId] ?? (joinedAssignment?['hog_types'] is Map ? joinedAssignment!['hog_types']['type_name'] : null)?.toString();
+        final hType =
+            assignToTypeMap[aId] ??
+            (joinedAssignment?['hog_types'] is Map
+                    ? joinedAssignment!['hog_types']['type_name']
+                    : null)
+                ?.toString();
         if (hType != null && hType.toString().trim().isNotEmpty) {
           final tClean = hType.toString().trim();
-          if (!resolvedBatch.toLowerCase().contains(tClean.toLowerCase()) && resolvedBatch != 'Unassigned') {
+          if (!resolvedBatch.toLowerCase().contains(tClean.toLowerCase()) &&
+              resolvedBatch != 'Unassigned') {
             resolvedBatch = '$resolvedBatch ($tClean)';
           }
         }
@@ -750,14 +870,29 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           }
         }
 
-        final String resolvedName = raiserInfo?['name'] ??
-            (rMap['user_name'] ?? rMap['raiser_name'] ?? 'Hog Raiser').toString().trim();
-        final String resolvedPhone = raiserInfo?['phone'] ?? (rMap['phone'] ?? '').toString().trim();
-        final String resolvedAddress = raiserInfo?['address'] ?? (rMap['address'] ?? '').toString().trim();
-        final String resolvedAvatar = raiserInfo?['avatar_url'] ?? (rMap['avatar_url'] ?? '').toString().trim();
+        final String resolvedName =
+            raiserInfo?['name'] ??
+            (rMap['user_name'] ?? rMap['raiser_name'] ?? 'Hog Raiser')
+                .toString()
+                .trim();
+        final String resolvedPhone =
+            raiserInfo?['phone'] ?? (rMap['phone'] ?? '').toString().trim();
+        final String resolvedAddress =
+            raiserInfo?['address'] ?? (rMap['address'] ?? '').toString().trim();
+        final String resolvedAvatar =
+            raiserInfo?['avatar_url'] ??
+            (rMap['avatar_url'] ?? '').toString().trim();
 
-        final String rawFeedType = (rMap['feed_type'] ?? rMap['item_name'] ?? rMap['product_name'] ?? '').toString().trim();
-        final String resolvedProductName = rawFeedType.isNotEmpty ? rawFeedType : 'Feed Supply';
+        final String rawFeedType =
+            (rMap['feed_type'] ??
+                    rMap['item_name'] ??
+                    rMap['product_name'] ??
+                    '')
+                .toString()
+                .trim();
+        final String resolvedProductName = rawFeedType.isNotEmpty
+            ? rawFeedType
+            : 'Feed Supply';
 
         // Match against _products to extract real image, available stock, and product_id
         String resolvedProductImage = '';
@@ -768,7 +903,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         for (final p in _allProducts) {
           final pNameLower = p.name.toLowerCase().trim();
           final targetLower = resolvedProductName.toLowerCase().trim();
-          if (pNameLower == targetLower || pNameLower.contains(targetLower) || targetLower.contains(pNameLower)) {
+          if (pNameLower == targetLower ||
+              pNameLower.contains(targetLower) ||
+              targetLower.contains(pNameLower)) {
             matchedProductId = int.tryParse(p.id);
             availableUnits = p.units;
             if (p.image != null && p.image!.isNotEmpty) {
@@ -800,8 +937,12 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final dateB = (b['request_date'] ?? b['created_at'] ?? '').toString();
         final dateComp = dateB.compareTo(dateA);
         if (dateComp != 0) return dateComp;
-        final idA = a['request_id'] is num ? (a['request_id'] as num).toInt() : (int.tryParse(a['request_id']?.toString() ?? '') ?? 0);
-        final idB = b['request_id'] is num ? (b['request_id'] as num).toInt() : (int.tryParse(b['request_id']?.toString() ?? '') ?? 0);
+        final idA = a['request_id'] is num
+            ? (a['request_id'] as num).toInt()
+            : (int.tryParse(a['request_id']?.toString() ?? '') ?? 0);
+        final idB = b['request_id'] is num
+            ? (b['request_id'] as num).toInt()
+            : (int.tryParse(b['request_id']?.toString() ?? '') ?? 0);
         return idB.compareTo(idA);
       });
 
@@ -846,7 +987,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         }
 
         final pName = (log['product_name'] ?? 'Product').toString();
-        final matchedProduct = _allProducts.where((p) => p.name.toLowerCase() == pName.toLowerCase()).firstOrNull;
+        final matchedProduct = _allProducts
+            .where((p) => p.name.toLowerCase() == pName.toLowerCase())
+            .firstOrNull;
 
         combined.add({
           'id': log['id'],
@@ -880,7 +1023,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         final exists = combined.any((c) => c['id'] == saleId);
         if (!exists) {
           final pName = (s['product_name'] ?? 'Inventory Sale').toString();
-          final matchedProduct = _allProducts.where((p) => p.name.toLowerCase() == pName.toLowerCase()).firstOrNull;
+          final matchedProduct = _allProducts
+              .where((p) => p.name.toLowerCase() == pName.toLowerCase())
+              .firstOrNull;
           combined.add({
             'id': saleId,
             'product_name': pName,
@@ -902,8 +1047,16 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
     // Sort descending by date
     combined.sort((a, b) {
-      final dtA = DateTime.tryParse((a['sale_date'] ?? a['created_at'] ?? '').toString()) ?? DateTime(2000);
-      final dtB = DateTime.tryParse((b['sale_date'] ?? b['created_at'] ?? '').toString()) ?? DateTime(2000);
+      final dtA =
+          DateTime.tryParse(
+            (a['sale_date'] ?? a['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(2000);
+      final dtB =
+          DateTime.tryParse(
+            (b['sale_date'] ?? b['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(2000);
       return dtB.compareTo(dtA);
     });
 
@@ -918,6 +1071,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   // ===================== PROFILE ACTIONS =====================
 
   Future<void> _pickAndUploadAvatar() async {
+    if (!await ConnectivityService.hasInternet()) {
+      _showOfflineProfileUploadToast();
+      return;
+    }
+
     try {
       final file = await ImagePicker().pickImage(
         source: ImageSource.gallery,
@@ -926,6 +1084,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         maxHeight: 300,
       );
       if (file == null) return;
+      if (!await ConnectivityService.hasInternet()) {
+        _showOfflineProfileUploadToast();
+        return;
+      }
+
       final bytes = await file.readAsBytes();
       final user = _supabase.auth.currentUser;
       if (user == null) return;
@@ -960,18 +1123,47 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       }
 
       setState(() => _cashierAvatarUrl = avatarUrl);
-      _showSnackBar('Profile picture updated successfully!');
+      _showSnackBar(AppStrings.of(context).profilePictureUpdatedSuccess);
       await _fetchProfile();
     } catch (e) {
-      _showSnackBar('Error updating profile picture: $e', isError: true);
+      if (!mounted) return;
+      if (ConnectivityService.isNetworkError(e)) {
+        _showOfflineProfileUploadToast();
+      } else {
+        _showSnackBar(
+          AppStrings.of(context).profilePictureUploadFailed,
+          isError: true,
+        );
+      }
     }
   }
 
+  void _showOfflineProfileUploadToast() {
+    if (!mounted) return;
+    final strings = AppStrings.of(context);
+    PiggyToast.showWarning(
+      context,
+      strings.profilePictureUploadOffline,
+      title: strings.offlineNotificationTitle,
+      duration: const Duration(seconds: 4),
+    );
+  }
+
   Future<void> _restoreDefaultAvatar() async {
+    if (!await ConnectivityService.hasInternet()) {
+      _showOfflineProfileUploadToast();
+      return;
+    }
+    if (!mounted) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final dialogBg = isDark ? const Color(0xFF151F2E) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFECF2FF) : const Color(0xFF18314F);
-    final mutedTextColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+    final titleColor = isDark
+        ? const Color(0xFFECF2FF)
+        : const Color(0xFF18314F);
+    final mutedTextColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF475569);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -979,7 +1171,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         return AlertDialog(
           backgroundColor: dialogBg,
           surfaceTintColor: dialogBg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
           actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           title: Row(
@@ -990,7 +1184,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                   color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.refresh_rounded, color: Color(0xFFD97706), size: 20),
+                child: const Icon(
+                  Icons.refresh_rounded,
+                  color: Color(0xFFD97706),
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1021,10 +1219,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFCBD5E1),
                         width: 1.2,
                       ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1045,7 +1247,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                       backgroundColor: const Color(0xFF18314F),
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1098,8 +1302,12 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
     final dialogBg = isDark ? const Color(0xFF151F2E) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFECF2FF) : const Color(0xFF18314F);
-    final mutedTextColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+    final titleColor = isDark
+        ? const Color(0xFFECF2FF)
+        : const Color(0xFF18314F);
+    final mutedTextColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF475569);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1107,7 +1315,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         return AlertDialog(
           backgroundColor: dialogBg,
           surfaceTintColor: dialogBg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
           actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           title: Row(
@@ -1118,7 +1328,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                   color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.refresh_rounded, color: Color(0xFFD97706), size: 20),
+                child: const Icon(
+                  Icons.refresh_rounded,
+                  color: Color(0xFFD97706),
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1149,10 +1363,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFCBD5E1),
                         width: 1.2,
                       ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1173,7 +1391,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                       backgroundColor: const Color(0xFF18314F),
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                     child: Text(
@@ -1197,13 +1417,22 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
     try {
       final user = _supabase.auth.currentUser;
-      final emailToUse = _cashierEmail.isNotEmpty ? _cashierEmail : (user?.email ?? '');
+      final emailToUse = _cashierEmail.isNotEmpty
+          ? _cashierEmail
+          : (user?.email ?? '');
 
       String defaultName = "";
       if (user != null) {
         final meta = user.userMetadata ?? {};
-        final reg = (meta['registered_name'] ?? meta['original_name'] ?? meta['initial_name'])?.toString().trim();
-        if (reg != null && reg.isNotEmpty && reg.toLowerCase() != 'cashier staff') {
+        final reg =
+            (meta['registered_name'] ??
+                    meta['original_name'] ??
+                    meta['initial_name'])
+                ?.toString()
+                .trim();
+        if (reg != null &&
+            reg.isNotEmpty &&
+            reg.toLowerCase() != 'cashier staff') {
           defaultName = reg;
         }
       }
@@ -1246,7 +1475,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
       String defaultFirst = defaultName;
       String defaultLast = "";
-      final nameParts = defaultName.trim().replaceAll(RegExp(r'\s+'), ' ').split(' ');
+      final nameParts = defaultName
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .split(' ');
       if (nameParts.length > 1) {
         defaultFirst = nameParts.first;
         defaultLast = nameParts.sublist(1).join(' ');
@@ -1340,7 +1572,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     String prefillLast = '';
 
     final nameClean = _cashierName.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (nameClean.isNotEmpty && nameClean != 'Cashier Staff' && nameClean != 'N/A') {
+    if (nameClean.isNotEmpty &&
+        nameClean != 'Cashier Staff' &&
+        nameClean != 'N/A') {
       final parts = nameClean.split(' ');
       if (parts.length == 1) {
         prefillFirst = parts[0];
@@ -1363,7 +1597,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     if (prefillFirst.isEmpty && prefillLast.isEmpty) {
       final userMeta = _supabase.auth.currentUser?.userMetadata ?? {};
       prefillFirst = (userMeta['first_name'] ?? '').toString().trim();
-      prefillMiddle = (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '').toString().trim();
+      prefillMiddle =
+          (userMeta['middle_initial'] ?? userMeta['middle_name'] ?? '')
+              .toString()
+              .trim();
       prefillLast = (userMeta['last_name'] ?? '').toString().trim();
     }
 
@@ -1371,16 +1608,24 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     final middleInitialCtrl = TextEditingController(text: prefillMiddle);
     final lastNameCtrl = TextEditingController(text: prefillLast);
     final phoneCtrl = TextEditingController(
-      text: (_cashierPhone == 'N/A' || _cashierPhone == 'Not set') ? '' : _cashierPhone,
+      text: (_cashierPhone == 'N/A' || _cashierPhone == 'Not set')
+          ? ''
+          : _cashierPhone,
     );
     final addrCtrl = TextEditingController(
-      text: (_cashierAddress == 'N/A' || _cashierAddress == 'Not set') ? '' : _cashierAddress,
+      text: (_cashierAddress == 'N/A' || _cashierAddress == 'Not set')
+          ? ''
+          : _cashierAddress,
     );
 
     final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE6EBF2);
-    final hintColor = isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted;
+    final borderColor = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFE6EBF2);
+    final hintColor = isDark
+        ? const Color(0xFF94A3B8)
+        : PiggyTrunkTheme.ptMuted;
     final actionColor = isDark ? Colors.white : const Color(0xFF18314F);
 
     showModalBottomSheet(
@@ -1398,29 +1643,47 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           builder: (ctx, setModalState) {
             Future<void> autoDetectGps() async {
               setModalState(() => isDetectingGps = true);
-              final result = await LocationService.instance.getCurrentAddress(requestPermission: true);
+              final result = await LocationService.instance.getCurrentAddress(
+                requestPermission: true,
+              );
               setModalState(() => isDetectingGps = false);
 
-              if (result.success && result.address != null && result.address!.trim().isNotEmpty) {
+              if (result.success &&
+                  result.address != null &&
+                  result.address!.trim().isNotEmpty) {
                 addrCtrl.text = result.address!.trim();
                 if (ctx.mounted) {
-                  PiggyToast.showSuccess(ctx, '${strings.locationDetectedToast} ${result.address}');
+                  PiggyToast.showSuccess(
+                    ctx,
+                    '${strings.locationDetectedToast} ${result.address}',
+                  );
                 }
               } else if (result.isPermanentlyDenied) {
                 if (ctx.mounted) {
                   showDialog(
                     context: ctx,
                     builder: (dCtx) => AlertDialog(
-                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      backgroundColor: isDark
+                          ? const Color(0xFF1E293B)
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
                       title: Row(
                         children: [
-                          const Icon(Icons.location_off_rounded, color: Color(0xFFF59E0B), size: 24),
+                          const Icon(
+                            Icons.location_off_rounded,
+                            color: Color(0xFFF59E0B),
+                            size: 24,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               strings.locationDisabledTitle,
-                              style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ],
@@ -1429,14 +1692,21 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                         strings.locationDisabledDesc,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13.5,
-                          color: isDark ? Colors.white70 : const Color(0xFF475569),
+                          color: isDark
+                              ? Colors.white70
+                              : const Color(0xFF475569),
                           height: 1.45,
                         ),
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(dCtx),
-                          child: Text(strings.cancel, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700)),
+                          child: Text(
+                            strings.cancel,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                         ElevatedButton(
                           onPressed: () {
@@ -1446,9 +1716,16 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF007AFF),
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          child: Text(strings.openSettings, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800)),
+                          child: Text(
+                            strings.openSettings,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -1457,20 +1734,27 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
               } else if (ctx.mounted) {
                 PiggyToast.showWarning(
                   ctx,
-                  result.errorMessage ?? 'Could not detect location. You can type it manually.',
+                  result.errorMessage ??
+                      'Could not detect location. You can type it manually.',
                 );
               }
             }
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   color: sheetBg,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.5 : 0.15,
+                      ),
                       blurRadius: 20,
                       offset: const Offset(0, -4),
                     ),
@@ -1489,7 +1773,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             width: 40,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF475569) : Colors.grey[300],
+                              color: isDark
+                                  ? const Color(0xFF475569)
+                                  : Colors.grey[300],
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -1505,16 +1791,22 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                                    color: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFEFF6FF),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                                      color: isDark
+                                          ? const Color(0xFF334155)
+                                          : const Color(0xFFDBEAFE),
                                       width: 1,
                                     ),
                                   ),
                                   child: Icon(
                                     Icons.person_outline_rounded,
-                                    color: isDark ? Colors.white : const Color(0xFF18314F),
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF18314F),
                                     size: 20,
                                   ),
                                 ),
@@ -1531,7 +1823,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(ctx),
-                              icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : hintColor, size: 22),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: isDark ? Colors.white70 : hintColor,
+                                size: 22,
+                              ),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
@@ -1560,9 +1856,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     hintText: 'e.g. Juan',
                                     icon: Icons.person_outline_rounded,
                                     hasError: firstNameError != null,
-                                    inputFormatters: const [NameInputFormatter()],
+                                    inputFormatters: const [
+                                      NameInputFormatter(),
+                                    ],
                                     onChanged: (_) {
-                                      if (firstNameError != null) setModalState(() => firstNameError = null);
+                                      if (firstNameError != null)
+                                        setModalState(
+                                          () => firstNameError = null,
+                                        );
                                     },
                                   ),
                                   _buildInlineErrorText(firstNameError),
@@ -1593,9 +1894,12 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     hintText: 'M.',
                                     maxLength: 2,
                                     icon: Icons.edit_note_rounded,
-                                    textCapitalization: TextCapitalization.characters,
+                                    textCapitalization:
+                                        TextCapitalization.characters,
                                     inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\u00D1\u00F1]')),
+                                      FilteringTextInputFormatter.allow(
+                                        RegExp(r'[a-zA-Z\u00D1\u00F1]'),
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -1618,7 +1922,8 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                           hasError: lastNameError != null,
                           inputFormatters: const [NameInputFormatter()],
                           onChanged: (_) {
-                            if (lastNameError != null) setModalState(() => lastNameError = null);
+                            if (lastNameError != null)
+                              setModalState(() => lastNameError = null);
                           },
                         ),
                         _buildInlineErrorText(lastNameError),
@@ -1649,7 +1954,8 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             LengthLimitingTextInputFormatter(11),
                           ],
                           onChanged: (_) {
-                            if (phoneError != null) setModalState(() => phoneError = null);
+                            if (phoneError != null)
+                              setModalState(() => phoneError = null);
                           },
                         ),
                         _buildInlineErrorText(phoneError),
@@ -1663,7 +1969,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             onTap: isDetectingGps ? null : autoDetectGps,
                             borderRadius: BorderRadius.circular(6),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -1684,7 +1993,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    isDetectingGps ? strings.detectingGps : strings.autoDetectLocation,
+                                    isDetectingGps
+                                        ? strings.detectingGps
+                                        : strings.autoDetectLocation,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
@@ -1696,53 +2007,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                             ),
                           ),
                         ),
-                        _buildDialogInputField(
-                          context,
+                        AddressAutocompleteField(
                           controller: addrCtrl,
-                          readOnly: true,
-                          onTap: isDetectingGps ? null : autoDetectGps,
-                          hintText: isDetectingGps ? strings.detectingGps : strings.tapToDetectGpsAddress,
-                          icon: Icons.location_on_outlined,
-                          suffixIcon: isDetectingGps
-                              ? Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: actionColor,
-                                    ),
-                                  ),
-                                )
-                              : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (addrCtrl.text.trim().isNotEmpty)
-                                      IconButton(
-                                        icon: Icon(
-                                          Icons.close_rounded,
-                                          size: 18,
-                                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                        ),
-                                        tooltip: strings.cancel,
-                                        onPressed: () {
-                                          setModalState(() {
-                                            addrCtrl.clear();
-                                          });
-                                        },
-                                      ),
-                                    IconButton(
-                                      icon: Icon(
-                                        Icons.my_location_rounded,
-                                        size: 20,
-                                        color: actionColor,
-                                      ),
-                                      tooltip: strings.autoDetectLocation,
-                                      onPressed: autoDetectGps,
-                                    ),
-                                  ],
-                                ),
+                          isDetectingGps: isDetectingGps,
+                          onAutoDetect: autoDetectGps,
+                          hintText: strings.tapToDetectGpsAddress,
+                          onChanged: (_) {
+                            setModalState(() {});
+                          },
                         ),
                         const SizedBox(height: 24),
 
@@ -1753,10 +2025,21 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                               child: OutlinedButton(
                                 onPressed: () => Navigator.pop(ctx),
                                 style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: isDark ? const Color(0xFF334155) : borderColor, width: 1.2),
-                                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.transparent,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  side: BorderSide(
+                                    color: isDark
+                                        ? const Color(0xFF334155)
+                                        : borderColor,
+                                    width: 1.2,
+                                  ),
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF1E293B)
+                                      : Colors.transparent,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                                 child: Text(
                                   strings.cancel,
@@ -1774,7 +2057,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                               child: ElevatedButton(
                                 onPressed: () async {
                                   final first = firstNameCtrl.text.trim();
-                                  final middle = middleInitialCtrl.text.trim().replaceAll('.', '').toUpperCase();
+                                  final middle = middleInitialCtrl.text
+                                      .trim()
+                                      .replaceAll('.', '')
+                                      .toUpperCase();
                                   final last = lastNameCtrl.text.trim();
                                   final newPhone = phoneCtrl.text.trim();
                                   final newAddr = addrCtrl.text.trim();
@@ -1783,7 +2069,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                   String? fErr;
                                   if (first.isEmpty) {
                                     fErr = strings.firstNameRequired;
-                                  } else if (!RegExp(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$").hasMatch(first)) {
+                                  } else if (!RegExp(
+                                    r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$",
+                                  ).hasMatch(first)) {
                                     fErr = strings.nameInvalidCharacters;
                                   }
 
@@ -1791,7 +2079,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                   String? lErr;
                                   if (last.isEmpty) {
                                     lErr = strings.lastNameRequired;
-                                  } else if (!RegExp(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$").hasMatch(last)) {
+                                  } else if (!RegExp(
+                                    r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF \-'\.]+$",
+                                  ).hasMatch(last)) {
                                     lErr = strings.nameInvalidCharacters;
                                   }
 
@@ -1805,7 +2095,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     }
                                   }
 
-                                  if (fErr != null || lErr != null || pErr != null) {
+                                  if (fErr != null ||
+                                      lErr != null ||
+                                      pErr != null) {
                                     setModalState(() {
                                       firstNameError = fErr;
                                       lastNameError = lErr;
@@ -1821,22 +2113,35 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                   ].where((p) => p.isNotEmpty).join(' ');
 
                                   setState(() {
-                                    if (newCombinedName.isNotEmpty) _cashierName = newCombinedName;
-                                    _cashierPhone = newPhone.isNotEmpty ? newPhone : 'Not set';
-                                    _cashierAddress = newAddr.isNotEmpty ? newAddr : 'Not set';
+                                    if (newCombinedName.isNotEmpty)
+                                      _cashierName = newCombinedName;
+                                    _cashierPhone = newPhone.isNotEmpty
+                                        ? newPhone
+                                        : 'Not set';
+                                    _cashierAddress = newAddr.isNotEmpty
+                                        ? newAddr
+                                        : 'Not set';
                                   });
 
                                   Navigator.pop(ctx);
 
                                   try {
                                     final user = _supabase.auth.currentUser;
-                                    final emailToUse = _cashierEmail.isNotEmpty ? _cashierEmail : (user?.email ?? '');
+                                    final emailToUse = _cashierEmail.isNotEmpty
+                                        ? _cashierEmail
+                                        : (user?.email ?? '');
 
                                     // 1. Update Supabase auth user metadata so First, Middle, Last names, phone, address stay synchronized
                                     if (user != null) {
                                       try {
-                                        final existingMeta = user.userMetadata ?? {};
-                                        final regName = (existingMeta['registered_name'] ?? existingMeta['original_name'] ?? _cashierName).toString().trim();
+                                        final existingMeta =
+                                            user.userMetadata ?? {};
+                                        final regName =
+                                            (existingMeta['registered_name'] ??
+                                                    existingMeta['original_name'] ??
+                                                    _cashierName)
+                                                .toString()
+                                                .trim();
                                         await _supabase.auth.updateUser(
                                           UserAttributes(
                                             data: {
@@ -1849,7 +2154,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                               'phone_number': newPhone,
                                               'address': newAddr,
                                               'store_address': newAddr,
-                                              if (regName.isNotEmpty && regName.toLowerCase() != 'cashier staff')
+                                              if (regName.isNotEmpty &&
+                                                  regName.toLowerCase() !=
+                                                      'cashier staff')
                                                 'registered_name': regName,
                                             },
                                           ),
@@ -1860,11 +2167,17 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
 
                                     // 2. Persist locally to SharedPreferences for instant local sync
                                     try {
-                                      final prefs = await SharedPreferences.getInstance();
-                                      final keyPhone = 'cashier_phone_${user?.id ?? emailToUse}';
-                                      final keyAddr = 'cashier_address_${user?.id ?? emailToUse}';
+                                      final prefs =
+                                          await SharedPreferences.getInstance();
+                                      final keyPhone =
+                                          'cashier_phone_${user?.id ?? emailToUse}';
+                                      final keyAddr =
+                                          'cashier_address_${user?.id ?? emailToUse}';
                                       if (newPhone.isNotEmpty) {
-                                        await prefs.setString(keyPhone, newPhone);
+                                        await prefs.setString(
+                                          keyPhone,
+                                          newPhone,
+                                        );
                                       } else {
                                         await prefs.remove(keyPhone);
                                       }
@@ -1894,32 +2207,40 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                             .ilike('email', emailToUse);
                                       }
                                     } catch (appUserErr) {
-                                      debugPrint('Error updating app_users: $appUserErr');
+                                      debugPrint(
+                                        'Error updating app_users: $appUserErr',
+                                      );
                                     }
 
                                     // 4. Record update in admin_notifications so Admin Web can reflect phone and store address in real time
                                     try {
-                                      await _supabase.from('admin_notifications').insert({
-                                        'type': 'cashier_profile',
-                                        'title': 'Cashier Profile Updated',
-                                        'message': '$newCombinedName updated their profile details.',
-                                        'metadata': {
-                                          'user_id': _appUserId,
-                                          'supabase_user_id': user?.id,
-                                          'email': emailToUse,
-                                          'name': newCombinedName,
-                                          'first_name': first,
-                                          'middle_initial': middle,
-                                          'last_name': last,
-                                          'phone': newPhone,
-                                          'contact_number': newPhone,
-                                          'address': newAddr,
-                                          'store_address': newAddr,
-                                          'updated_at': DateTime.now().toIso8601String(),
-                                        },
-                                      });
+                                      await _supabase
+                                          .from('admin_notifications')
+                                          .insert({
+                                            'type': 'cashier_profile',
+                                            'title': 'Cashier Profile Updated',
+                                            'message':
+                                                '$newCombinedName updated their profile details.',
+                                            'metadata': {
+                                              'user_id': _appUserId,
+                                              'supabase_user_id': user?.id,
+                                              'email': emailToUse,
+                                              'name': newCombinedName,
+                                              'first_name': first,
+                                              'middle_initial': middle,
+                                              'last_name': last,
+                                              'phone': newPhone,
+                                              'contact_number': newPhone,
+                                              'address': newAddr,
+                                              'store_address': newAddr,
+                                              'updated_at': DateTime.now()
+                                                  .toIso8601String(),
+                                            },
+                                          });
                                     } catch (notifErr) {
-                                      debugPrint('Notice inserting admin notification: $notifErr');
+                                      debugPrint(
+                                        'Notice inserting admin notification: $notifErr',
+                                      );
                                     }
 
                                     await _fetchProfile();
@@ -1939,11 +2260,19 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark ? Colors.white : const Color(0xFF18314F),
-                                  foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  backgroundColor: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF18314F),
+                                  foregroundColor: isDark
+                                      ? const Color(0xFF0F172A)
+                                      : Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
                                   elevation: 0,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                                 child: Text(
                                   strings.saveChanges,
@@ -1999,7 +2328,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       padding: const EdgeInsets.only(top: 4, left: 4),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, size: 13, color: Color(0xFFEF4444)),
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 13,
+            color: Color(0xFFEF4444),
+          ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
@@ -2032,10 +2365,15 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
     List<TextInputFormatter>? inputFormatters,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveFormatters = inputFormatters ??
-        (keyboardType == TextInputType.phone ? null : const [CapitalizeWordsInputFormatter()]);
+    final effectiveFormatters =
+        inputFormatters ??
+        (keyboardType == TextInputType.phone
+            ? null
+            : const [CapitalizeWordsInputFormatter()]);
     final errorBorderColor = const Color(0xFFEF4444);
-    final normalBorderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE6EBF2);
+    final normalBorderColor = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFE6EBF2);
 
     return TextField(
       controller: controller,
@@ -2062,12 +2400,21 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           fontSize: 13.5,
         ),
         prefixIcon: icon != null
-            ? Icon(icon, size: 20, color: hasError ? errorBorderColor : (isDark ? Colors.white70 : const Color(0xFF18314F)))
+            ? Icon(
+                icon,
+                size: 20,
+                color: hasError
+                    ? errorBorderColor
+                    : (isDark ? Colors.white70 : const Color(0xFF18314F)),
+              )
             : null,
         suffixIcon: suffixIcon,
         filled: true,
         fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-        contentPadding: EdgeInsets.symmetric(horizontal: icon != null ? 14 : 16, vertical: 13),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: icon != null ? 14 : 16,
+          vertical: 13,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
@@ -2078,7 +2425,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: hasError ? errorBorderColor : (isDark ? Colors.white : const Color(0xFF18314F)),
+            color: hasError
+                ? errorBorderColor
+                : (isDark ? Colors.white : const Color(0xFF18314F)),
             width: 1.5,
           ),
         ),
@@ -2234,7 +2583,11 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       try {
         await _supabase
             .from('products')
-            .update({'units': newStock, 'current_stock': newStock, 'sold': newSold})
+            .update({
+              'units': newStock,
+              'current_stock': newStock,
+              'sold': newSold,
+            })
             .eq('id', item.productId);
       } catch (_) {
         try {
@@ -2271,7 +2624,8 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           'performed_by': cashierIdentifier,
           'price': item.subtotal,
           'units': item.quantity,
-          'details': 'POS Sale to $customerName ($paymentMethod) by $cashierIdentifier • Tendered: ₱${tenderedAmount.toStringAsFixed(2)}, Change: ₱${changeAmount.toStringAsFixed(2)}',
+          'details':
+              'POS Sale to $customerName ($paymentMethod) by $cashierIdentifier • Tendered: ₱${tenderedAmount.toStringAsFixed(2)}, Change: ₱${changeAmount.toStringAsFixed(2)}',
           'created_at': nowStr,
         };
 
@@ -2288,10 +2642,13 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       // Insert item-level sale in pos_sales table for demand forecasting
       try {
         await _supabase.from('pos_sales').insert({
-          'order_id': 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(4)}',
+          'order_id':
+              'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(4)}',
           'product_id': item.productId.length >= 32 ? item.productId : null,
           'product_name': item.productName,
-          'category': matchingProduct.category.isNotEmpty ? matchingProduct.category : 'Feeds',
+          'category': matchingProduct.category.isNotEmpty
+              ? matchingProduct.category
+              : 'Feeds',
           'quantity': item.quantity,
           'unit_price': item.price,
           'total_amount': item.subtotal,
@@ -2325,17 +2682,21 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       setState(() {
         for (final item in order.items) {
           final matchingP = _allProducts.firstWhere(
-            (p) => p.id == item.productId || p.name.toLowerCase() == item.productName.toLowerCase(),
-            orElse: () => _allProducts.isNotEmpty ? _allProducts.first : POSProduct(
-              id: item.productId,
-              name: item.productName,
-              categoryId: '',
-              category: 'Medicines',
-              description: '',
-              price: item.price,
-              units: 0,
-              sold: 0,
-            ),
+            (p) =>
+                p.id == item.productId ||
+                p.name.toLowerCase() == item.productName.toLowerCase(),
+            orElse: () => _allProducts.isNotEmpty
+                ? _allProducts.first
+                : POSProduct(
+                    id: item.productId,
+                    name: item.productName,
+                    categoryId: '',
+                    category: 'Medicines',
+                    description: '',
+                    price: item.price,
+                    units: 0,
+                    sold: 0,
+                  ),
           );
           _salesLogs.insert(0, {
             'id': DateTime.now().millisecondsSinceEpoch,
@@ -2499,7 +2860,9 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                         itemBuilder: (context, index) {
                           final sale = _salesLogs[index];
                           final cleanSaleId = SaleIdFormatter.format(
-                            sale['invoice_number'] ?? sale['receipt_number'] ?? sale['id'],
+                            sale['invoice_number'] ??
+                                sale['receipt_number'] ??
+                                sale['id'],
                             index: index,
                             totalCount: _salesLogs.length,
                           );
@@ -2515,21 +2878,38 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                   ?.toString() ??
                               '';
 
-                          final rawProductName = (sale['product_name'] ?? sale['product'] ?? '').toString().trim();
-                          final int quantity = sale['quantity'] as int? ?? (int.tryParse(sale['units']?.toString() ?? '1') ?? 1);
+                          final rawProductName =
+                              (sale['product_name'] ?? sale['product'] ?? '')
+                                  .toString()
+                                  .trim();
+                          final int quantity =
+                              sale['quantity'] as int? ??
+                              (int.tryParse(sale['units']?.toString() ?? '1') ??
+                                  1);
                           final String displayTitle = rawProductName.isNotEmpty
-                              ? (quantity > 1 ? '$rawProductName (${quantity}x)' : rawProductName)
-                              : (sale['customer_name'] != null && sale['customer_name'].toString().trim().isNotEmpty
-                                  ? sale['customer_name'].toString().trim()
-                                  : cleanSaleId);
+                              ? (quantity > 1
+                                    ? '$rawProductName (${quantity}x)'
+                                    : rawProductName)
+                              : (sale['customer_name'] != null &&
+                                        sale['customer_name']
+                                            .toString()
+                                            .trim()
+                                            .isNotEmpty
+                                    ? sale['customer_name'].toString().trim()
+                                    : cleanSaleId);
 
                           String timeDisplay = dateStr;
                           if (dateStr.isNotEmpty) {
                             try {
                               final dt = DateTime.parse(dateStr).toLocal();
-                              final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+                              final hour = dt.hour % 12 == 0
+                                  ? 12
+                                  : dt.hour % 12;
                               final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-                              final minute = dt.minute.toString().padLeft(2, '0');
+                              final minute = dt.minute.toString().padLeft(
+                                2,
+                                '0',
+                              );
                               timeDisplay = '$hour:$minute $ampm';
                             } catch (_) {}
                           }
@@ -2631,14 +3011,14 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? PiggyTrunkTheme.ptBgDark : const Color(0xFFF8FAFC),
+        backgroundColor: isDark
+            ? PiggyTrunkTheme.ptBgDark
+            : const Color(0xFFF8FAFC),
         extendBody: true,
         body: SafeArea(
           bottom: false,
           child: _isLoading
-              ? CashierDashboardSkeleton(
-                  currentIndex: _currentIndex,
-                )
+              ? CashierDashboardSkeleton(currentIndex: _currentIndex)
               : IndexedStack(
                   index: _currentIndex,
                   children: [
@@ -2663,18 +3043,28 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                           _lastMarkAllReadTime = DateTime.now();
                           for (final req in _pendingRequests) {
                             final raw = req['request_id'] ?? req['id'];
-                            if (raw != null) _readNotificationIds.add('req_$raw');
-                            if (req['id'] != null) _readNotificationIds.add('req_${req['id']}');
-                            if (req['request_id'] != null) _readNotificationIds.add('req_${req['request_id']}');
+                            if (raw != null)
+                              _readNotificationIds.add('req_$raw');
+                            if (req['id'] != null)
+                              _readNotificationIds.add('req_${req['id']}');
+                            if (req['request_id'] != null)
+                              _readNotificationIds.add(
+                                'req_${req['request_id']}',
+                              );
                           }
                           for (final p in _lowStockProducts) {
                             _readNotificationIds.add('stock_${p.id}');
                           }
                           for (final sale in _salesLogs) {
                             final raw = sale['sale_id'] ?? sale['id'];
-                            if (raw != null) _readNotificationIds.add('sale_$raw');
-                            if (sale['id'] != null) _readNotificationIds.add('sale_${sale['id']}');
-                            if (sale['sale_id'] != null) _readNotificationIds.add('sale_${sale['sale_id']}');
+                            if (raw != null)
+                              _readNotificationIds.add('sale_$raw');
+                            if (sale['id'] != null)
+                              _readNotificationIds.add('sale_${sale['id']}');
+                            if (sale['sale_id'] != null)
+                              _readNotificationIds.add(
+                                'sale_${sale['sale_id']}',
+                              );
                           }
                         });
                         await _saveReadNotifications();
@@ -2754,7 +3144,10 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
             });
           },
           pendingRequestsCount: _pendingRequests
-              .where((r) => (r['status'] ?? '').toString().toLowerCase() == 'pending')
+              .where(
+                (r) =>
+                    (r['status'] ?? '').toString().toLowerCase() == 'pending',
+              )
               .length,
           cartItemCount: _currentOrder.totalItems,
         ),
