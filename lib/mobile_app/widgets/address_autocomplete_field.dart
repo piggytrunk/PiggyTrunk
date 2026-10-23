@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../services/location_service.dart';
+import 'osm_map_picker_sheet.dart';
 
 /// A sleek, typable address field with debounced OpenStreetMap live suggestions,
-/// house number plate support, and one-tap GPS auto-detection.
+/// house number plate support, interactive pin map picker, and one-tap GPS auto-detection.
 class AddressAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback? onAutoDetect;
+  final VoidCallback? onPickOnMap;
+  final bool enableMapPicker;
   final bool isDetectingGps;
   final ValueChanged<AddressSuggestion>? onAddressSelected;
   final ValueChanged<String>? onChanged;
@@ -20,6 +23,8 @@ class AddressAutocompleteField extends StatefulWidget {
     super.key,
     required this.controller,
     this.onAutoDetect,
+    this.onPickOnMap,
+    this.enableMapPicker = true,
     this.isDetectingGps = false,
     this.onAddressSelected,
     this.onChanged,
@@ -135,6 +140,39 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     widget.onChanged?.call('');
   }
 
+  Future<void> _handlePickOnMap() async {
+    _focusNode.unfocus();
+    if (widget.onPickOnMap != null) {
+      widget.onPickOnMap!();
+      return;
+    }
+    final currentText = widget.controller.text.trim();
+    final prefixInfo = LocationService.extractPhilippinePrefix(currentText);
+    final result = await OsmMapPickerSheet.show(
+      context,
+      initialPrefix: prefixInfo?.prefix,
+      initialAddress: currentText,
+    );
+    if (result != null && result.fullAddress.isNotEmpty) {
+      widget.controller.text = result.fullAddress;
+      widget.onChanged?.call(result.fullAddress);
+      if (widget.onAddressSelected != null) {
+        widget.onAddressSelected!(
+          AddressSuggestion(
+            fullAddress: result.fullAddress,
+            houseNumber: result.houseOrPurok,
+            street: result.street,
+            barangay: result.barangay,
+            municipality: result.municipality,
+            province: result.province,
+            latitude: result.latitude,
+            longitude: result.longitude,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -204,11 +242,21 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                           tooltip: 'Clear',
                           onPressed: _clearField,
                         ),
+                      if (widget.enableMapPicker)
+                        IconButton(
+                          icon: Icon(
+                            Icons.map_outlined,
+                            size: 19,
+                            color: actionColor,
+                          ),
+                          tooltip: 'Pick on Map',
+                          onPressed: _handlePickOnMap,
+                        ),
                       if (widget.onAutoDetect != null)
                         IconButton(
                           icon: Icon(
                             Icons.my_location_rounded,
-                            size: 20,
+                            size: 19,
                             color: actionColor,
                           ),
                           tooltip: 'Auto-Detect Location',
@@ -272,55 +320,23 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header badge
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.map_outlined,
-                        size: 13,
-                        color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Suggestions (OpenStreetMap)',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _suggestions.length,
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
                 ),
-                const Divider(height: 1),
-
-                // Suggestion Rows
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    itemCount: _suggestions.length,
-                    separatorBuilder: (context, index) => Divider(
-                      height: 1,
-                      color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                    ),
-                    itemBuilder: (ctx, idx) {
-                      final s = _suggestions[idx];
-                      return InkWell(
-                        onTap: () => _selectSuggestion(s),
-                        borderRadius: idx == _suggestions.length - 1
-                            ? const BorderRadius.vertical(bottom: Radius.circular(12))
-                            : BorderRadius.zero,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                itemBuilder: (ctx, idx) {
+                  final s = _suggestions[idx];
+                  return InkWell(
+                    onTap: () => _selectSuggestion(s),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -383,9 +399,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                     },
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
 
         // Helpful guidance note when query yields 0 results while typing
         if (!_isSearching && _suggestions.isEmpty && widget.controller.text.trim().length >= 3 && _focusNode.hasFocus)

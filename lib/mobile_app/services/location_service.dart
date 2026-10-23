@@ -210,14 +210,35 @@ class LocationService {
       debugPrint('[LocationService] Detected GPS: lat=$lat, lng=$lng');
 
       // 4. Reverse Geocode via OpenStreetMap Nominatim API (Headless - no map required)
-      // Dual-zoom strategy:
-      // - zoom 18 retrieves exact street/road and house number if available
-      // - zoom 14 retrieves authoritative administrative barangay/village boundary polygon
+      return await getAddressFromCoordinates(lat, lng);
+    } on MissingPluginException catch (e) {
+      debugPrint('[LocationService] MissingPluginException: $e');
+      return LocationResult(
+        success: false,
+        errorMessage: 'The new GPS plugin requires a full app restart. Please re-run the app.',
+      );
+    } on PlatformException catch (e) {
+      debugPrint('[LocationService] PlatformException: $e');
+      return LocationResult(
+        success: false,
+        errorMessage: e.message ?? 'Location permission error.',
+      );
+    } catch (e) {
+      debugPrint('[LocationService] General error: $e');
+      return LocationResult(
+        success: false,
+        errorMessage: 'Failed to detect location: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Reverse geocodes specific coordinates (e.g. from an interactive map pin or picker)
+  /// using our dual-zoom OpenStreetMap Nominatim strategy (zoom 18 for street, zoom 14 for barangay boundary).
+  Future<LocationResult> getAddressFromCoordinates(double lat, double lng) async {
+    try {
       LocationResult? osmDetailed = await _reverseGeocodeNominatim(lat, lng, zoom: 18);
       LocationResult? osmBoundary = await _reverseGeocodeNominatim(lat, lng, zoom: 14);
 
-      // The barangay from zoom 14 corresponds to the true administrative polygon,
-      // preventing borderline roads (e.g. boundary between Balococ and Talang) from misidentifying the barangay.
       final canonicalBrgy = osmBoundary?.barangay ?? osmDetailed?.barangay;
       final canonicalStreet = osmDetailed?.street ?? osmBoundary?.street;
       final canonicalCity = osmDetailed?.municipality ?? osmBoundary?.municipality;
@@ -249,7 +270,7 @@ class LocationService {
         return osmBoundary;
       }
 
-      // Tier 2 Fallback: Native OS Geocoder (Google Play Services / Apple CoreLocation)
+      // Tier 2 Fallback: Native OS Geocoder
       if (!kIsWeb) {
         final nativeResult = await _reverseGeocodeNative(lat, lng);
         if (nativeResult != null && nativeResult.success) {
@@ -264,23 +285,13 @@ class LocationService {
         latitude: lat,
         longitude: lng,
       );
-    } on MissingPluginException catch (e) {
-      debugPrint('[LocationService] MissingPluginException: $e');
-      return LocationResult(
-        success: false,
-        errorMessage: 'The new GPS plugin requires a full app restart. Please re-run the app.',
-      );
-    } on PlatformException catch (e) {
-      debugPrint('[LocationService] PlatformException: $e');
-      return LocationResult(
-        success: false,
-        errorMessage: e.message ?? 'Location permission error.',
-      );
     } catch (e) {
-      debugPrint('[LocationService] General error: $e');
+      debugPrint('[LocationService] getAddressFromCoordinates error: $e');
       return LocationResult(
         success: false,
-        errorMessage: 'Failed to detect location: ${e.toString()}',
+        errorMessage: 'Unable to reverse geocode: $e',
+        latitude: lat,
+        longitude: lng,
       );
     }
   }
@@ -337,6 +348,32 @@ class LocationService {
       debugPrint('[LocationService] OSM Nominatim reverse error: $e');
     }
     return null;
+  }
+
+  /// Extracts the Philippine house number / purok / sitio / zone prefix from an address or query string
+  static ({String prefix, String remainingQuery})? extractPhilippinePrefix(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    final prefixMatch = RegExp(
+      r'^(([#№]?\d+[A-Za-z]?(?:\s*-\s*\d+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)?(?:\s*,?\s*(?:purok|sitio|zone|prk\.?)\s*[0-9A-Za-z\-]+)?)\b',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+
+    if (prefixMatch == null) return null;
+    var prefix = prefixMatch.group(1)?.trim();
+    if (prefix == null || prefix.isEmpty) return null;
+
+    if (RegExp(r'^\d').hasMatch(prefix) && !prefix.startsWith('#')) {
+      prefix = '#$prefix';
+    }
+
+    var remaining = trimmed.substring(prefixMatch.end).trim();
+    if (remaining.startsWith(',') || remaining.startsWith('.')) {
+      remaining = remaining.substring(1).trim();
+    }
+
+    return (prefix: prefix, remainingQuery: remaining);
   }
 
   /// Sanitizes user typed queries for Philippine OpenStreetMap Nominatim search:

@@ -28,6 +28,7 @@ import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/services/notification_service.dart';
 import '../../widgets/piggy_toast.dart';
 import '../../widgets/address_autocomplete_field.dart';
+import '../../widgets/osm_map_picker_sheet.dart';
 
 class CashierDashboardScreen extends StatefulWidget {
   const CashierDashboardScreen({super.key});
@@ -1980,46 +1981,102 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                         _buildFieldHeaderRow(
                           label: strings.address,
                           titleColor: titleColor,
-                          trailing: InkWell(
-                            onTap: isDetectingGps ? null : autoDetectGps,
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isDetectingGps)
-                                    SizedBox(
-                                      width: 12,
-                                      height: 12,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.8,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () async {
+                                  final currentText = addrCtrl.text.trim();
+                                  final prefixInfo = LocationService.extractPhilippinePrefix(currentText);
+                                  final result = await OsmMapPickerSheet.show(
+                                    ctx,
+                                    initialPrefix: prefixInfo?.prefix,
+                                    initialAddress: currentText,
+                                  );
+                                  if (result != null && result.fullAddress.isNotEmpty) {
+                                    setModalState(() {
+                                      addrCtrl.text = result.fullAddress;
+                                    });
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.map_outlined,
+                                        size: 14,
                                         color: actionColor,
                                       ),
-                                    )
-                                  else
-                                    Icon(
-                                      Icons.my_location_rounded,
-                                      size: 14,
-                                      color: actionColor,
-                                    ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    isDetectingGps
-                                        ? strings.detectingGps
-                                        : strings.autoDetectLocation,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: actionColor,
-                                    ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Pick on Map',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: actionColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '•',
+                                style: TextStyle(
+                                  color: actionColor.withValues(alpha: 0.5),
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: isDetectingGps ? null : autoDetectGps,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isDetectingGps)
+                                        SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.8,
+                                            color: actionColor,
+                                          ),
+                                        )
+                                      else
+                                        Icon(
+                                          Icons.my_location_rounded,
+                                          size: 14,
+                                          color: actionColor,
+                                        ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        isDetectingGps
+                                            ? strings.detectingGps
+                                            : strings.autoDetectLocation,
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: actionColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         AddressAutocompleteField(
