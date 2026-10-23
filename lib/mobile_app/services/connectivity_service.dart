@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'offline_sync_service.dart';
+
 /// Tracks a *real* internet connection (not just "Wi-Fi is on").
 /// - `connectivity_plus` gives instant Wi-Fi/data toggle events.
 /// - A ping to the Supabase auth health endpoint confirms internet works.
@@ -37,6 +39,7 @@ class ConnectivityService {
   }
 
   static void _setOnline(bool online) {
+    final bool wasOffline = !isOnline.value;
     isOnline.value = online;
     _retryTimer?.cancel();
     // While offline, keep re-checking in case the OS doesn't fire an event.
@@ -44,6 +47,9 @@ class ConnectivityService {
       _retryTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
         if (await hasInternet()) _setOnline(true);
       });
+    } else if (wasOffline) {
+      // Device transitioned back online: automatically sync any queued offline changes
+      OfflineSyncService().syncPendingProfileUpdates();
     }
   }
 

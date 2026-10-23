@@ -720,15 +720,23 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
 
       await Future.wait(updates);
 
-      // Send approval email via Resend
+      // Send approval email via Resend / Bridge
       if (email.isNotEmpty) {
         try {
-          EmailService().sendAccountApprovalEmail(
+          debugPrint('[HogRaiserScreen] Sending approval email to $email...');
+          final sent = await EmailService().sendAccountApprovalEmail(
             recipientEmail: email,
             recipientName: name,
             role: 'hog_raiser',
           );
-        } catch (_) {}
+          if (sent) {
+            debugPrint('[HogRaiserScreen] Approval email delivered successfully to $email');
+          } else {
+            debugPrint('[HogRaiserScreen] Warning: Approval email could not be delivered to $email');
+          }
+        } catch (mailErr) {
+          debugPrint('[HogRaiserScreen] Error sending approval email: $mailErr');
+        }
       }
 
       await _loadRaisers(keyword: _searchCtrl.text);

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'connectivity_service.dart';
 
 /// Represents an address suggestion candidate returned from OpenStreetMap search autocomplete
 class AddressSuggestion {
@@ -80,6 +81,7 @@ class LocationResult {
   final double? longitude;
   final String? errorMessage;
   final bool isPermanentlyDenied;
+  final bool isOffline;
 
   LocationResult({
     required this.success,
@@ -93,6 +95,7 @@ class LocationResult {
     this.longitude,
     this.errorMessage,
     this.isPermanentlyDenied = false,
+    this.isOffline = false,
   });
 }
 
@@ -137,6 +140,15 @@ class LocationService {
   /// - If no House # and no Road: "Brgy. Name, City/Town, Province"
   Future<LocationResult> getCurrentAddress({bool requestPermission = true}) async {
     try {
+      // 0. Pre-flight check: Converting GPS coordinates to a street address requires active internet
+      if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+        return LocationResult(
+          success: false,
+          isOffline: true,
+          errorMessage: 'An active internet connection is required to look up your street address from GPS. Please connect to Wi-Fi/mobile data or type your address manually.',
+        );
+      }
+
       // 1. Check if location services are enabled on the device
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -288,10 +300,10 @@ class LocationService {
         }
       }
 
-      // Tier 3 Fallback: Raw GPS Coordinates
+      // If reverse geocoding cannot resolve an address, do not return raw coordinates
       return LocationResult(
-        success: true,
-        address: 'Lat: ${lat.toStringAsFixed(4)}, Long: ${lng.toStringAsFixed(4)}',
+        success: false,
+        errorMessage: 'Unable to resolve street address from GPS coordinates. Please check your internet connection or type your address manually.',
         latitude: lat,
         longitude: lng,
       );

@@ -92,13 +92,48 @@ class _InventoryScreenState extends State<InventoryScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_hasCheckedArgs) {
-      final args = ModalRoute.of(context)?.settings.arguments;
-      if (args == 'stock_request') {
-        setState(() {
-          _activeTab = 1;
-        });
-      }
       _hasCheckedArgs = true;
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args != null) {
+        _applyRouteArgs(args);
+      }
+    }
+  }
+
+  void _applyRouteArgs(dynamic args) {
+    if (args is String) {
+      if (args == 'stock_request' || args == 'stock_requests') {
+        setState(() => _activeTab = 1);
+      } else if (args == 'products' || args == 'product_catalog') {
+        setState(() => _activeTab = 0);
+      } else {
+        setState(() {
+          _activeTab = 0;
+          _selectedCategory = 'All';
+          _isArchiveMode = false;
+        });
+        _searchCtrl.text = args.trim();
+      }
+    } else if (args is Map) {
+      final tabVal = args['tab'];
+      final bool isStockReq = tabVal == 1 ||
+          tabVal == 'stock_request' ||
+          tabVal == 'stock_requests' ||
+          args['tab_index'] == 1;
+
+      final String? searchKeyword = (args['search'] ?? args['product_name'] ?? args['name'])?.toString();
+
+      setState(() {
+        _activeTab = isStockReq ? 1 : 0;
+        if (!isStockReq) {
+          _selectedCategory = 'All';
+          _isArchiveMode = false;
+        }
+      });
+
+      if (!isStockReq && searchKeyword != null && searchKeyword.trim().isNotEmpty) {
+        _searchCtrl.text = searchKeyword.trim();
+      }
     }
   }
 
@@ -529,6 +564,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       hintText: 'Search products...',
                       hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13.5),
                       prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
                       filled: true,
                       fillColor: _fieldBg,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -564,6 +608,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         hintText: 'Search products by name or description...',
                         hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
                         prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                        suffixIcon: _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
                         filled: true,
                         fillColor: _fieldBg,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

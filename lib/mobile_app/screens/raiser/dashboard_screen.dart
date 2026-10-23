@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_session_service.dart';
 import '../../services/connectivity_service.dart';
+import '../../services/offline_sync_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
@@ -829,6 +830,8 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       });
 
       // Primary assignment is the first active (non-completed) batch, or first batch if all completed
+      final bool hasActiveBatch =
+          assignments.any((a) => a['is_cycle_completed'] != true);
       final primaryAssign = assignments.isNotEmpty
           ? assignments.firstWhere(
               (a) => a['is_cycle_completed'] != true,
@@ -836,16 +839,20 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             )
           : null;
 
-      final double combinedInvestedAmount =
-          (primaryAssign?['remaining_capital'] as num?)?.toDouble() ?? 0.0;
-      totalCapital =
-          (primaryAssign?['initial_capital'] as num?)?.toDouble() ?? 0.0;
-      final double totalStocksSpend =
-          (primaryAssign?['stocks_spend'] as num?)?.toDouble() ?? 0.0;
-      final List<Map<String, dynamic>> providedStocks =
-          List<Map<String, dynamic>>.from(
-            primaryAssign?['provided_stocks'] ?? [],
-          );
+      final double combinedInvestedAmount = hasActiveBatch
+          ? ((primaryAssign?['remaining_capital'] as num?)?.toDouble() ?? 0.0)
+          : 0.0;
+      totalCapital = hasActiveBatch
+          ? ((primaryAssign?['initial_capital'] as num?)?.toDouble() ?? 0.0)
+          : 0.0;
+      final double totalStocksSpend = hasActiveBatch
+          ? ((primaryAssign?['stocks_spend'] as num?)?.toDouble() ?? 0.0)
+          : 0.0;
+      final List<Map<String, dynamic>> providedStocks = hasActiveBatch
+          ? List<Map<String, dynamic>>.from(
+              primaryAssign?['provided_stocks'] ?? [],
+            )
+          : [];
 
       // 7. Fetch health reports
       final reportsRes = await Supabase.instance.client
@@ -1246,6 +1253,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       combinedRaiserData['avatar_url'] = resolvedAvatar;
       combinedRaiserData['pig_type'] = resolvedPigType;
       combinedRaiserData['lifecycle_stage'] = resolvedStage;
+      OfflineSyncService().cacheProfile(
+        role: 'hog_raiser',
+        profileData: combinedRaiserData,
+      );
 
       if (mounted) {
         setState(() {
@@ -1310,7 +1321,13 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       }
     } catch (e, stacktrace) {
       debugPrint('DEBUG ERROR in _fetchRaiserData: $e');
-      if (mounted) {
+      final cached = await OfflineSyncService().getCachedProfile('hog_raiser');
+      if (cached != null && mounted) {
+        setState(() {
+          _raiserData = cached;
+          _errorMessage = null;
+        });
+      } else if (mounted) {
         setState(() {
           _errorMessage = '$e\n\nSTACKTRACE:\n$stacktrace';
         });
@@ -1890,6 +1907,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
     if (confirmed != true) return;
 
+    final bool hasNet = await ConnectivityService.hasInternet();
+    if (!hasNet) {
+      if (mounted) {
+        final strings = AppStrings.of(context);
+        PiggyToast.showWarning(
+          context,
+          strings.internetRequiredForReset,
+          title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -2289,6 +2319,15 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             Future<void> autoDetectGps() async {
+              if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+                if (ctx.mounted) {
+                  PiggyToast.showWarning(
+                    ctx,
+                    strings.internetRequiredForGpsAddress,
+                  );
+                }
+                return;
+              }
               setModalState(() => isDetectingGps = true);
               final result = await LocationService.instance.getCurrentAddress(
                 requestPermission: true,
@@ -2970,6 +3009,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
 
+    final hasNet = await ConnectivityService.hasInternet();
+    if (!hasNet) {
+      if (mounted) {
+        final strings = AppStrings.of(context);
+        PiggyToast.showWarning(
+          context,
+          strings.internetRequiredForProfile,
+          title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -3005,7 +3057,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         } catch (_) {}
       }
 
+      final updatedData = Map<String, dynamic>.from(_raiserData);
+      updatedData['name'] = newName;
+      updatedData['phone'] = newPhone;
+      updatedData['address'] = newAddress;
+      await OfflineSyncService().cacheProfile(
+        role: 'hog_raiser',
+        profileData: updatedData,
+      );
+
       if (mounted) {
+        setState(() {
+          _raiserData = updatedData;
+        });
         PiggyToast.showSuccess(
           context,
           AppStrings.of(context).profileUpdateSuccess,
@@ -3014,8 +3078,18 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
       await _fetchRaiserData();
     } catch (e) {
+      debugPrint('Error updating raiser profile: $e');
       if (mounted) {
-        PiggyToast.showError(context, 'Error: ${e.toString()}');
+        final strings = AppStrings.of(context);
+        if (ConnectivityService.isNetworkError(e)) {
+          PiggyToast.showWarning(
+            context,
+            strings.connectionLostNotice,
+            title: strings.isFilipino ? 'Kailangan ng Internet' : 'Connection Error',
+          );
+        } else {
+          PiggyToast.showError(context, 'Error: ${e.toString()}');
+        }
       }
     } finally {
       if (mounted) {
@@ -3046,6 +3120,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     final prefs = await SharedPreferences.getInstance();
     final promptKey = 'prompted_location_$userId';
     if (prefs.getBool(promptKey) == true) return;
+
+    // Skip auto-detection on startup if offline to prevent hanging
+    if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+      return;
+    }
 
     // Option 1: Directly trigger native Android OS location permission dialog
     try {

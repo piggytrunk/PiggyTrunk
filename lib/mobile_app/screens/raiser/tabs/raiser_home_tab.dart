@@ -398,7 +398,9 @@ class RaiserHomeTab extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  _formatCurrency(investedAmount),
+                                  isBatchCycleCompleted
+                                      ? _formatCurrency(0.0)
+                                      : _formatCurrency(investedAmount),
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 32,
                                     fontWeight: FontWeight.w800,
@@ -406,7 +408,34 @@ class RaiserHomeTab extends StatelessWidget {
                                     letterSpacing: -0.5,
                                   ),
                                 ),
-                                if (initialCapital > 0 || stocksSpendAmount > 0) ...[
+                                if (isBatchCycleCompleted) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF34D399)),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          strings.isFilipino
+                                              ? 'Siklo Natapos • Naka-settle na ang Puhunan'
+                                              : 'Cycle Concluded • Capital Settled',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ] else if (initialCapital > 0 || stocksSpendAmount > 0) ...[
                                   const SizedBox(height: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
@@ -1887,6 +1916,16 @@ class RaiserHomeTab extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final strings = AppStrings.of(ctx);
+        final bool hasActiveBatch = activeAssignments.any((a) => a['is_cycle_completed'] != true);
+        final bool isConcludedCycle = activeAssignments.isNotEmpty && !hasActiveBatch;
+
+        final completedBatches = activeAssignments.where((a) => a['is_cycle_completed'] == true).toList();
+        final double histCapital = completedBatches.isNotEmpty
+            ? completedBatches.fold(0.0, (sum, a) => sum + ((a['initial_capital'] as num?)?.toDouble() ?? 0.0))
+            : initialCapital;
+        final double histSpend = completedBatches.isNotEmpty
+            ? completedBatches.fold(0.0, (sum, a) => sum + ((a['stocks_spend'] as num?)?.toDouble() ?? 0.0))
+            : stocksSpendAmount;
         return Container(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -2010,15 +2049,21 @@ class RaiserHomeTab extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: _successGreen.withValues(alpha: 0.25),
+                                    color: isConcludedCycle
+                                        ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
+                                        : _successGreen.withValues(alpha: 0.25),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    strings.activeStatus.toUpperCase(),
+                                    isConcludedCycle
+                                        ? (strings.isFilipino ? 'TAPOS / SETTLED' : 'CONCLUDED / SETTLED')
+                                        : strings.activeStatus.toUpperCase(),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w800,
-                                      color: const Color(0xFF6EE7B7),
+                                      color: isConcludedCycle
+                                          ? const Color(0xFF7DD3FC)
+                                          : const Color(0xFF6EE7B7),
                                     ),
                                   ),
                                 ),
@@ -2026,7 +2071,7 @@ class RaiserHomeTab extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _formatCurrency(investedAmount),
+                              _formatCurrency(isConcludedCycle ? 0.0 : investedAmount),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 28,
                                 fontWeight: FontWeight.w800,
@@ -2036,9 +2081,13 @@ class RaiserHomeTab extends StatelessWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              strings.isFilipino
-                                  ? 'Natitirang badyet o puhunan matapos ibawas ang mga naipamahaging feeds at gamot sa iyong batch.'
-                                  : 'Remaining investment budget after deducting distributed feeds and medicines for your batch.',
+                              isConcludedCycle
+                                  ? (strings.isFilipino
+                                      ? 'Ang iyong nakaraang siklo ng pag-aalaga ay matagumpay na natapos. Naka-settle na ang puhunan at kasalukuyang naghihintay ng bagong batch mula sa Admin.'
+                                      : 'Your previous raising cycle concluded successfully. Capital is settled, awaiting next batch assignment from Admin.')
+                                  : (strings.isFilipino
+                                      ? 'Natitirang badyet o puhunan matapos ibawas ang mga naipamahaging feeds at gamot sa iyong batch.'
+                                      : 'Remaining investment budget after deducting distributed feeds and medicines for your batch.'),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11.5,
                                 color: Colors.white.withValues(alpha: 0.75),
@@ -2077,7 +2126,9 @@ class RaiserHomeTab extends StatelessWidget {
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        strings.initialCapital,
+                                          isConcludedCycle
+                                              ? (strings.isFilipino ? 'Nakaraang Puhunan' : 'Concluded Capital')
+                                              : strings.initialCapital,
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -2088,7 +2139,7 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    _formatCurrency(initialCapital),
+                                      _formatCurrency(isConcludedCycle ? histCapital : initialCapital),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
@@ -2097,7 +2148,9 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    strings.isFilipino ? 'Alokasyon ng admin' : 'Admin allocation',
+                                      isConcludedCycle
+                                          ? (strings.isFilipino ? 'Alokasyon ng batch' : 'Batch allocation')
+                                          : (strings.isFilipino ? 'Alokasyon ng admin' : 'Admin allocation'),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       color: mutedTextColor,
@@ -2142,18 +2195,20 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    stocksSpendAmount > 0
-                                        ? '-${_formatCurrency(stocksSpendAmount)}'
+                                      (isConcludedCycle ? histSpend : stocksSpendAmount) > 0
+                                          ? '-${_formatCurrency(isConcludedCycle ? histSpend : stocksSpendAmount)}'
                                         : _formatCurrency(0.0),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
-                                      color: stocksSpendAmount > 0 ? const Color(0xFFEF4444) : mutedTextColor,
+                                        color: (isConcludedCycle ? histSpend : stocksSpendAmount) > 0 ? const Color(0xFFEF4444) : mutedTextColor,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    strings.isFilipino ? 'Ibinawas sa badyet' : 'Deducted from budget',
+                                      isConcludedCycle
+                                          ? (strings.isFilipino ? 'Ibinawas sa nakaraang batch' : 'Deducted from concluded batch')
+                                          : (strings.isFilipino ? 'Ibinawas sa badyet' : 'Deducted from budget'),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       color: mutedTextColor,
@@ -2182,9 +2237,13 @@ class RaiserHomeTab extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                strings.isFilipino
-                                    ? '${_formatCurrency(initialCapital)} (Puhunan) - ${_formatCurrency(stocksSpendAmount)} (Bawas) = ${_formatCurrency(investedAmount)} (Natitira)'
-                                    : '${_formatCurrency(initialCapital)} (Capital) - ${_formatCurrency(stocksSpendAmount)} (Deducted) = ${_formatCurrency(investedAmount)} (Remaining)',
+                                  isConcludedCycle
+                                      ? (strings.isFilipino
+                                          ? 'Nakaraang Siklo: ${_formatCurrency(histCapital)} (Puhunan) - ${_formatCurrency(histSpend)} (Nagamit) • Katayuan: Naka-settle na (₱0 Aktibo)'
+                                          : 'Concluded Cycle: ${_formatCurrency(histCapital)} (Capital) - ${_formatCurrency(histSpend)} (Used) • Status: Concluded & Settled (₱0 Active)')
+                                      : (strings.isFilipino
+                                          ? '${_formatCurrency(initialCapital)} (Puhunan) - ${_formatCurrency(stocksSpendAmount)} (Bawas) = ${_formatCurrency(investedAmount)} (Natitira)'
+                                          : '${_formatCurrency(initialCapital)} (Capital) - ${_formatCurrency(stocksSpendAmount)} (Deducted) = ${_formatCurrency(investedAmount)} (Remaining)'),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
@@ -2196,7 +2255,7 @@ class RaiserHomeTab extends StatelessWidget {
                         ),
                       ),
 
-                      if (activeAssignments.length > 1) ...[
+                      if (activeAssignments.length > 1 || isConcludedCycle) ...[
                         const SizedBox(height: 16),
                         Row(
                           children: [

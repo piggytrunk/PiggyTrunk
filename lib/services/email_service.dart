@@ -212,13 +212,49 @@ class EmailService {
     );
   }
 
-  /// Sends email using Gmail SMTP mailer on native mobile / desktop platforms, or Vercel / Supabase on Web
+  String get _resendApiKey {
+    return dotenv.env['RESEND_API_KEY']?.trim() ?? '';
+  }
+
+  String get _resendFromEmail {
+    return dotenv.env['RESEND_FROM_EMAIL']?.trim() ?? 'Piggy Trunk Support <support@piggytrunk.site>';
+  }
+
+  /// Sends email using Resend API / Gmail SMTP mailer on native platforms, or Bridge / Vercel on Web
   Future<bool> _postEmail({
     required String to,
     required String subject,
     required String html,
   }) async {
-    // 1. Direct Gmail SMTP via Mailer (Native on Android, iOS, Windows, Mac)
+    // 1. Direct Resend HTTPS API (fastest, DKIM & SPF authenticated via piggytrunk.site)
+    try {
+      final resendKey = _resendApiKey;
+      if (resendKey.isNotEmpty) {
+        final response = await http.post(
+          Uri.parse('https://api.resend.com/emails'),
+          headers: {
+            'Authorization': 'Bearer $resendKey',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'from': _resendFromEmail,
+            'to': [to],
+            'subject': subject,
+            'html': html,
+          }),
+        );
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          debugPrint('[EmailService] Email successfully sent via Resend API to: $to');
+          return true;
+        } else {
+          debugPrint('[EmailService] Resend API responded with status ${response.statusCode}: ${response.body}');
+        }
+      }
+    } catch (e) {
+      debugPrint('[EmailService] Resend API direct call notice: $e');
+    }
+
+    // 2. Direct Gmail SMTP via Mailer (Native on Android, iOS, Windows, Mac)
     if (!kIsWeb) {
       try {
         final smtpServer = gmail(_gmailUser, _gmailAppPassword);
@@ -230,16 +266,16 @@ class EmailService {
           ..html = html;
 
         final sendReport = await send(message, smtpServer);
-        debugPrint('Gmail SMTP Email successfully sent to $to: ${sendReport.toString()}');
+        debugPrint('[EmailService] Gmail SMTP Email successfully sent to $to: ${sendReport.toString()}');
         return true;
       } catch (e) {
-        debugPrint('Gmail SMTP native warning: $e. Trying cloud fallback...');
+        debugPrint('[EmailService] Gmail SMTP native warning: $e. Trying bridge fallback...');
       }
     }
 
-    // 2. Web Bridge (Local dev bridge on localhost:3001 or Vercel serverless on production)
+    // 3. Web Bridge (Local dev bridge on localhost:3001 or Vercel serverless on production)
     if (kIsWeb) {
-      // 2a. Try local dev bridge if running locally (test both localhost and 127.0.0.1)
+      // 3a. Try local dev bridge if running locally (test both localhost and 127.0.0.1)
       for (final host in ['http://localhost:3001', 'http://127.0.0.1:3001']) {
         try {
           final response = await http.post(
@@ -252,7 +288,7 @@ class EmailService {
             }),
           );
           if (response.statusCode == 200) {
-            debugPrint('Local SMTP Bridge Email delivered to: $to via $host');
+            debugPrint('[EmailService] Local Bridge Email delivered to: $to via $host');
             return true;
           }
         } catch (_) {
@@ -260,7 +296,7 @@ class EmailService {
         }
       }
 
-      // 2b. Try Vercel Serverless Function (When hosted on Vercel)
+      // 3b. Try Vercel Serverless Function (When hosted on Vercel)
       try {
         final response = await http.post(
           Uri.parse('/api/send-email'),
@@ -272,15 +308,15 @@ class EmailService {
           }),
         );
         if (response.statusCode == 200) {
-          debugPrint('Vercel Serverless Email delivered to: $to');
+          debugPrint('[EmailService] Vercel Serverless Email delivered to: $to');
           return true;
         }
       } catch (vercelErr) {
-        debugPrint('Vercel API notice: $vercelErr');
+        debugPrint('[EmailService] Vercel API notice: $vercelErr');
       }
     }
 
-    // 3. Supabase Edge Function (Optional cloud fallback if deployed)
+    // 4. Supabase Edge Function (Optional cloud fallback if deployed)
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'send-email',
@@ -291,37 +327,14 @@ class EmailService {
         },
       );
       if (response.status == 200) {
-        debugPrint('Supabase Edge Function Email sent successfully to $to');
+        debugPrint('[EmailService] Supabase Edge Function Email sent successfully to $to');
         return true;
       }
     } catch (_) {
-      // Supabase Edge Function is not deployed; skipped silently in favor of Vercel / SMTP bridge.
+      // Supabase Edge Function is not deployed; skipped silently.
     }
 
-    // 4. HTTP Fallback (for Web / Cloud endpoints)
-    try {
-      final resendKey = dotenv.env['RESEND_API_KEY']?.trim() ?? '';
-      if (resendKey.isNotEmpty) {
-        final response = await http.post(
-          Uri.parse('https://api.resend.com/emails'),
-          headers: {
-            'Authorization': 'Bearer $resendKey',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'from': 'Piggy Trunk Support <onboarding@resend.dev>',
-            'to': [to],
-            'subject': subject,
-            'html': html,
-          }),
-        );
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          debugPrint('HTTP Email sent successfully to: $to');
-          return true;
-        }
-      }
-    } catch (_) {}
-
+    debugPrint('[EmailService] WARNING: All email delivery methods failed for recipient: $to');
     return false;
   }
 }

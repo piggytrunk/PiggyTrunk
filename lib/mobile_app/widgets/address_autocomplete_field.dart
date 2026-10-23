@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../services/location_service.dart';
+import '../services/connectivity_service.dart';
 /// A sleek, typable address field with debounced OpenStreetMap live suggestions,
 /// house number plate support, and one-tap GPS auto-detection.
 class AddressAutocompleteField extends StatefulWidget {
@@ -71,7 +72,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     _debounceTimer?.cancel();
 
     final query = text.trim();
-    if (query.length < 2) {
+    if (query.length < 2 || !ConnectivityService.isOnline.value) {
       setState(() {
         _suggestions = [];
         _isSearching = false;

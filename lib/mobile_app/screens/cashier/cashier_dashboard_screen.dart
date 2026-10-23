@@ -20,6 +20,7 @@ import 'widgets/cashier_dashboard_skeleton.dart';
 import 'widgets/cashier_liquid_bottom_bar.dart';
 import '../../services/auth_session_service.dart';
 import '../../services/connectivity_service.dart';
+import '../../services/offline_sync_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 import '../../services/location_service.dart';
@@ -521,8 +522,31 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
           _cashierAvatarUrl = resolvedAvatar;
         });
       }
+
+      OfflineSyncService().cacheProfile(
+        role: 'cashier',
+        profileData: {
+          'name': resolvedName.isNotEmpty ? resolvedName : "Cashier Staff",
+          'email': effectiveEmail,
+          'phone': resolvedPhone,
+          'address': resolvedAddress,
+          'avatar_url': resolvedAvatar,
+          'user_id': _appUserId,
+        },
+      );
     } catch (e) {
       debugPrint('Error loading cashier profile: $e');
+      final cached = await OfflineSyncService().getCachedProfile('cashier');
+      if (cached != null && mounted) {
+        setState(() {
+          if (cached['name'] != null && (cached['name'] as String).isNotEmpty) {
+            _cashierName = cached['name'];
+          }
+          if (cached['phone'] != null) _cashierPhone = cached['phone'];
+          if (cached['address'] != null) _cashierAddress = cached['address'];
+          if (cached['avatar_url'] != null) _cashierAvatarUrl = cached['avatar_url'];
+        });
+      }
     }
   }
 
@@ -1300,8 +1324,19 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
   }
 
   Future<void> _resetProfileToDefault() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
+    final bool hasNet = await ConnectivityService.hasInternet();
+    if (!mounted) return;
+    if (!hasNet) {
+      PiggyToast.showWarning(
+        context,
+        strings.internetRequiredForReset,
+        title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+      );
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final dialogBg = isDark ? const Color(0xFF151F2E) : Colors.white;
     final titleColor = isDark
         ? const Color(0xFFECF2FF)
@@ -1559,7 +1594,15 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
       await _fetchProfile();
     } catch (e) {
       if (mounted) {
-        PiggyToast.showError(context, 'Error resetting profile: $e');
+        if (ConnectivityService.isNetworkError(e)) {
+          PiggyToast.showWarning(
+            context,
+            strings.connectionLostNotice,
+            title: strings.isFilipino ? 'Kailangan ng Internet' : 'Connection Error',
+          );
+        } else {
+          PiggyToast.showError(context, 'Error resetting profile: $e');
+        }
       }
     }
   }
@@ -1643,6 +1686,15 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             Future<void> autoDetectGps() async {
+              if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+                if (ctx.mounted) {
+                  PiggyToast.showWarning(
+                    ctx,
+                    strings.internetRequiredForGpsAddress,
+                  );
+                }
+                return;
+              }
               setModalState(() => isDetectingGps = true);
               final result = await LocationService.instance.getCurrentAddress(
                 requestPermission: true,
@@ -2129,153 +2181,185 @@ class _CashierDashboardScreenState extends State<CashierDashboardScreen> {
                                     last,
                                   ].where((p) => p.isNotEmpty).join(' ');
 
-                                  setState(() {
-                                    if (newCombinedName.isNotEmpty)
-                                      _cashierName = newCombinedName;
-                                    _cashierPhone = newPhone.isNotEmpty
-                                        ? newPhone
-                                        : 'Not set';
-                                    _cashierAddress = newAddr.isNotEmpty
-                                        ? newAddr
-                                        : 'Not set';
-                                  });
+                                  final bool hasNet = await ConnectivityService.hasInternet();
+                                   if (!hasNet) {
+                                     if (ctx.mounted) {
+                                       PiggyToast.showWarning(
+                                         ctx,
+                                         strings.internetRequiredForProfile,
+                                         title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+                                       );
+                                     }
+                                     return;
+                                   }
 
                                   Navigator.pop(ctx);
+                                  setState(() => _isLoading = true);
 
                                   try {
-                                    final user = _supabase.auth.currentUser;
-                                    final emailToUse = _cashierEmail.isNotEmpty
-                                        ? _cashierEmail
-                                        : (user?.email ?? '');
+                                       final user = _supabase.auth.currentUser;
+                                       final emailToUse = _cashierEmail.isNotEmpty
+                                           ? _cashierEmail
+                                           : (user?.email ?? '');
 
-                                    // 1. Update Supabase auth user metadata so First, Middle, Last names, phone, address stay synchronized
-                                    if (user != null) {
-                                      try {
-                                        final existingMeta =
-                                            user.userMetadata ?? {};
-                                        final regName =
-                                            (existingMeta['registered_name'] ??
-                                                    existingMeta['original_name'] ??
-                                                    _cashierName)
-                                                .toString()
-                                                .trim();
-                                        await _supabase.auth.updateUser(
-                                          UserAttributes(
-                                            data: {
-                                              'first_name': first,
-                                              'middle_initial': middle,
-                                              'last_name': last,
-                                              'full_name': newCombinedName,
-                                              'name': newCombinedName,
-                                              'phone': newPhone,
-                                              'phone_number': newPhone,
-                                              'address': newAddr,
-                                              'store_address': newAddr,
-                                              if (regName.isNotEmpty &&
-                                                  regName.toLowerCase() !=
-                                                      'cashier staff')
-                                                'registered_name': regName,
-                                            },
-                                          ),
+                                       // 1. Update Supabase auth user metadata
+                                       if (user != null) {
+                                         try {
+                                           final existingMeta =
+                                               user.userMetadata ?? {};
+                                           final regName =
+                                               (existingMeta['registered_name'] ??
+                                                       existingMeta['original_name'] ??
+                                                       _cashierName)
+                                                   .toString()
+                                                   .trim();
+                                           await _supabase.auth.updateUser(
+                                             UserAttributes(
+                                               data: {
+                                                 'first_name': first,
+                                                 'middle_initial': middle,
+                                                 'last_name': last,
+                                                 'full_name': newCombinedName,
+                                                 'name': newCombinedName,
+                                                 'phone': newPhone,
+                                                 'phone_number': newPhone,
+                                                 'address': newAddr,
+                                                 'store_address': newAddr,
+                                                 if (regName.isNotEmpty &&
+                                                     regName.toLowerCase() !=
+                                                         'cashier staff')
+                                                   'registered_name': regName,
+                                               },
+                                             ),
+                                           );
+                                           await _supabase.auth.refreshSession();
+                                         } catch (_) {}
+                                       }
+
+                                       // 2. Persist locally to SharedPreferences for instant local sync
+                                       try {
+                                         final prefs =
+                                             await SharedPreferences.getInstance();
+                                         final keyPhone =
+                                             'cashier_phone_${user?.id ?? emailToUse}';
+                                         final keyAddr =
+                                             'cashier_address_${user?.id ?? emailToUse}';
+                                         if (newPhone.isNotEmpty) {
+                                           await prefs.setString(
+                                             keyPhone,
+                                             newPhone,
+                                           );
+                                         } else {
+                                           await prefs.remove(keyPhone);
+                                         }
+                                         if (newAddr.isNotEmpty) {
+                                           await prefs.setString(keyAddr, newAddr);
+                                         } else {
+                                           await prefs.remove(keyAddr);
+                                         }
+                                       } catch (_) {}
+
+                                       // 3. Update app_users table with valid column (name)
+                                       try {
+                                         if (_appUserId != null) {
+                                           await _supabase
+                                               .from('app_users')
+                                               .update({'name': newCombinedName})
+                                               .eq('user_id', _appUserId!);
+                                         } else if (user != null) {
+                                           await _supabase
+                                               .from('app_users')
+                                               .update({'name': newCombinedName})
+                                               .eq('supabase_user_id', user.id);
+                                         } else if (emailToUse.isNotEmpty) {
+                                           await _supabase
+                                               .from('app_users')
+                                               .update({'name': newCombinedName})
+                                               .ilike('email', emailToUse);
+                                         }
+                                       } catch (appUserErr) {
+                                         debugPrint(
+                                           'Error updating app_users: $appUserErr',
+                                         );
+                                       }
+
+                                       // 4. Record update in admin_notifications so Admin Web can reflect phone and store address in real time
+                                       try {
+                                         await _supabase
+                                             .from('admin_notifications')
+                                             .insert({
+                                               'type': 'cashier_profile',
+                                               'title': 'Cashier Profile Updated',
+                                               'message':
+                                                   '$newCombinedName updated their profile details.',
+                                               'metadata': {
+                                                 'user_id': _appUserId,
+                                                 'supabase_user_id': user?.id,
+                                                 'email': emailToUse,
+                                                 'name': newCombinedName,
+                                                 'first_name': first,
+                                                 'middle_initial': middle,
+                                                 'last_name': last,
+                                                 'phone': newPhone,
+                                                 'contact_number': newPhone,
+                                                 'address': newAddr,
+                                                 'store_address': newAddr,
+                                                 'updated_at': DateTime.now()
+                                                     .toIso8601String(),
+                                               },
+                                             });
+                                       } catch (notifErr) {
+                                         debugPrint(
+                                           'Notice inserting admin notification: $notifErr',
+                                         );
+                                       }
+
+                                       await OfflineSyncService().cacheProfile(
+                                         role: 'cashier',
+                                         profileData: {
+                                           'name': newCombinedName,
+                                           'email': emailToUse,
+                                           'phone': newPhone,
+                                           'address': newAddr,
+                                           'avatar_url': _cashierAvatarUrl,
+                                           'user_id': _appUserId,
+                                         },
+                                       );
+
+                                       if (mounted) {
+                                        setState(() {
+                                          if (newCombinedName.isNotEmpty) _cashierName = newCombinedName;
+                                          _cashierPhone = newPhone.isNotEmpty ? newPhone : 'Not set';
+                                          _cashierAddress = newAddr.isNotEmpty ? newAddr : 'Not set';
+                                        });
+                                        PiggyToast.showSuccess(
+                                          context,
+                                          strings.profileUpdateSuccess,
                                         );
-                                        await _supabase.auth.refreshSession();
-                                      } catch (_) {}
-                                    }
-
-                                    // 2. Persist locally to SharedPreferences for instant local sync
-                                    try {
-                                      final prefs =
-                                          await SharedPreferences.getInstance();
-                                      final keyPhone =
-                                          'cashier_phone_${user?.id ?? emailToUse}';
-                                      final keyAddr =
-                                          'cashier_address_${user?.id ?? emailToUse}';
-                                      if (newPhone.isNotEmpty) {
-                                        await prefs.setString(
-                                          keyPhone,
-                                          newPhone,
-                                        );
-                                      } else {
-                                        await prefs.remove(keyPhone);
                                       }
-                                      if (newAddr.isNotEmpty) {
-                                        await prefs.setString(keyAddr, newAddr);
-                                      } else {
-                                        await prefs.remove(keyAddr);
+                                      await _fetchProfile();
+                                    } catch (e) {
+                                      debugPrint('Error updating cashier profile in DB: $e');
+                                      if (mounted) {
+                                        if (ConnectivityService.isNetworkError(e)) {
+                                          PiggyToast.showWarning(
+                                            context,
+                                            strings.connectionLostNotice,
+                                            title: strings.isFilipino ? 'Kailangan ng Internet' : 'Connection Error',
+                                          );
+                                        } else {
+                                          PiggyToast.showError(
+                                            context,
+                                            'Error: ${e.toString()}',
+                                          );
+                                        }
                                       }
-                                    } catch (_) {}
-
-                                    // 3. Update app_users table with valid column (name)
-                                    try {
-                                      if (_appUserId != null) {
-                                        await _supabase
-                                            .from('app_users')
-                                            .update({'name': newCombinedName})
-                                            .eq('user_id', _appUserId!);
-                                      } else if (user != null) {
-                                        await _supabase
-                                            .from('app_users')
-                                            .update({'name': newCombinedName})
-                                            .eq('supabase_user_id', user.id);
-                                      } else if (emailToUse.isNotEmpty) {
-                                        await _supabase
-                                            .from('app_users')
-                                            .update({'name': newCombinedName})
-                                            .ilike('email', emailToUse);
+                                    } finally {
+                                      if (mounted) {
+                                        setState(() => _isLoading = false);
                                       }
-                                    } catch (appUserErr) {
-                                      debugPrint(
-                                        'Error updating app_users: $appUserErr',
-                                      );
                                     }
-
-                                    // 4. Record update in admin_notifications so Admin Web can reflect phone and store address in real time
-                                    try {
-                                      await _supabase
-                                          .from('admin_notifications')
-                                          .insert({
-                                            'type': 'cashier_profile',
-                                            'title': 'Cashier Profile Updated',
-                                            'message':
-                                                '$newCombinedName updated their profile details.',
-                                            'metadata': {
-                                              'user_id': _appUserId,
-                                              'supabase_user_id': user?.id,
-                                              'email': emailToUse,
-                                              'name': newCombinedName,
-                                              'first_name': first,
-                                              'middle_initial': middle,
-                                              'last_name': last,
-                                              'phone': newPhone,
-                                              'contact_number': newPhone,
-                                              'address': newAddr,
-                                              'store_address': newAddr,
-                                              'updated_at': DateTime.now()
-                                                  .toIso8601String(),
-                                            },
-                                          });
-                                    } catch (notifErr) {
-                                      debugPrint(
-                                        'Notice inserting admin notification: $notifErr',
-                                      );
-                                    }
-
-                                    await _fetchProfile();
-                                    if (mounted) {
-                                      PiggyToast.showSuccess(
-                                        context,
-                                        strings.profileUpdateSuccess,
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      PiggyToast.showError(
-                                        context,
-                                        'Error updating profile: $e',
-                                      );
-                                    }
-                                  }
-                                },
+                                  },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isDark
                                       ? Colors.white

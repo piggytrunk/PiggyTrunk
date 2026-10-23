@@ -109,8 +109,12 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
     final statsBoxBg = isDark ? const Color(0xff1b2638) : const Color(0xfff8fafc);
     final statsBoxBorder = isDark ? const Color(0xff28354a) : const Color(0xffe6ebf2);
 
-    final activeProjects = widget.investedAmount > 0 || widget.projectsList.isNotEmpty
+    final activeProjects = (widget.investedAmount > 0 || widget.projectsList.isNotEmpty)
         ? widget.projectsList
+            .where((p) =>
+                p['is_cycle_completed'] != true &&
+                (p['status'] ?? '').toString().toLowerCase() != 'completed')
+            .toList()
         : <Map<String, dynamic>>[];
 
     // Calculate total summary metrics

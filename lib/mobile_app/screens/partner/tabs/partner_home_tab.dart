@@ -149,7 +149,16 @@ class PartnerHomeTab extends StatelessWidget {
     final effectiveFunded = hasInvestments
         ? (fundedProjectsList.isNotEmpty
             ? fundedProjectsList
-            : projectsList.where((p) => ((p['invested_amount'] as num?)?.toDouble() ?? 0) > 0).toList())
+                .where((p) =>
+                    p['is_cycle_completed'] != true &&
+                    (p['status'] ?? '').toString().toLowerCase() != 'completed')
+                .toList()
+            : projectsList
+                .where((p) =>
+                    ((p['invested_amount'] as num?)?.toDouble() ?? 0) > 0 &&
+                    p['is_cycle_completed'] != true &&
+                    (p['status'] ?? '').toString().toLowerCase() != 'completed')
+                .toList())
         : <Map<String, dynamic>>[];
 
     final displayProjects = (hasInvestments && effectiveFunded.isNotEmpty)

@@ -318,6 +318,9 @@ class AppStrings {
   String get tapToDetectGpsAddress => isFilipino
       ? 'I-tap upang i-detect ang lokasyon gamit ang GPS'
       : 'Tap to auto-detect location via GPS';
+  String get internetRequiredForGpsAddress => isFilipino
+      ? 'Kailangan ng internet connection para makuha ang address mula sa GPS. Mangyaring kumonekta sa Wi-Fi/mobile data o manu-manong i-type ang iyong address.'
+      : 'An active internet connection is required to look up your street address from GPS. Please connect to Wi-Fi/mobile data or type your address manually.';
 
   // ================= Settings / Language =================
   String get settings => isFilipino ? 'Mga Setting' : 'Settings';
@@ -378,9 +381,16 @@ class AppStrings {
   String get confirmNewPasswordLabel => isFilipino ? 'Kumpirmahin ang Bagong Password' : 'Confirm New Password';
   String get updatePasswordBtn => isFilipino ? 'I-update ang Password' : 'Update Password';
   String get passwordTooShort => isFilipino ? 'Dapat hindi bababa sa 6 na karakter ang bagong password.' : 'New password must be at least 6 characters.';
+  String get passwordMustContainLetters => isFilipino ? 'Dapat mayroong kahit isang titik (a-z, A-Z) ang password.' : 'Password must contain at least one letter (a-z, A-Z).';
+  String get passwordMustContainNumbers => isFilipino ? 'Dapat mayroong kahit isang numero o simbolo (0-9, !@#...) ang password.' : 'Password must contain at least one number or symbol (0-9, !@#...).';
+  String get passwordWeakNotice => isFilipino ? 'Masyadong mahina ang password. Gumamit ng kombinasyon ng mga titik, numero, at simbolo.' : 'Password is too weak. Please use a combination of letters, numbers, and symbols.';
   String get passwordsDoNotMatch => isFilipino ? 'Hindi magkatugma ang bagong password.' : 'New passwords do not match.';
   String get passwordChangedSuccess => isFilipino ? 'Matagumpay na napalitan ang iyong password!' : 'Password changed successfully!';
   String get googleAccountNotice => isFilipino ? 'Naka-link ang account mo gamit ang Google. Maaari kang mag-set ng password dito.' : 'Your account is linked with Google. You can set a password here to sign in with email and password as well.';
+  String get internetRequiredForProfile => isFilipino ? 'Kailangan ng koneksyon sa internet upang i-update ang iyong profile.' : 'Internet connection required. Please connect to the internet to update your profile.';
+  String get internetRequiredForReset => isFilipino ? 'Kailangan ng koneksyon sa internet upang i-reset ang iyong account.' : 'Internet connection required. Please connect to the internet to reset your account details.';
+  String get internetRequiredForPassword => isFilipino ? 'Kailangan ng koneksyon sa internet upang palitan ang iyong password.' : 'Internet connection required. Please connect to the internet to change your password.';
+  String get connectionLostNotice => isFilipino ? 'Nawala ang koneksyon sa internet. Pakisubukang muli.' : 'Connection lost. Please check your internet and try again.';
 
   // ================= Auth & Role Selection =================
   String get selectRoleTitle => isFilipino ? 'Mag-sign In sa Piggy Trunk' : 'Sign In to Piggy Trunk';

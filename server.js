@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
@@ -28,9 +29,52 @@ const transporter = nodemailer.createTransport({
   secure: true,
   auth: {
     user: process.env.GMAIL_USER || 'piggytrunk@gmail.com',
-    pass: process.env.GMAIL_APP_PASSWORD || 'ptveuzimyoixwtsz',
+    pass: process.env.GMAIL_APP_PASSWORD || '',
   },
 });
+
+function sendViaResend(to, subject, html) {
+  return new Promise((resolve, reject) => {
+    const resendApiKey = process.env.RESEND_API_KEY || '';
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Piggy Trunk Support <support@piggytrunk.site>';
+
+    const postData = JSON.stringify({
+      from: fromEmail,
+      to: Array.isArray(to) ? to : [to],
+      subject: subject,
+      html: html,
+    });
+
+    const req = https.request({
+      hostname: 'api.resend.com',
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+    }, res => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (_) {
+            resolve({ id: body });
+          }
+        } else {
+          reject(new Error(`Resend error (${res.statusCode}): ${body}`));
+        }
+      });
+    });
+
+    req.on('error', err => reject(err));
+    req.write(postData);
+    req.end();
+  });
+}
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -58,6 +102,18 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        // Try Resend primary first (authenticated via verified domain piggytrunk.site)
+        try {
+          const resendResult = await sendViaResend(to, subject, html);
+          console.log(`[Piggy Trunk Bridge] Email sent via Resend to ${to} (ID: ${resendResult.id})`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, provider: 'resend', id: resendResult.id }));
+          return;
+        } catch (resendErr) {
+          console.warn('[Piggy Trunk Bridge] Resend failed, falling back to Gmail SMTP:', resendErr.message);
+        }
+
+        // Fallback to Gmail SMTP via nodemailer
         const info = await transporter.sendMail({
           from: 'Piggy Trunk Support <piggytrunk@gmail.com>',
           to,
@@ -65,22 +121,22 @@ const server = http.createServer(async (req, res) => {
           html,
         });
 
-        console.log(`[Piggy Trunk Local SMTP Bridge] Email successfully sent to ${to}: ${info.messageId}`);
+        console.log(`[Piggy Trunk Bridge] Email sent via Gmail SMTP to ${to} (${info.messageId})`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, messageId: info.messageId }));
+        res.end(JSON.stringify({ success: true, provider: 'gmail_smtp', messageId: info.messageId }));
       } catch (err) {
-        console.error('[Piggy Trunk Local SMTP Bridge Error]', err);
+        console.error('[Piggy Trunk Bridge Error]', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
     });
   } else {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Piggy Trunk SMTP Bridge is running.');
+    res.end('Piggy Trunk Dual-Engine Email Bridge (Resend + Gmail SMTP) is running.');
   }
 });
 
 const PORT = 3001;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Piggy Trunk SMTP Bridge running on http://localhost:${PORT}`);
+  console.log(`Piggy Trunk Email Bridge running on http://localhost:${PORT}`);
 });

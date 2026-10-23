@@ -21,6 +21,7 @@ import '../../services/location_service.dart';
 import '../../widgets/piggy_toast.dart';
 import '../../widgets/address_autocomplete_field.dart';
 import '../../widgets/house_number_prompt_dialog.dart';
+import '../../services/offline_sync_service.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 
@@ -658,6 +659,18 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
     if (confirmed != true) return;
 
+    final bool hasNet = await ConnectivityService.hasInternet();
+    if (!hasNet) {
+      if (mounted) {
+        PiggyToast.showWarning(
+          context,
+          strings.internetRequiredForReset,
+          title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+        );
+      }
+      return;
+    }
+
     if (mounted) setState(() => _isLoading = true);
 
     try {
@@ -870,6 +883,15 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             Future<void> autoDetectGps() async {
+              if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+                if (ctx.mounted) {
+                  PiggyToast.showWarning(
+                    ctx,
+                    strings.internetRequiredForGpsAddress,
+                  );
+                }
+                return;
+              }
               setModalState(() => isDetectingGps = true);
               final result = await LocationService.instance.getCurrentAddress(
                 requestPermission: true,
@@ -1356,146 +1378,182 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                     last,
                                   ].where((p) => p.isNotEmpty).join(' ');
 
-                                  setState(() {
-                                    if (newCombinedName.isNotEmpty)
-                                      _partnerName = newCombinedName;
-                                    _partnerPhone = newPhone.isNotEmpty
-                                        ? newPhone
-                                        : 'N/A';
-                                    _partnerAddress = newAddr.isNotEmpty
-                                        ? newAddr
-                                        : 'N/A';
-                                  });
+                                  final bool hasNet = await ConnectivityService.hasInternet();
+                                   if (!hasNet) {
+                                     if (ctx.mounted) {
+                                       PiggyToast.showWarning(
+                                         ctx,
+                                         strings.internetRequiredForProfile,
+                                         title: strings.isFilipino ? 'Kailangan ng Internet' : 'Internet Required',
+                                       );
+                                     }
+                                     return;
+                                   }
 
                                   Navigator.pop(ctx);
+                                  setState(() => _isLoading = true);
 
                                   try {
-                                    final user = Supabase
-                                        .instance
-                                        .client
-                                        .auth
-                                        .currentUser;
-                                    final emailToUse = _partnerEmail.isNotEmpty
-                                        ? _partnerEmail
-                                        : user?.email;
-
-                                    if (user != null &&
-                                        newCombinedName.isNotEmpty) {
-                                      await Supabase.instance.client
-                                          .from('app_users')
-                                          .update({'name': newCombinedName})
-                                          .eq('supabase_user_id', user.id);
-                                    } else if (emailToUse != null &&
-                                        emailToUse.isNotEmpty &&
-                                        newCombinedName.isNotEmpty) {
-                                      await Supabase.instance.client
-                                          .from('app_users')
-                                          .update({'name': newCombinedName})
-                                          .eq('email', emailToUse);
-                                    }
-
-                                    // Update Supabase auth user metadata so First, Middle, Last names stay synchronized
-                                    try {
-                                      final existingMeta =
-                                          user?.userMetadata ?? {};
-                                      final regName =
-                                          (existingMeta['registered_name'] ??
-                                                  existingMeta['original_name'] ??
-                                                  _partnerName)
-                                              .toString()
-                                              .trim();
-                                      await Supabase.instance.client.auth
-                                          .updateUser(
-                                            UserAttributes(
-                                              data: {
-                                                'first_name': first,
-                                                'middle_initial': middle,
-                                                'last_name': last,
-                                                'full_name': newCombinedName,
-                                                'name': newCombinedName,
-                                                if (regName.isNotEmpty &&
-                                                    regName.toLowerCase() !=
-                                                        'partner investor')
-                                                  'registered_name': regName,
-                                              },
-                                            ),
-                                          );
-                                    } catch (_) {}
-
-                                    int? targetUserId;
-                                    if (emailToUse != null &&
-                                        emailToUse.isNotEmpty) {
-                                      final appUser = await Supabase
+                                      final user = Supabase
                                           .instance
                                           .client
-                                          .from('app_users')
-                                          .select('user_id')
-                                          .eq('email', emailToUse)
-                                          .maybeSingle();
+                                          .auth
+                                          .currentUser;
+                                      final emailToUse = _partnerEmail.isNotEmpty
+                                          ? _partnerEmail
+                                          : user?.email;
 
-                                      if (appUser != null &&
-                                          appUser['user_id'] != null) {
-                                        targetUserId = appUser['user_id'] is int
-                                            ? appUser['user_id'] as int
-                                            : int.tryParse(
-                                                appUser['user_id'].toString(),
-                                              );
-                                      }
-                                    }
-                                    targetUserId ??= _appUserId;
-
-                                    if (targetUserId != null) {
-                                      await Supabase.instance.client
-                                          .from('partner_investors')
-                                          .update({
-                                            'contact_number':
-                                                newPhone.isNotEmpty
-                                                ? newPhone
-                                                : null,
-                                            'address': newAddr.isNotEmpty
-                                                ? newAddr
-                                                : null,
-                                          })
-                                          .eq('user_id', targetUserId);
-
-                                      try {
+                                      if (user != null &&
+                                          newCombinedName.isNotEmpty) {
                                         await Supabase.instance.client
                                             .from('app_users')
+                                            .update({'name': newCombinedName})
+                                            .eq('supabase_user_id', user.id);
+                                      } else if (emailToUse != null &&
+                                          emailToUse.isNotEmpty &&
+                                          newCombinedName.isNotEmpty) {
+                                        await Supabase.instance.client
+                                            .from('app_users')
+                                            .update({'name': newCombinedName})
+                                            .eq('email', emailToUse);
+                                      }
+
+                                      try {
+                                        final existingMeta =
+                                            user?.userMetadata ?? {};
+                                        final regName =
+                                            (existingMeta['registered_name'] ??
+                                                    existingMeta['original_name'] ??
+                                                    _partnerName)
+                                                .toString()
+                                                .trim();
+                                        await Supabase.instance.client.auth
+                                            .updateUser(
+                                              UserAttributes(
+                                                data: {
+                                                  'first_name': first,
+                                                  'middle_initial': middle,
+                                                  'last_name': last,
+                                                  'full_name': newCombinedName,
+                                                  'name': newCombinedName,
+                                                  if (regName.isNotEmpty &&
+                                                      regName.toLowerCase() !=
+                                                          'partner investor')
+                                                    'registered_name': regName,
+                                                },
+                                              ),
+                                            );
+                                      } catch (_) {}
+
+                                      int? targetUserId;
+                                      if (emailToUse != null &&
+                                          emailToUse.isNotEmpty) {
+                                        final appUser = await Supabase
+                                            .instance
+                                            .client
+                                            .from('app_users')
+                                            .select('user_id')
+                                            .eq('email', emailToUse)
+                                            .maybeSingle();
+
+                                        if (appUser != null &&
+                                            appUser['user_id'] != null) {
+                                          targetUserId = appUser['user_id'] is int
+                                              ? appUser['user_id'] as int
+                                              : int.tryParse(
+                                                  appUser['user_id'].toString(),
+                                                );
+                                        }
+                                      }
+                                      targetUserId ??= _appUserId;
+
+                                      if (targetUserId != null) {
+                                        await Supabase.instance.client
+                                            .from('partner_investors')
                                             .update({
+                                              'contact_number':
+                                                  newPhone.isNotEmpty
+                                                  ? newPhone
+                                                  : null,
                                               'address': newAddr.isNotEmpty
                                                   ? newAddr
                                                   : null,
                                             })
                                             .eq('user_id', targetUserId);
-                                      } catch (_) {}
-                                    } else if (_partnerInvestorId != null) {
-                                      await Supabase.instance.client
-                                          .from('partner_investors')
-                                          .update({
-                                            'contact_number':
-                                                newPhone.isNotEmpty
-                                                ? newPhone
-                                                : null,
-                                            'address': newAddr.isNotEmpty
-                                                ? newAddr
-                                                : null,
-                                          })
-                                          .eq(
-                                            'partner_investor_id',
-                                            _partnerInvestorId!,
-                                          );
+
+                                        try {
+                                          await Supabase.instance.client
+                                              .from('app_users')
+                                              .update({
+                                                'address': newAddr.isNotEmpty
+                                                    ? newAddr
+                                                    : null,
+                                              })
+                                              .eq('user_id', targetUserId);
+                                        } catch (_) {}
+                                      } else if (_partnerInvestorId != null) {
+                                        await Supabase.instance.client
+                                            .from('partner_investors')
+                                            .update({
+                                              'contact_number':
+                                                  newPhone.isNotEmpty
+                                                  ? newPhone
+                                                  : null,
+                                              'address': newAddr.isNotEmpty
+                                                  ? newAddr
+                                                  : null,
+                                            })
+                                            .eq(
+                                              'partner_investor_id',
+                                              _partnerInvestorId!,
+                                            );
+                                      }
+
+                                      await OfflineSyncService().cacheProfile(
+                                        role: 'partner',
+                                        profileData: {
+                                          'name': newCombinedName,
+                                          'phone': newPhone,
+                                          'address': newAddr,
+                                          'email': emailToUse,
+                                          'user_id': targetUserId,
+                                          'role_specific_id': _partnerInvestorId,
+                                        },
+                                      );
+
+                                      if (mounted) {
+                                        PiggyToast.showSuccess(
+                                          context,
+                                          strings.profileUpdateSuccess,
+                                        );
+                                      }
+                                    if (mounted) {
+                                      setState(() {
+                                        if (newCombinedName.isNotEmpty) _partnerName = newCombinedName;
+                                        _partnerPhone = newPhone.isNotEmpty ? newPhone : 'N/A';
+                                        _partnerAddress = newAddr.isNotEmpty ? newAddr : 'N/A';
+                                      });
                                     }
                                   } catch (e) {
-                                    debugPrint(
-                                      'Error updating user name in DB: $e',
-                                    );
-                                  }
-
-                                  if (mounted) {
-                                    PiggyToast.showSuccess(
-                                      context,
-                                      strings.profileUpdateSuccess,
-                                    );
+                                    debugPrint('Error updating partner profile in DB: $e');
+                                    if (mounted) {
+                                      if (ConnectivityService.isNetworkError(e)) {
+                                        PiggyToast.showWarning(
+                                          context,
+                                          strings.connectionLostNotice,
+                                          title: strings.isFilipino ? 'Kailangan ng Internet' : 'Connection Error',
+                                        );
+                                      } else {
+                                        PiggyToast.showError(
+                                          context,
+                                          'Error: ${e.toString()}',
+                                        );
+                                      }
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isLoading = false);
+                                    }
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -1787,6 +1845,34 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         } catch (_) {}
       }
 
+      if (profile == null) {
+        final cached = await OfflineSyncService().getCachedProfile('partner');
+        if (cached != null) {
+          if (cached['name'] != null && cached['name'].toString().isNotEmpty) {
+            _partnerName = cached['name'].toString();
+          }
+          if (cached['phone'] != null && cached['phone'].toString().isNotEmpty) {
+            _partnerPhone = cached['phone'].toString();
+          }
+          if (cached['address'] != null && cached['address'].toString().isNotEmpty) {
+            _partnerAddress = cached['address'].toString();
+          }
+          if (cached['email'] != null && cached['email'].toString().isNotEmpty) {
+            _partnerEmail = cached['email'].toString();
+          }
+          if (cached['user_id'] != null) {
+            _appUserId = cached['user_id'] is int
+                ? cached['user_id'] as int
+                : int.tryParse(cached['user_id'].toString());
+          }
+          if (cached['role_specific_id'] != null) {
+            _partnerInvestorId = cached['role_specific_id'] is int
+                ? cached['role_specific_id'] as int
+                : int.tryParse(cached['role_specific_id'].toString());
+          }
+        }
+      }
+
       String resolvedName = "";
       if (profile != null) {
         final rawName = (profile['name'] as String?)?.trim() ?? "";
@@ -1887,6 +1973,19 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         } catch (e) {
           debugPrint('Notice on partner_investors record: $e');
         }
+
+        // Cache resolved profile to OfflineSyncService
+        OfflineSyncService().cacheProfile(
+          role: 'partner',
+          profileData: {
+            'name': _partnerName,
+            'phone': _partnerPhone,
+            'address': _partnerAddress,
+            'email': _partnerEmail,
+            'user_id': _appUserId,
+            'role_specific_id': _partnerInvestorId,
+          },
+        );
       }
 
       // 2. Fetch Batches, Assignments, Hog Raisers, and Hogs
@@ -2345,6 +2444,39 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               ? 'Fattening, Sow/Breeding'
               : (hasSow ? 'Sow / Breeding' : 'Fattening');
 
+          final bStatus = (b['status'] ?? '').toString().toLowerCase();
+          final isExplicitlyCompleted =
+              bStatus == 'completed' ||
+              bStatus == 'finished' ||
+              bStatus == 'sold' ||
+              bStatus == 'harvested';
+
+          bool isBatchCycleCompleted = false;
+          if (isExplicitlyCompleted) {
+            isBatchCycleCompleted = true;
+          } else if (mappedBatchHogs.isNotEmpty) {
+            final allHogsAtFinalStage = mappedBatchHogs.every((h) {
+              final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
+              final s = (h['stage'] ?? '').toString().trim().toLowerCase();
+              final sId = int.tryParse((h['stage_id'] ?? '').toString());
+              return hStatus == 'completed' ||
+                  (sId != null && sId >= 6) ||
+                  s == 'selling' ||
+                  s == 'sold' ||
+                  s == 'lactation' ||
+                  s.contains('sell') ||
+                  s.contains('lactat');
+            });
+            isBatchCycleCompleted = allHogsAtFinalStage;
+          } else {
+            final s = stage.trim().toLowerCase();
+            isBatchCycleCompleted = s == 'selling' ||
+                s == 'sold' ||
+                s == 'lactation' ||
+                s.contains('sell') ||
+                s.contains('lactat');
+          }
+
           allBatches.add({
             'batch_id': bId,
             'batch_name': b['batch_name'] ?? b['name'] ?? 'Batch #$bId',
@@ -2363,7 +2495,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             'hogs': mappedBatchHogs,
             'date_created': b['date_created'],
             'hog_raiser_id': int.tryParse(raiserIdStr),
-            'status': 'Active',
+            'status': isBatchCycleCompleted ? 'Completed' : 'Active',
+            'is_cycle_completed': isBatchCycleCompleted,
           });
         }
       } catch (e) {
@@ -2382,6 +2515,12 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             final r = invRecords[i];
             final bId = i + 1;
             final rStage = (r['stage'] ?? 'Grower').toString().toUpperCase();
+            final isRecordCompleted = rStage == 'COMPLETED' ||
+                rStage == 'FINISHED' ||
+                rStage == 'SOLD' ||
+                rStage == 'HARVESTED' ||
+                rStage.contains('SELL') ||
+                rStage.contains('LACTAT');
             allBatches.add({
               'batch_id': bId,
               'batch_name': 'Batch ${r['raiser_name'] ?? 'Livestock'}',
@@ -2395,7 +2534,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                   : (r['stage'] ?? 'Grower'),
               'date_created': r['investment_date'],
               'hog_raiser_id': r['hog_raiser_id'],
-              'status': 'Active',
+              'status': isRecordCompleted ? 'Completed' : 'Active',
+              'is_cycle_completed': isRecordCompleted,
             });
           }
         } catch (invErr) {
@@ -2476,12 +2616,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         if (investmentsRes.isNotEmpty) {
           for (var inv in investmentsRes) {
             final amt = (inv['amount'] as num?)?.toDouble() ?? 0.0;
-            final status = (inv['status'] ?? 'pending')
+            final rawStatus = (inv['status'] ?? 'pending')
                 .toString()
                 .toLowerCase();
-            if (status == 'active' || status == 'approved') {
-              totalInvested += amt;
-            }
 
             final bId = inv['batch_id']?.toString();
             final matchingBatches = allBatches
@@ -2493,12 +2630,24 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             }
             final matchingBatch = matchingBatches.first;
 
+            final bool isBatchFinished = matchingBatch['is_cycle_completed'] == true ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'finished' ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'sold';
+            final bool isConcluded = isBatchFinished || rawStatus == 'completed' || rawStatus == 'finished';
+            final String finalStatus = isConcluded ? 'completed' : rawStatus;
+
+            if (!isConcluded && (finalStatus == 'active' || finalStatus == 'approved')) {
+              totalInvested += amt;
+            }
+
             partnerProjects.add({
               'investment_id': inv['investment_id'],
               'amount': amt,
               'date_invested': inv['date_invested'],
-              'status': status,
               ...matchingBatch,
+              'status': finalStatus,
+              'is_cycle_completed': isConcluded,
               'invested_amount': amt,
             });
           }
@@ -2517,12 +2666,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           );
           if (!alreadyPresent) {
             final amt = (lInv['amount'] as num?)?.toDouble() ?? 0.0;
-            final status = (lInv['status'] ?? 'active')
+            final rawStatus = (lInv['status'] ?? 'active')
                 .toString()
                 .toLowerCase();
-            if (status == 'active' || status == 'approved') {
-              totalInvested += amt;
-            }
             final bId = lInv['batch_id']?.toString();
             final matchingBatches = allBatches
                 .where((b) => b['batch_id']?.toString() == bId)
@@ -2532,9 +2678,22 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             }
             final matchingBatch = matchingBatches.first;
 
+            final bool isBatchFinished = matchingBatch['is_cycle_completed'] == true ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'finished' ||
+                (matchingBatch['status'] ?? '').toString().toLowerCase() == 'sold';
+            final bool isConcluded = isBatchFinished || rawStatus == 'completed' || rawStatus == 'finished';
+            final String finalStatus = isConcluded ? 'completed' : rawStatus;
+
+            if (!isConcluded && (finalStatus == 'active' || finalStatus == 'approved')) {
+              totalInvested += amt;
+            }
+
             partnerProjects.add({
               ...matchingBatch,
               ...lInv,
+              'status': finalStatus,
+              'is_cycle_completed': isConcluded,
               'invested_amount': amt,
             });
           }
@@ -2546,11 +2705,20 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       _investedAmount = totalInvested;
       _activeProjectsCount = partnerProjects.where((p) {
         final st = (p['status'] ?? '').toString().toLowerCase();
-        return st == 'active' || st == 'approved';
+        final isDone = p['is_cycle_completed'] == true;
+        return !isDone && (st == 'active' || st == 'approved');
       }).length;
 
       _availableBatches.clear();
-      _availableBatches.addAll(allBatches);
+      _availableBatches.addAll(allBatches.where((b) {
+        final isDone = b['is_cycle_completed'] == true;
+        final st = (b['status'] ?? '').toString().toLowerCase();
+        return !isDone &&
+            st != 'completed' &&
+            st != 'finished' &&
+            st != 'sold' &&
+            st != 'harvested';
+      }));
 
       _projectsList.clear();
       _projectsList.addAll(partnerProjects);
@@ -2920,6 +3088,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     final promptKey = 'prompted_location_partner_$userId';
     if (prefs.getBool(promptKey) == true) return;
 
+    // Skip auto-detection on startup if offline to prevent hanging
+    if (!ConnectivityService.isOnline.value || !await ConnectivityService.hasInternet()) {
+      return;
+    }
+
     try {
       final result = await LocationService.instance.getCurrentAddress(
         requestPermission: true,
@@ -3078,13 +3251,19 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     final strings = AppStrings.of(context);
     final scaffoldBg = isDark ? const Color(0xff0f1724) : PiggyTrunkTheme.ptBg;
 
+    final activePartnerProjects = _projectsList
+        .where((p) =>
+            p['is_cycle_completed'] != true &&
+            (p['status'] ?? '').toString().toLowerCase() != 'completed')
+        .toList();
+
     final List<Widget> tabs = [
       PartnerHomeTab(
         partnerName: _partnerName,
         investedAmount: _investedAmount,
         activeProjectsCount: _activeProjectsCount,
         projectsList: _availableBatches,
-        fundedProjectsList: _projectsList,
+        fundedProjectsList: activePartnerProjects,
         activitiesList: _activitiesList,
         notificationsList: _notificationsList,
         onRefresh: _fetchPartnerData,
@@ -3103,28 +3282,28 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         onRefresh: _fetchPartnerData,
       ),
       PartnerLifecycleTab(
-        projectsList: _projectsList,
-        batchName: _projectsList.isNotEmpty
-            ? _projectsList.first['batch_name']?.toString()
+        projectsList: activePartnerProjects,
+        batchName: activePartnerProjects.isNotEmpty
+            ? activePartnerProjects.first['batch_name']?.toString()
             : null,
-        raiserName: _projectsList.isNotEmpty
-            ? (_projectsList.first['assigned_raiser'] ??
-                      _projectsList.first['raiser_name'])
+        raiserName: activePartnerProjects.isNotEmpty
+            ? (activePartnerProjects.first['assigned_raiser'] ??
+                      activePartnerProjects.first['raiser_name'])
                   ?.toString()
             : null,
-        hogsList: _projectsList.isNotEmpty
-            ? List<Map<String, dynamic>>.from(_projectsList.first['hogs'] ?? [])
+        hogsList: activePartnerProjects.isNotEmpty
+            ? List<Map<String, dynamic>>.from(activePartnerProjects.first['hogs'] ?? [])
             : [],
         currentStage:
-            (_projectsList.isNotEmpty
-                    ? (_projectsList.first['stage'] ??
-                          _projectsList.first['lifecycle_stage'])
+            (activePartnerProjects.isNotEmpty
+                    ? (activePartnerProjects.first['stage'] ??
+                          activePartnerProjects.first['lifecycle_stage'])
                     : 'Booster')
                 .toString(),
-        hogType: _projectsList.isNotEmpty
-            ? (_projectsList.first['hog_type']?.toString() ?? 'Fattening')
+        hogType: activePartnerProjects.isNotEmpty
+            ? (activePartnerProjects.first['hog_type']?.toString() ?? 'Fattening')
             : 'Fattening',
-        hasActiveProject: _projectsList.isNotEmpty,
+        hasActiveProject: activePartnerProjects.isNotEmpty,
         activitiesList: _activitiesList,
         onRefresh: _fetchPartnerData,
         onNavigateToBatches: () => setState(() => _currentIndex = 1),

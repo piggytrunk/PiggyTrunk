@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
-import 'package:piggytrunk/services/app_update_service.dart';
 import '../../../services/locale_provider.dart';
 import '../../../utils/app_strings.dart';
 import '../../../utils/screen_fit_util.dart';
@@ -475,29 +474,6 @@ class PartnerProfileTab extends StatelessWidget {
             ),
           ),
           SizedBox(height: fit.dp(18.0)),
-
-          // ==================== APP VERSION & CHECK FOR UPDATE ====================
-          Center(
-            child: TextButton.icon(
-              onPressed: () {
-                AppUpdateService.instance.promptUpdateIfAvailable(context, isManualCheck: true);
-              },
-              icon: Icon(
-                Icons.system_update_rounded,
-                size: fit.dp(15.0),
-                color: subtitleColor,
-              ),
-              label: Text(
-                'Piggy Trunk Mobile • Check for Updates',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: fit.sp(12.0),
-                  fontWeight: FontWeight.w600,
-                  color: subtitleColor,
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: fit.dp(8.0)),
         ],
       ),
     );

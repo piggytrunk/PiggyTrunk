@@ -363,19 +363,23 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
             .eq('user_id', userId);
       } catch (_) {}
 
-      // Trigger Resend Account Approval Email
+      // Trigger Account Approval Email
       try {
-        final email = targetUser['email']?.toString() ?? '';
-        final role = targetUser['role']?.toString() ?? 'user';
-        if (email.isNotEmpty) {
-          EmailService().sendAccountApprovalEmail(
-            recipientEmail: email,
+        if (userEmail.isNotEmpty) {
+          debugPrint("[UserApprovals] Sending approval email to $userEmail ($userRole)...");
+          final sent = await EmailService().sendAccountApprovalEmail(
+            recipientEmail: userEmail,
             recipientName: name,
-            role: role,
+            role: userRole,
           );
+          if (sent) {
+            debugPrint("[UserApprovals] Approval email delivered successfully to $userEmail");
+          } else {
+            debugPrint("[UserApprovals] Warning: Approval email could not be delivered to $userEmail");
+          }
         }
       } catch (e) {
-        debugPrint("Notice: Failed to send approval email: $e");
+        debugPrint("[UserApprovals] Notice: Failed to send approval email: $e");
       }
 
       // Transition registration notification to Approved state instead of hard-deleting it
@@ -1492,7 +1496,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                         child: ElevatedButton(
                           onPressed: () {
                             Navigator.pop(sheetContext);
-                            _approveUser(userId, name);
+                            _approveUser(userId, name, email: email, role: roleRaw);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF16A34A),
@@ -1887,7 +1891,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                                 child: ElevatedButton(
                                   onPressed: () {
                                     Navigator.pop(dialogContext);
-                                    _approveUser(userId, name);
+                                    _approveUser(userId, name, email: email, role: roleRaw);
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF16A34A),

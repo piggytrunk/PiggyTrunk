@@ -245,7 +245,44 @@ class NotificationItemCard extends StatelessWidget {
 
     final dynamic routeArg;
     if (targetRoute == '/inventory') {
-      routeArg = 'stock_request';
+      final typeLower = notif.type.toLowerCase();
+      final bool isRaiserStockRequest = typeLower == 'stock_request' ||
+          title.contains('stock request') ||
+          message.contains('stock request') ||
+          message.contains('requested new stock') ||
+          message.contains('requested supplies') ||
+          (message.contains('requested') && !title.contains('restock') && !title.contains('low stock'));
+
+      if (isRaiserStockRequest) {
+        routeArg = {
+          'tab': 'stock_requests',
+          'tab_index': 1,
+          'request_id': meta['request_id'],
+          'raiser_name': meta['raiser_name'] ?? meta['name'],
+        };
+      } else {
+        // Product Catalog Alert (Low Stock, Restocked, Inventory Alert)
+        String? productName = (meta['product_name'] ?? meta['name'])?.toString();
+        if (productName == null || productName.trim().isEmpty) {
+          if (notif.title.contains(':')) {
+            productName = notif.title.split(':').last.trim();
+          } else if (notif.message.toLowerCase().contains(' is running low')) {
+            final idx = notif.message.toLowerCase().indexOf(' is running low');
+            productName = notif.message.substring(0, idx).trim();
+          } else if (notif.message.toLowerCase().contains(' restocked from')) {
+            final idx = notif.message.toLowerCase().indexOf(' restocked from');
+            productName = notif.message.substring(0, idx).trim();
+          }
+        }
+
+        routeArg = {
+          'tab': 'products',
+          'tab_index': 0,
+          'product_id': meta['product_id'],
+          'product_name': productName,
+          'search': productName,
+        };
+      }
     } else if (targetRoute == '/investments') {
       routeArg = 'PARTNER';
     } else if (targetRoute == '/raisers') {
@@ -292,11 +329,12 @@ class NotificationItemCard extends StatelessWidget {
         if (!notif.isRead) {
           AdminNotificationService.markAsRead(notif.notificationId);
         }
-        Navigator.of(context).pop(); // Close drawer
+        final nav = Navigator.of(context);
+        nav.pop(); // Close drawer
         if (isHogReport) {
           HogReportDetailModal.show(context, notif: notif);
         } else {
-          Navigator.of(context).pushNamed(targetRoute, arguments: routeArg); // Navigate directly to screen
+          nav.pushNamed(targetRoute, arguments: routeArg);
         }
       },
       borderRadius: BorderRadius.circular(12),

@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const https = require('https');
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -6,9 +7,52 @@ const transporter = nodemailer.createTransport({
   secure: true,
   auth: {
     user: process.env.GMAIL_USER || 'piggytrunk@gmail.com',
-    pass: process.env.GMAIL_APP_PASSWORD || 'ptveuzimyoixwtsz',
+    pass: process.env.GMAIL_APP_PASSWORD || '',
   },
 });
+
+function sendViaResend(to, subject, html) {
+  return new Promise((resolve, reject) => {
+    const resendApiKey = process.env.RESEND_API_KEY || '';
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Piggy Trunk Support <support@piggytrunk.site>';
+
+    const postData = JSON.stringify({
+      from: fromEmail,
+      to: Array.isArray(to) ? to : [to],
+      subject: subject,
+      html: html,
+    });
+
+    const req = https.request({
+      hostname: 'api.resend.com',
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+    }, res => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (_) {
+            resolve({ id: body });
+          }
+        } else {
+          reject(new Error(`Resend API error (${res.statusCode}): ${body}`));
+        }
+      });
+    });
+
+    req.on('error', err => reject(err));
+    req.write(postData);
+    req.end();
+  });
+}
 
 module.exports = async (req, res) => {
   // CORS configuration
@@ -32,6 +76,19 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters: to, subject, html' });
     }
 
+    // 1. Try Resend verified custom domain first
+    try {
+      const resendRes = await sendViaResend(to, subject, html);
+      return res.status(200).json({
+        success: true,
+        provider: 'resend',
+        id: resendRes.id,
+      });
+    } catch (resendError) {
+      console.warn('Resend failed on Vercel, falling back to Gmail SMTP:', resendError.message);
+    }
+
+    // 2. Fallback to Gmail SMTP
     const mailOptions = {
       from: 'Piggy Trunk Support <piggytrunk@gmail.com>',
       to,
@@ -44,6 +101,7 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      provider: 'gmail_smtp',
       message: 'Email delivered successfully',
       messageId: info.messageId,
     });

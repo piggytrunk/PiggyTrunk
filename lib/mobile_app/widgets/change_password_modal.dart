@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../utils/app_strings.dart';
+import '../services/connectivity_service.dart';
 import 'piggy_toast.dart';
 
 class ChangePasswordModal extends StatefulWidget {
@@ -78,6 +79,16 @@ class _ChangePasswordModalState extends State<ChangePasswordModal> {
       return;
     }
 
+    if (!RegExp(r'[a-zA-Z]').hasMatch(newPass)) {
+      setState(() => _errorMessage = strings.passwordMustContainLetters);
+      return;
+    }
+
+    if (!RegExp(r'[0-9!@#\$%^&*()_\+\-=\[\]{};:"\\|,.<>/?~`]').hasMatch(newPass)) {
+      setState(() => _errorMessage = strings.passwordMustContainNumbers);
+      return;
+    }
+
     if (newPass != confirmPass) {
       setState(() => _errorMessage = strings.passwordsDoNotMatch);
       return;
@@ -85,6 +96,15 @@ class _ChangePasswordModalState extends State<ChangePasswordModal> {
 
     if (!isOAuth && currentPass == newPass) {
       setState(() => _errorMessage = 'New password cannot be the same as your current password.');
+      return;
+    }
+
+    // Pre-flight Connectivity Check (Solves Screenshot 1)
+    final hasNet = await ConnectivityService.hasInternet();
+    if (!hasNet) {
+      setState(() {
+        _errorMessage = strings.internetRequiredForPassword;
+      });
       return;
     }
 
@@ -132,8 +152,28 @@ class _ChangePasswordModalState extends State<ChangePasswordModal> {
       }
     } catch (e) {
       if (mounted) {
+        String friendlyError;
+        final errStr = e.toString().toLowerCase();
+
+        if (ConnectivityService.isNetworkError(e) ||
+            errStr.contains('socket') ||
+            errStr.contains('failed host lookup') ||
+            errStr.contains('clientexception') ||
+            errStr.contains('retryable') ||
+            errStr.contains('network')) {
+          friendlyError = strings.internetRequiredForPassword;
+        } else if (e is AuthWeakPasswordException ||
+            errStr.contains('weak') ||
+            errStr.contains('authweakpasswordexception')) {
+          friendlyError = strings.passwordWeakNotice;
+        } else if (e is AuthException) {
+          friendlyError = e.message;
+        } else {
+          friendlyError = 'Failed to update password. Please try again.';
+        }
+
         setState(() {
-          _errorMessage = 'Failed to update password: ${e.toString()}';
+          _errorMessage = friendlyError;
           _isLoading = false;
         });
       }
