@@ -409,7 +409,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Tip: Type your barangay name (e.g. Balococ) or use Auto-Detect Location.',
+                    'Tip: Type your barangay, street, or town, or tap Auto-Detect Location.',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w500,

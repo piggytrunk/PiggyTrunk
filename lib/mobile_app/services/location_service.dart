@@ -31,11 +31,15 @@ class AddressSuggestion {
   String get primaryText {
     final parts = <String>[];
     if (houseNumber != null && houseNumber!.isNotEmpty && street != null && street!.isNotEmpty) {
-      parts.add('$houseNumber $street');
-    } else if (street != null && street!.isNotEmpty) {
-      parts.add(street!);
+      if (street != houseNumber && !street!.toLowerCase().contains(houseNumber!.toLowerCase())) {
+        parts.add('$houseNumber $street');
+      } else {
+        parts.add(street!);
+      }
     } else if (houseNumber != null && houseNumber!.isNotEmpty) {
       parts.add(houseNumber!);
+    } else if (street != null && street!.isNotEmpty) {
+      parts.add(street!);
     }
 
     if (barangay != null && barangay!.isNotEmpty) {
@@ -336,25 +340,26 @@ class LocationService {
   }
 
   /// Sanitizes user typed queries for Philippine OpenStreetMap Nominatim search:
-  /// - Strips house numbers / lot prefixes (preserves them separately for display)
+  /// - Strips house numbers, puroks, sitios, zones, lot prefixes (preserves them separately for display)
   /// - Strips administrative noise keywords ('city', 'lungsod', 'brgy', 'barangay', 'bgy', 'province', 'prov', 'region')
   ///   because OpenStreetMap indexes nodes without administrative suffixes (e.g. "San Carlos" not "San Carlos City").
   /// - Removes commas, hyphens, and multiple spaces
   static String sanitizePhilippineSearchQuery(String raw) {
     var s = raw.trim();
 
-    // 1. Remove house plate prefix if present
-    final houseMatch = RegExp(
-      r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
+    // 1. Remove house / purok / sitio / zone / lot / unit prefix if present at start
+    final prefixMatch = RegExp(
+      r'^(([#№]?\d+[A-Za-z]?(?:\s*-\s*\d+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)?(?:\s*,?\s*(?:purok|sitio|zone|prk\.?)\s*[0-9A-Za-z\-]+)?)\b',
+      caseSensitive: false,
     ).firstMatch(s);
-    if (houseMatch != null) {
-      s = s.substring(houseMatch.end).trim();
+    if (prefixMatch != null && prefixMatch.group(1) != null && prefixMatch.group(1)!.trim().isNotEmpty) {
+      s = s.substring(prefixMatch.end).trim();
     }
 
-    // 2. Strip Philippine administrative prefixes and suffixes that break OpenStreetMap text search
+    // 2. Strip Philippine administrative prefixes, suffixes, and local division keywords that break OpenStreetMap text search
     s = s.replaceAll(
       RegExp(
-        r'\b(brgy\.?|barangay|bgy\.?|city|lungsod|province|prov\.?|region|reg\.?)\b',
+        r'\b(brgy\.?|barangay|bgy\.?|city|lungsod|province|prov\.?|region|reg\.?|purok\s*\d*|sitio\s*[a-z0-9\-]*|zone\s*\d*)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -368,22 +373,36 @@ class LocationService {
   }
 
   /// Searches OpenStreetMap for address suggestions based on user typing.
-  /// Intelligently sanitizes queries (e.g. "balococ San Carlos City pangasinan" -> "balococ San Carlos pangasinan")
-  /// so OpenStreetMap returns instant, accurate matches for Philippine barangays and cities.
-  /// Extracts and preserves house number plates (e.g. "#124", "124-B", "Unit 3", "Block 4 Lot 10").
+  /// Intelligently sanitizes queries and extracts full Philippine local house/purok/sitio prefixes
+  /// (e.g. "261 Purok 4", "Purok 2", "Unit 3B", "Block 4 Lot 10").
   Future<List<AddressSuggestion>> searchAddressSuggestions(String query, {double? lat, double? lon}) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return [];
 
-    // Extract house/unit/lot number prefix if user typed one
-    final houseMatch = RegExp(
-      r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
+    // Extract full Philippine local prefix (House #, Purok, Sitio, Zone, Lot, Unit, etc.)
+    final prefixMatch = RegExp(
+      r'^(([#№]?\d+[A-Za-z]?(?:\s*-\s*\d+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)?(?:\s*,?\s*(?:purok|sitio|zone|prk\.?)\s*[0-9A-Za-z\-]+)?)\b',
+      caseSensitive: false,
     ).firstMatch(trimmed);
 
-    final typedPrefix = houseMatch?.group(1)?.trim();
+    String? typedPrefix = prefixMatch?.group(1)?.trim();
+    String cleanQuery = trimmed;
 
-    // Clean query by removing administrative noise words (City, Brgy, etc.)
-    final cleanedQuery = sanitizePhilippineSearchQuery(trimmed);
+    if (typedPrefix != null && typedPrefix.isNotEmpty) {
+      cleanQuery = trimmed.substring(prefixMatch!.end).trim();
+      if (cleanQuery.startsWith(',') || cleanQuery.startsWith('.')) {
+        cleanQuery = cleanQuery.substring(1).trim();
+      }
+      if (RegExp(r'^\d').hasMatch(typedPrefix) && !typedPrefix.startsWith('#')) {
+        typedPrefix = '#$typedPrefix';
+      }
+    } else {
+      typedPrefix = null;
+    }
+
+    // Clean query by removing administrative & local noise words
+    final queryToClean = cleanQuery.isNotEmpty ? cleanQuery : trimmed;
+    final cleanedQuery = sanitizePhilippineSearchQuery(queryToClean);
 
     // Build priority list of query candidates to maximize match rate:
     // 1. Cleaned query without noise words (e.g. "balococ San Carlos pangasinan")
@@ -614,10 +633,11 @@ class LocationService {
     if (municipality != null && municipality.isNotEmpty) parts.add(municipality);
     if (province != null && province.isNotEmpty) parts.add(province);
 
+    final roadName = properties['street']?.toString().trim();
     return (
       fullAddress: parts.isNotEmpty ? parts.join(', ') : (properties['name']?.toString() ?? ''),
       houseNumber: houseNum,
-      street: streetPart,
+      street: (roadName != null && roadName.isNotEmpty) ? roadName : null,
       barangay: formattedBrgy,
       municipality: municipality,
       province: province,
@@ -743,7 +763,7 @@ class LocationService {
     return (
       fullAddress: parts.isNotEmpty ? parts.join(', ') : (fallbackDisplayName ?? ''),
       houseNumber: houseNum,
-      street: streetPart,
+      street: (road != null && road.isNotEmpty) ? road : null,
       barangay: formattedBrgy,
       municipality: municipality,
       province: province,
