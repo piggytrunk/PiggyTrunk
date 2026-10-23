@@ -71,6 +71,7 @@ class AddressSuggestion {
 class LocationResult {
   final bool success;
   final String? address;
+  final String? houseNumber;
   final String? street;
   final String? barangay;
   final String? municipality;
@@ -83,6 +84,7 @@ class LocationResult {
   LocationResult({
     required this.success,
     this.address,
+    this.houseNumber,
     this.street,
     this.barangay,
     this.municipality,
@@ -241,12 +243,19 @@ class LocationService {
 
       final canonicalBrgy = osmBoundary?.barangay ?? osmDetailed?.barangay;
       final canonicalStreet = osmDetailed?.street ?? osmBoundary?.street;
+      final canonicalHouseNum = osmDetailed?.houseNumber ?? osmBoundary?.houseNumber;
       final canonicalCity = osmDetailed?.municipality ?? osmBoundary?.municipality;
       final canonicalProvince = osmDetailed?.province ?? osmBoundary?.province;
 
       if (canonicalBrgy != null && canonicalBrgy.isNotEmpty) {
         final parts = <String>[];
-        if (canonicalStreet != null && canonicalStreet.isNotEmpty) parts.add(canonicalStreet);
+        if (canonicalHouseNum != null && canonicalHouseNum.isNotEmpty && canonicalStreet != null && canonicalStreet.isNotEmpty) {
+          parts.add('$canonicalHouseNum $canonicalStreet');
+        } else if (canonicalHouseNum != null && canonicalHouseNum.isNotEmpty) {
+          parts.add(canonicalHouseNum);
+        } else if (canonicalStreet != null && canonicalStreet.isNotEmpty) {
+          parts.add(canonicalStreet);
+        }
         parts.add(canonicalBrgy);
         if (canonicalCity != null && canonicalCity.isNotEmpty) parts.add(canonicalCity);
         if (canonicalProvince != null && canonicalProvince.isNotEmpty) parts.add(canonicalProvince);
@@ -254,6 +263,7 @@ class LocationService {
         return LocationResult(
           success: true,
           address: parts.join(', '),
+          houseNumber: canonicalHouseNum,
           street: canonicalStreet,
           barangay: canonicalBrgy,
           municipality: canonicalCity,
@@ -324,6 +334,7 @@ class LocationService {
             return LocationResult(
               success: true,
               address: parsed.fullAddress,
+              houseNumber: parsed.houseNumber,
               street: parsed.street,
               barangay: parsed.barangay,
               municipality: parsed.municipality,
@@ -887,10 +898,17 @@ class LocationService {
         if (municipality != null && municipality.isNotEmpty) parts.add(municipality);
         if (province != null && province.isNotEmpty) parts.add(province);
 
+        final nativeHouseNum = (rawSubThoroughfare != null && rawSubThoroughfare.isNotEmpty)
+            ? (rawSubThoroughfare.startsWith('#') || !RegExp(r'^\d').hasMatch(rawSubThoroughfare)
+                ? rawSubThoroughfare
+                : '#$rawSubThoroughfare')
+            : null;
+
         if (parts.isNotEmpty) {
           return LocationResult(
             success: true,
             address: parts.join(', '),
+            houseNumber: nativeHouseNum,
             street: exactStreet,
             barangay: formattedBrgy,
             municipality: municipality,

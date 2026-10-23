@@ -20,7 +20,7 @@ import '../../services/connectivity_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/piggy_toast.dart';
 import '../../widgets/address_autocomplete_field.dart';
-import '../../widgets/osm_map_picker_sheet.dart';
+import '../../widgets/house_number_prompt_dialog.dart';
 import '../../utils/capitalization_formatters.dart';
 import '../../utils/app_strings.dart';
 
@@ -879,19 +879,20 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               if (result.success &&
                   result.address != null &&
                   result.address!.trim().isNotEmpty) {
-                // If the user already typed a house/unit/lot number, preserve it with the detected address
                 final currentText = addrCtrl.text.trim();
-                final houseMatch = RegExp(
-                  r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
-                ).firstMatch(currentText);
+                final prefixInfo = LocationService.extractPhilippinePrefix(currentText);
 
                 String finalAddress = result.address!.trim();
-                if (houseMatch != null && !finalAddress.startsWith(RegExp(r'[#№0-9]'))) {
-                  final prefix = houseMatch.group(1)!.trim();
-                  final cleanPrefix = prefix.startsWith('#') || !RegExp(r'^\d').hasMatch(prefix)
-                      ? prefix
-                      : '#$prefix';
-                  finalAddress = '$cleanPrefix $finalAddress';
+                if (prefixInfo != null && !finalAddress.startsWith(RegExp(r'[#№0-9]'))) {
+                  finalAddress = '${prefixInfo.prefix}, $finalAddress';
+                } else if (!finalAddress.startsWith(RegExp(r'[#№0-9]')) && ctx.mounted) {
+                  final prompted = await HouseNumberPromptDialog.show(
+                    ctx,
+                    detectedAddress: finalAddress,
+                  );
+                  if (prompted != null && prompted.isNotEmpty) {
+                    finalAddress = prompted;
+                  }
                 }
 
                 addrCtrl.text = finalAddress;
@@ -1208,102 +1209,46 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         _buildFieldHeaderRow(
                           label: strings.address,
                           titleColor: titleColor,
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              InkWell(
-                                onTap: () async {
-                                  final currentText = addrCtrl.text.trim();
-                                  final prefixInfo = LocationService.extractPhilippinePrefix(currentText);
-                                  final result = await OsmMapPickerSheet.show(
-                                    ctx,
-                                    initialPrefix: prefixInfo?.prefix,
-                                    initialAddress: currentText,
-                                  );
-                                  if (result != null && result.fullAddress.isNotEmpty) {
-                                    setModalState(() {
-                                      addrCtrl.text = result.fullAddress;
-                                    });
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(6),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.map_outlined,
-                                        size: 14,
+                          trailing: InkWell(
+                            onTap: isDetectingGps ? null : autoDetectGps,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isDetectingGps)
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.8,
                                         color: actionColor,
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Pick on Map',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: actionColor,
-                                        ),
-                                      ),
-                                    ],
+                                    )
+                                  else
+                                    Icon(
+                                      Icons.my_location_rounded,
+                                      size: 14,
+                                      color: actionColor,
+                                    ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isDetectingGps
+                                        ? strings.detectingGps
+                                        : strings.autoDetectLocation,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: actionColor,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '•',
-                                style: TextStyle(
-                                  color: actionColor.withValues(alpha: 0.5),
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: isDetectingGps ? null : autoDetectGps,
-                                borderRadius: BorderRadius.circular(6),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (isDetectingGps)
-                                        SizedBox(
-                                          width: 12,
-                                          height: 12,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 1.8,
-                                            color: actionColor,
-                                          ),
-                                        )
-                                      else
-                                        Icon(
-                                          Icons.my_location_rounded,
-                                          size: 14,
-                                          color: actionColor,
-                                        ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        isDetectingGps
-                                            ? strings.detectingGps
-                                            : strings.autoDetectLocation,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: actionColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                         AddressAutocompleteField(
