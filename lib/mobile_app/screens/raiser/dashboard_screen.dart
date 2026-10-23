@@ -2297,11 +2297,26 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
               if (result.success &&
                   result.address != null &&
                   result.address!.trim().isNotEmpty) {
-                addressController.text = result.address!.trim();
+                // If the user already typed a house/unit/lot number, preserve it with the detected address
+                final currentText = addressController.text.trim();
+                final houseMatch = RegExp(
+                  r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
+                ).firstMatch(currentText);
+
+                String finalAddress = result.address!.trim();
+                if (houseMatch != null && !finalAddress.startsWith(RegExp(r'[#№0-9]'))) {
+                  final prefix = houseMatch.group(1)!.trim();
+                  final cleanPrefix = prefix.startsWith('#') || !RegExp(r'^\d').hasMatch(prefix)
+                      ? prefix
+                      : '#$prefix';
+                  finalAddress = '$cleanPrefix $finalAddress';
+                }
+
+                addressController.text = finalAddress;
                 if (ctx.mounted) {
                   PiggyToast.showSuccess(
                     ctx,
-                    '${strings.locationDetectedToast} ${result.address}',
+                    '${strings.locationDetectedToast} $finalAddress',
                   );
                 }
               } else if (result.isPermanentlyDenied) {
