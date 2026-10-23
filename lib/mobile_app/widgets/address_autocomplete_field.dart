@@ -89,11 +89,23 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       _lastQueried = query;
 
       final results = await LocationService.instance.searchAddressSuggestions(query);
+      debugPrint('[AddressAutocomplete] "$query" -> ${results.length} suggestions');
       if (mounted && _lastQueried == query) {
         setState(() {
           _suggestions = results;
           _isSearching = false;
         });
+        if (results.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _focusNode.hasFocus) {
+              Scrollable.ensureVisible(
+                context,
+                duration: const Duration(milliseconds: 250),
+                alignment: 0.5,
+              );
+            }
+          });
+        }
       }
     });
   }

@@ -407,8 +407,17 @@ class LocationService {
 
     for (final q in queriesToTry) {
       if (q.trim().length < 2) continue;
-      final results = await _executeOsmSearch(q, userTypedPrefix: typedPrefix);
+      // 1. Try OpenStreetMap Nominatim search
+      var results = await _executeOsmSearch(q, userTypedPrefix: typedPrefix);
       if (results.isNotEmpty) {
+        debugPrint('[LocationService] OSM Nominatim matched "$q" -> ${results.length} results');
+        return results;
+      }
+
+      // 2. Fallback to OpenStreetMap Photon autocomplete engine (Komoot)
+      results = await _executePhotonSearch(q, userTypedPrefix: typedPrefix);
+      if (results.isNotEmpty) {
+        debugPrint('[LocationService] OSM Photon matched "$q" -> ${results.length} results');
         return results;
       }
     }
@@ -468,6 +477,151 @@ class LocationService {
       debugPrint('[LocationService] OSM Nominatim query "$q" error: $e');
     }
     return [];
+  }
+
+  /// Internal OpenStreetMap Photon autocomplete executor (Fast type-ahead fallback)
+  Future<List<AddressSuggestion>> _executePhotonSearch(String q, {String? userTypedPrefix}) async {
+    try {
+      final url = Uri.parse(
+        'https://photon.komoot.io/api/?q=${Uri.encodeComponent(q)}&limit=6',
+      );
+
+      final response = await http.get(
+        url,
+        headers: {
+          'User-Agent': _osmUserAgent,
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final features = data['features'] as List<dynamic>? ?? [];
+        final suggestions = <AddressSuggestion>[];
+        final seenAddresses = <String>{};
+
+        for (final item in features) {
+          if (item is Map<String, dynamic>) {
+            final props = item['properties'] as Map<String, dynamic>? ?? {};
+            final country = props['country']?.toString().toLowerCase();
+            final countryCode = props['countrycode']?.toString().toUpperCase();
+
+            // Filter to Philippines
+            if (countryCode != null && countryCode != 'PH') continue;
+            if (country != null && !country.contains('philippine') && countryCode == null) continue;
+
+            final geom = item['geometry'] as Map<String, dynamic>? ?? {};
+            final coords = geom['coordinates'] as List<dynamic>?;
+            final double? lon = coords != null && coords.isNotEmpty ? double.tryParse(coords[0].toString()) : null;
+            final double? lat = coords != null && coords.length > 1 ? double.tryParse(coords[1].toString()) : null;
+
+            final parsed = parsePhotonAddress(
+              userTypedPrefix: userTypedPrefix,
+              properties: props,
+            );
+
+            if (parsed.fullAddress.isNotEmpty && !seenAddresses.contains(parsed.fullAddress)) {
+              seenAddresses.add(parsed.fullAddress);
+              suggestions.add(
+                AddressSuggestion(
+                  fullAddress: parsed.fullAddress,
+                  houseNumber: parsed.houseNumber,
+                  street: parsed.street,
+                  barangay: parsed.barangay,
+                  municipality: parsed.municipality,
+                  province: parsed.province,
+                  latitude: lat,
+                  longitude: lon,
+                ),
+              );
+            }
+          }
+        }
+        return suggestions;
+      }
+    } catch (e) {
+      debugPrint('[LocationService] OSM Photon query "$q" error: $e');
+    }
+    return [];
+  }
+
+  /// Parses Photon OpenStreetMap GeoJSON feature into Philippine address format
+  static ({
+    String fullAddress,
+    String? houseNumber,
+    String? street,
+    String? barangay,
+    String? municipality,
+    String? province,
+  }) parsePhotonAddress({
+    String? userTypedPrefix,
+    required Map<String, dynamic> properties,
+  }) {
+    String? houseNum = userTypedPrefix?.trim() ?? properties['housenumber']?.toString().trim();
+    if (houseNum != null && houseNum.isNotEmpty && !houseNum.startsWith('#') && RegExp(r'^\d').hasMatch(houseNum)) {
+      houseNum = '#$houseNum';
+    }
+
+    final type = properties['type']?.toString().toLowerCase();
+    final osmValue = properties['osm_value']?.toString().toLowerCase();
+
+    // Barangay / District
+    String? rawBrgy = properties['district']?.toString().trim() ??
+        properties['locality']?.toString().trim();
+
+    if ((rawBrgy == null || rawBrgy.isEmpty) && (osmValue == 'village' || type == 'district')) {
+      rawBrgy = properties['name']?.toString().trim();
+    }
+
+    String? formattedBrgy;
+    if (rawBrgy != null && rawBrgy.isNotEmpty) {
+      final clean = rawBrgy.replaceFirst(RegExp(r'^(Brgy\.?|Barangay)\s*', caseSensitive: false), '').trim();
+      if (clean.isNotEmpty) {
+        formattedBrgy = 'Brgy. $clean';
+      }
+    }
+
+    // Street
+    String? streetPart;
+    if (properties['street'] != null && properties['street'].toString().isNotEmpty) {
+      final st = properties['street'].toString().trim();
+      streetPart = (houseNum != null && houseNum.isNotEmpty) ? '$houseNum $st' : st;
+    } else if (houseNum != null && houseNum.isNotEmpty) {
+      streetPart = houseNum;
+    }
+
+    // Municipality / City
+    final rawCity = (properties['city'] ?? properties['town'] ?? properties['county'])?.toString().trim();
+    String? municipality;
+    if (rawCity != null && rawCity.isNotEmpty) {
+      if (rawCity.toLowerCase() == 'san carlos' && !rawCity.toLowerCase().contains('city')) {
+        municipality = '$rawCity City';
+      } else {
+        municipality = rawCity;
+      }
+    }
+
+    // Province
+    final rawState = properties['state']?.toString().trim();
+    String? province;
+    if (rawState != null && rawState.isNotEmpty && !rawState.toLowerCase().contains('region')) {
+      province = rawState;
+    }
+
+    final parts = <String>[];
+    if (streetPart != null && streetPart.isNotEmpty) parts.add(streetPart);
+    if (formattedBrgy != null && formattedBrgy.isNotEmpty) parts.add(formattedBrgy);
+    if (municipality != null && municipality.isNotEmpty) parts.add(municipality);
+    if (province != null && province.isNotEmpty) parts.add(province);
+
+    return (
+      fullAddress: parts.isNotEmpty ? parts.join(', ') : (properties['name']?.toString() ?? ''),
+      houseNumber: houseNum,
+      street: streetPart,
+      barangay: formattedBrgy,
+      municipality: municipality,
+      province: province,
+    );
   }
 
   /// Parses an OpenStreetMap address dictionary into standard Philippine format:
