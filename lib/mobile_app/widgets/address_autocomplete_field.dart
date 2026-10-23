@@ -55,8 +55,8 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
   void _onFocusChanged() {
     if (!_focusNode.hasFocus) {
-      // Delay closing suggestions slightly so taps on suggestions register
-      Future.delayed(const Duration(milliseconds: 200), () {
+      // Delay closing suggestions so taps on suggestion rows register cleanly
+      Future.delayed(const Duration(milliseconds: 350), () {
         if (mounted && !_focusNode.hasFocus) {
           setState(() {
             _suggestions = [];
@@ -369,6 +369,40 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                         ),
                       );
                     },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Helpful guidance note when query yields 0 results while typing
+        if (!_isSearching && _suggestions.isEmpty && widget.controller.text.trim().length >= 3 && _focusNode.hasFocus)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 15,
+                  color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tip: Type your barangay name (e.g. Balococ) or use Auto-Detect Location.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+                    ),
                   ),
                 ),
               ],

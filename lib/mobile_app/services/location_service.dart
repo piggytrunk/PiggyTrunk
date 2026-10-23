@@ -206,27 +206,43 @@ class LocationService {
       debugPrint('[LocationService] Detected GPS: lat=$lat, lng=$lng');
 
       // 4. Reverse Geocode via OpenStreetMap Nominatim API (Headless - no map required)
-      LocationResult? osmResult = await _reverseGeocodeNominatim(lat, lng, zoom: 18);
+      // Dual-zoom strategy:
+      // - zoom 18 retrieves exact street/road and house number if available
+      // - zoom 14 retrieves authoritative administrative barangay/village boundary polygon
+      LocationResult? osmDetailed = await _reverseGeocodeNominatim(lat, lng, zoom: 18);
+      LocationResult? osmBoundary = await _reverseGeocodeNominatim(lat, lng, zoom: 14);
 
-      // Fallback: If OSM did not return a barangay, try zoom 14 for administrative boundary
-      if (osmResult == null || osmResult.barangay == null || osmResult.barangay!.trim().isEmpty) {
-        final areaResult = await _reverseGeocodeNominatim(lat, lng, zoom: 14);
-        if (areaResult != null && areaResult.barangay != null && areaResult.barangay!.isNotEmpty) {
-          osmResult = LocationResult(
-            success: true,
-            address: osmResult?.address ?? areaResult.address,
-            street: osmResult?.street ?? areaResult.street,
-            barangay: areaResult.barangay,
-            municipality: osmResult?.municipality ?? areaResult.municipality,
-            province: osmResult?.province ?? areaResult.province,
-            latitude: lat,
-            longitude: lng,
-          );
-        }
+      // The barangay from zoom 14 corresponds to the true administrative polygon,
+      // preventing borderline roads (e.g. boundary between Balococ and Talang) from misidentifying the barangay.
+      final canonicalBrgy = osmBoundary?.barangay ?? osmDetailed?.barangay;
+      final canonicalStreet = osmDetailed?.street ?? osmBoundary?.street;
+      final canonicalCity = osmDetailed?.municipality ?? osmBoundary?.municipality;
+      final canonicalProvince = osmDetailed?.province ?? osmBoundary?.province;
+
+      if (canonicalBrgy != null && canonicalBrgy.isNotEmpty) {
+        final parts = <String>[];
+        if (canonicalStreet != null && canonicalStreet.isNotEmpty) parts.add(canonicalStreet);
+        parts.add(canonicalBrgy);
+        if (canonicalCity != null && canonicalCity.isNotEmpty) parts.add(canonicalCity);
+        if (canonicalProvince != null && canonicalProvince.isNotEmpty) parts.add(canonicalProvince);
+
+        return LocationResult(
+          success: true,
+          address: parts.join(', '),
+          street: canonicalStreet,
+          barangay: canonicalBrgy,
+          municipality: canonicalCity,
+          province: canonicalProvince,
+          latitude: lat,
+          longitude: lng,
+        );
       }
 
-      if (osmResult != null && osmResult.success && osmResult.address != null && osmResult.address!.isNotEmpty) {
-        return osmResult;
+      if (osmDetailed != null && osmDetailed.success && osmDetailed.address != null && osmDetailed.address!.isNotEmpty) {
+        return osmDetailed;
+      }
+      if (osmBoundary != null && osmBoundary.success && osmBoundary.address != null && osmBoundary.address!.isNotEmpty) {
+        return osmBoundary;
       }
 
       // Tier 2 Fallback: Native OS Geocoder (Google Play Services / Apple CoreLocation)
@@ -319,10 +335,42 @@ class LocationService {
     return null;
   }
 
+  /// Sanitizes user typed queries for Philippine OpenStreetMap Nominatim search:
+  /// - Strips house numbers / lot prefixes (preserves them separately for display)
+  /// - Strips administrative noise keywords ('city', 'lungsod', 'brgy', 'barangay', 'bgy', 'province', 'prov', 'region')
+  ///   because OpenStreetMap indexes nodes without administrative suffixes (e.g. "San Carlos" not "San Carlos City").
+  /// - Removes commas, hyphens, and multiple spaces
+  static String sanitizePhilippineSearchQuery(String raw) {
+    var s = raw.trim();
+
+    // 1. Remove house plate prefix if present
+    final houseMatch = RegExp(
+      r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
+    ).firstMatch(s);
+    if (houseMatch != null) {
+      s = s.substring(houseMatch.end).trim();
+    }
+
+    // 2. Strip Philippine administrative prefixes and suffixes that break OpenStreetMap text search
+    s = s.replaceAll(
+      RegExp(
+        r'\b(brgy\.?|barangay|bgy\.?|city|lungsod|province|prov\.?|region|reg\.?)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+
+    // 3. Strip special punctuation and normalize spaces
+    s = s.replaceAll(RegExp(r'[,.\-#]+'), ' ');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return s;
+  }
+
   /// Searches OpenStreetMap for address suggestions based on user typing.
-  /// Intelligently extracts house number plates (e.g. "#124", "124-B", "Unit 3", "Block 4 Lot 10")
-  /// so that if OpenStreetMap doesn't have the individual house plate in its database,
-  /// the street and barangay are matched and the user's house number is cleanly preserved.
+  /// Intelligently sanitizes queries (e.g. "balococ San Carlos City pangasinan" -> "balococ San Carlos pangasinan")
+  /// so OpenStreetMap returns instant, accurate matches for Philippine barangays and cities.
+  /// Extracts and preserves house number plates (e.g. "#124", "124-B", "Unit 3", "Block 4 Lot 10").
   Future<List<AddressSuggestion>> searchAddressSuggestions(String query, {double? lat, double? lon}) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return [];
@@ -332,22 +380,47 @@ class LocationService {
       r'^([#№]?[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?|[Bb]lock\s*\d+\s*[Ll]ot\s*\d+|[Uu]nit\s*[A-Za-z0-9]+)\b',
     ).firstMatch(trimmed);
 
-    String? typedPrefix;
-    String cleanQuery = trimmed;
+    final typedPrefix = houseMatch?.group(1)?.trim();
 
-    if (houseMatch != null) {
-      typedPrefix = houseMatch.group(1)?.trim();
-      cleanQuery = trimmed.substring(houseMatch.end).trim();
-      if (cleanQuery.startsWith(',') || cleanQuery.startsWith('.')) {
-        cleanQuery = cleanQuery.substring(1).trim();
+    // Clean query by removing administrative noise words (City, Brgy, etc.)
+    final cleanedQuery = sanitizePhilippineSearchQuery(trimmed);
+
+    // Build priority list of query candidates to maximize match rate:
+    // 1. Cleaned query without noise words (e.g. "balococ San Carlos pangasinan")
+    // 2. Fallback: First 2 significant tokens (e.g. "balococ San Carlos")
+    // 3. Fallback: Single primary token if different (e.g. "balococ")
+    // 4. Fallback: Raw query as typed by user
+    final queriesToTry = <String>[];
+    if (cleanedQuery.isNotEmpty) {
+      queriesToTry.add(cleanedQuery);
+      final tokens = cleanedQuery.split(' ').where((t) => t.isNotEmpty).toList();
+      if (tokens.length > 2) {
+        queriesToTry.add('${tokens[0]} ${tokens[1]}');
+      }
+      if (tokens.isNotEmpty && tokens[0] != cleanedQuery && tokens[0].length >= 3) {
+        queriesToTry.add(tokens[0]);
+      }
+    }
+    if (!queriesToTry.contains(trimmed)) {
+      queriesToTry.add(trimmed);
+    }
+
+    for (final q in queriesToTry) {
+      if (q.trim().length < 2) continue;
+      final results = await _executeOsmSearch(q, userTypedPrefix: typedPrefix);
+      if (results.isNotEmpty) {
+        return results;
       }
     }
 
-    final queryToSearch = cleanQuery.isNotEmpty ? cleanQuery : trimmed;
+    return [];
+  }
 
+  /// Internal OpenStreetMap Nominatim search executor
+  Future<List<AddressSuggestion>> _executeOsmSearch(String q, {String? userTypedPrefix}) async {
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(queryToSearch)}&format=jsonv2&addressdetails=1&countrycodes=ph&limit=5',
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(q)}&format=jsonv2&addressdetails=1&countrycodes=ph&limit=6',
       );
 
       final response = await http.get(
@@ -356,25 +429,24 @@ class LocationService {
           'User-Agent': _osmUserAgent,
           'Accept': 'application/json',
         },
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final list = jsonDecode(response.body) as List<dynamic>;
         final suggestions = <AddressSuggestion>[];
+        final seenAddresses = <String>{};
 
         for (final item in list) {
           if (item is Map<String, dynamic>) {
             final addr = item['address'] as Map<String, dynamic>? ?? {};
             final parsed = parsePhilippineAddress(
-              userTypedPrefix: typedPrefix,
+              userTypedPrefix: userTypedPrefix,
               addressDetails: addr,
               fallbackDisplayName: item['display_name']?.toString(),
             );
 
-            final double? itemLat = double.tryParse(item['lat']?.toString() ?? '');
-            final double? itemLon = double.tryParse(item['lon']?.toString() ?? '');
-
-            if (parsed.fullAddress.isNotEmpty) {
+            if (parsed.fullAddress.isNotEmpty && !seenAddresses.contains(parsed.fullAddress)) {
+              seenAddresses.add(parsed.fullAddress);
               suggestions.add(
                 AddressSuggestion(
                   fullAddress: parsed.fullAddress,
@@ -383,58 +455,18 @@ class LocationService {
                   barangay: parsed.barangay,
                   municipality: parsed.municipality,
                   province: parsed.province,
-                  latitude: itemLat,
-                  longitude: itemLon,
+                  latitude: double.tryParse(item['lat']?.toString() ?? ''),
+                  longitude: double.tryParse(item['lon']?.toString() ?? ''),
                 ),
               );
             }
           }
         }
-
-        // If no results were found with the stripped query and we had a prefix, try full query as fallback
-        if (suggestions.isEmpty && cleanQuery != trimmed) {
-          final fallbackUrl = Uri.parse(
-            'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(trimmed)}&format=jsonv2&addressdetails=1&countrycodes=ph&limit=5',
-          );
-          final fbRes = await http.get(
-            fallbackUrl,
-            headers: {'User-Agent': _osmUserAgent, 'Accept': 'application/json'},
-          ).timeout(const Duration(seconds: 6));
-
-          if (fbRes.statusCode == 200) {
-            final fbList = jsonDecode(fbRes.body) as List<dynamic>;
-            for (final item in fbList) {
-              if (item is Map<String, dynamic>) {
-                final addr = item['address'] as Map<String, dynamic>? ?? {};
-                final parsed = parsePhilippineAddress(
-                  addressDetails: addr,
-                  fallbackDisplayName: item['display_name']?.toString(),
-                );
-                if (parsed.fullAddress.isNotEmpty) {
-                  suggestions.add(
-                    AddressSuggestion(
-                      fullAddress: parsed.fullAddress,
-                      houseNumber: parsed.houseNumber,
-                      street: parsed.street,
-                      barangay: parsed.barangay,
-                      municipality: parsed.municipality,
-                      province: parsed.province,
-                      latitude: double.tryParse(item['lat']?.toString() ?? ''),
-                      longitude: double.tryParse(item['lon']?.toString() ?? ''),
-                    ),
-                  );
-                }
-              }
-            }
-          }
-        }
-
         return suggestions;
       }
     } catch (e) {
-      debugPrint('[LocationService] OSM Nominatim search error: $e');
+      debugPrint('[LocationService] OSM Nominatim query "$q" error: $e');
     }
-
     return [];
   }
 
