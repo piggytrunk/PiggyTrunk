@@ -36,7 +36,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
   String? _selectedRaiserId;
   String? _selectedBatchId;
-  bool _isFatteningSelected = true;
+  bool _isFatteningSelected = false;
   bool _isSowSelected = false;
 
   List<Map<String, dynamic>> _activeBatches = [];
@@ -185,7 +185,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
         _sowCountCtrl = TextEditingController(text: '0');
       }
     } else {
-      _isFatteningSelected = true;
+      _isFatteningSelected = false;
       _isSowSelected = false;
       _fatteningCountCtrl = TextEditingController(text: '0');
       _sowCountCtrl = TextEditingController(text: '0');
@@ -521,6 +521,10 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
     if (parsedCapital == null || parsedCapital <= 0) {
       setState(() => _capitalError = 'Please enter a valid capital greater than ₱0.');
+      return;
+    }
+    if (!_isFatteningSelected && !_isSowSelected) {
+      setState(() => _totalHogError = 'Please select at least one hog type (Fattening or Sow / Breeding).');
       return;
     }
     if (parsedTotalHog <= 0) {
@@ -1420,22 +1424,6 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                                 _selectedRaiserId = 'unassigned';
                               }
                             }
-                            final pt = (matched['pig_type'] ?? 'Fattening').toString().trim();
-                            if (pt.isNotEmpty && pt != 'N/A') {
-                              final ptLower = pt.toLowerCase();
-                              final hasSow = ptLower.contains('sow') || ptLower.contains('breed');
-                              final hasFat = ptLower.contains('fatten');
-                              if (hasSow && hasFat) {
-                                _isFatteningSelected = true;
-                                _isSowSelected = true;
-                              } else if (hasSow) {
-                                _isFatteningSelected = false;
-                                _isSowSelected = true;
-                              } else if (hasFat) {
-                                _isFatteningSelected = true;
-                                _isSowSelected = false;
-                              }
-                            }
                           } else {
                             final currentRaiser = _activeRaisers.firstWhere(
                               (r) => r['id'].toString() == _selectedRaiserId,
@@ -1635,22 +1623,6 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                             if (rBatchId != null && rBatchId.isNotEmpty && (_selectedBatchId == null || _selectedBatchId == 'unassigned')) {
                               if (_activeBatches.any((b) => b['batch_id'].toString() == rBatchId)) {
                                 _selectedBatchId = rBatchId;
-                              }
-                            }
-                            final pt = (matched['pig_type'] ?? '').toString().trim();
-                            if (pt.isNotEmpty && pt != 'N/A') {
-                              final ptLower = pt.toLowerCase();
-                              final hasSow = ptLower.contains('sow') || ptLower.contains('breed');
-                              final hasFat = ptLower.contains('fatten');
-                              if (hasSow && hasFat) {
-                                _isFatteningSelected = true;
-                                _isSowSelected = true;
-                              } else if (hasSow) {
-                                _isFatteningSelected = false;
-                                _isSowSelected = true;
-                              } else if (hasFat) {
-                                _isFatteningSelected = true;
-                                _isSowSelected = false;
                               }
                             }
                           }

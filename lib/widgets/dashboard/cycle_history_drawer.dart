@@ -23,9 +23,15 @@ class CycleHistoryDrawer {
   ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
-    final titleColor = isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText;
-    final hintText = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
+    final titleColor = isDark
+        ? PiggyTrunkTheme.ptTextDark
+        : PiggyTrunkTheme.ptText;
+    final hintText = isDark
+        ? PiggyTrunkTheme.ptMutedDark
+        : PiggyTrunkTheme.ptMuted;
 
     showModalBottomSheet(
       context: context,
@@ -55,19 +61,26 @@ class CycleHistoryDrawer {
               ),
               const SizedBox(height: 8),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.35) : const Color(0xFFDBEAFE),
+                        color: isDark
+                            ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
+                            : const Color(0xFFDBEAFE),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
                         Icons.verified_rounded,
                         size: 18,
-                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                        color: isDark
+                            ? const Color(0xFF93C5FD)
+                            : const Color(0xFF1E40AF),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -96,7 +109,11 @@ class CycleHistoryDrawer {
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(sheetContext),
-                      icon: Icon(Icons.close_rounded, color: hintText, size: 22),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: hintText,
+                        size: 22,
+                      ),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
@@ -132,9 +149,15 @@ class CycleHistoryDrawer {
   ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
-    final titleColor = isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText;
-    final hintText = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
+    final titleColor = isDark
+        ? PiggyTrunkTheme.ptTextDark
+        : PiggyTrunkTheme.ptText;
+    final hintText = isDark
+        ? PiggyTrunkTheme.ptMutedDark
+        : PiggyTrunkTheme.ptMuted;
 
     showGeneralDialog(
       context: context,
@@ -142,9 +165,13 @@ class CycleHistoryDrawer {
       barrierLabel: 'CycleHistoryDrawer',
       barrierColor: Colors.black.withValues(alpha: 0.45),
       transitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (dialogContext, animation, secondaryAnimation) => const SizedBox.shrink(),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) =>
+          const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
-        final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1.0, 0.0),
@@ -159,7 +186,9 @@ class CycleHistoryDrawer {
                 height: double.infinity,
                 decoration: BoxDecoration(
                   color: cardBg,
-                  border: Border(left: BorderSide(color: cardBorder, width: 1.2)),
+                  border: Border(
+                    left: BorderSide(color: cardBorder, width: 1.2),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.25),
@@ -172,19 +201,28 @@ class CycleHistoryDrawer {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 18,
+                        ),
                         child: Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.35) : const Color(0xFFDBEAFE),
+                                color: isDark
+                                    ? const Color(
+                                        0xFF1E3A8A,
+                                      ).withValues(alpha: 0.35)
+                                    : const Color(0xFFDBEAFE),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
                                 Icons.verified_rounded,
                                 size: 20,
-                                color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                                color: isDark
+                                    ? const Color(0xFF93C5FD)
+                                    : const Color(0xFF1E40AF),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -214,7 +252,11 @@ class CycleHistoryDrawer {
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(dialogContext),
-                              icon: Icon(Icons.close_rounded, color: hintText, size: 22),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: hintText,
+                                size: 22,
+                              ),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               tooltip: 'Close panel',
@@ -222,7 +264,10 @@ class CycleHistoryDrawer {
                           ],
                         ),
                       ),
-                      Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
+                      Divider(
+                        color: cardBorder.withValues(alpha: 0.5),
+                        height: 1,
+                      ),
                       Expanded(
                         child: _buildDrawerContent(
                           context: dialogContext,
@@ -302,14 +347,20 @@ class CycleHistoryDrawer {
         final raiser = completedRaisers[index];
         final name = (raiser['name'] ?? 'Hog Raiser').toString();
         final batchName = (raiser['batch_name'] ?? 'Batch').toString();
-        final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+        final raiserHogs = (raiser['hogs'] as List? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
 
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+            color: isDark
+                ? PiggyTrunkTheme.ptSurfaceSoftDark
+                : PiggyTrunkTheme.ptSurfaceSoft,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+              color: isDark
+                  ? PiggyTrunkTheme.ptBorderDark
+                  : PiggyTrunkTheme.ptBorder,
               width: 1.2,
             ),
             boxShadow: [
@@ -342,12 +393,19 @@ class CycleHistoryDrawer {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2.5,
+                    ),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+                      color: isDark
+                          ? const Color(0xFF0F172A)
+                          : const Color(0xFFE2E8F0),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                        color: isDark ? PiggyTrunkTheme.ptBorderDark : const Color(0xFFCBD5E1),
+                        color: isDark
+                            ? PiggyTrunkTheme.ptBorderDark
+                            : const Color(0xFFCBD5E1),
                         width: 1,
                       ),
                     ),
@@ -356,7 +414,9 @@ class CycleHistoryDrawer {
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF475569),
+                        color: isDark
+                            ? PiggyTrunkTheme.ptMutedDark
+                            : const Color(0xFF475569),
                       ),
                     ),
                   ),
@@ -365,7 +425,10 @@ class CycleHistoryDrawer {
               const SizedBox(height: 12),
               // Completion summary notice
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isDark
                       ? const Color(0xFF1E3A8A).withValues(alpha: 0.3)
@@ -383,7 +446,9 @@ class CycleHistoryDrawer {
                     Icon(
                       Icons.check_circle_outline_rounded,
                       size: 16,
-                      color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                      color: isDark
+                          ? const Color(0xFF93C5FD)
+                          : const Color(0xFF1E40AF),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -393,7 +458,9 @@ class CycleHistoryDrawer {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
-                          color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                          color: isDark
+                              ? const Color(0xFF93C5FD)
+                              : const Color(0xFF1E40AF),
                         ),
                       ),
                     ),
@@ -411,18 +478,27 @@ class CycleHistoryDrawer {
                     final tag = h['tag_number'] ?? '#${idx + 1}';
                     final rawHType = (h['pig_type'] ?? '').toString().trim();
                     final hType = rawHType.isNotEmpty ? rawHType : 'Fattening';
-                    final hIsBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
+                    final hIsBreed =
+                        hType.toLowerCase().contains('sow') ||
+                        hType.toLowerCase().contains('breed');
                     final ptKey = hIsBreed ? 'sow' : 'fattening';
-                    final stageForHog = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], hIsBreed);
+                    final stageForHog = _resolveStageName(
+                      h['stage_id'] ?? h['lifecycle_stage'],
+                      hIsBreed,
+                    );
 
                     return Container(
                       margin: EdgeInsets.only(top: idx > 0 ? 12 : 0),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
+                        color: isDark
+                            ? PiggyTrunkTheme.ptSurfaceDark
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                          color: isDark
+                              ? PiggyTrunkTheme.ptBorderDark
+                              : PiggyTrunkTheme.ptBorder,
                           width: 1,
                         ),
                       ),
@@ -437,7 +513,9 @@ class CycleHistoryDrawer {
                                   Icon(
                                     Icons.pets_rounded,
                                     size: 13,
-                                    color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                    color: isDark
+                                        ? Colors.white
+                                        : PiggyTrunkTheme.ptPrimary,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
@@ -450,9 +528,14 @@ class CycleHistoryDrawer {
                                   ),
                                   const SizedBox(width: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                      color: isDark
+                                          ? const Color(0xFF1E293B)
+                                          : const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
@@ -467,9 +550,14 @@ class CycleHistoryDrawer {
                                 ],
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC),
+                                  color: isDark
+                                      ? const Color(0xFF064E3B)
+                                      : const Color(0xFFDEF7EC),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
@@ -478,7 +566,9 @@ class CycleHistoryDrawer {
                                     Icon(
                                       Icons.check_circle_rounded,
                                       size: 10,
-                                      color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                                      color: isDark
+                                          ? const Color(0xFFA7F3D0)
+                                          : const Color(0xFF03543F),
                                     ),
                                     const SizedBox(width: 3.5),
                                     Text(
@@ -486,7 +576,9 @@ class CycleHistoryDrawer {
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w800,
-                                        color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                                        color: isDark
+                                            ? const Color(0xFFA7F3D0)
+                                            : const Color(0xFF03543F),
                                       ),
                                     ),
                                   ],
@@ -504,105 +596,7 @@ class CycleHistoryDrawer {
                       ),
                     );
                   }).toList(),
-                )
-              else ...[
-                // Batch-level completed track fallback when individual hog rows are empty
-                Builder(
-                  builder: (context) {
-                    final rawRType = (raiser['pig_type'] ?? '').toString().toLowerCase();
-                    final bool hasSow = rawRType.contains('sow') || rawRType.contains('breed');
-                    final bool hasFat = rawRType.contains('fatten') || (!hasSow && rawRType != 'sow');
-                    final tracks = <String>[];
-                    if (hasFat) tracks.add('fattening');
-                    if (hasSow) tracks.add('sow');
-                    if (tracks.isEmpty) tracks.add('fattening');
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: tracks.asMap().entries.map((entry) {
-                        final idx = entry.key;
-                        final t = entry.value;
-                        final isSow = t == 'sow';
-                        final label = isSow ? 'SOW / BREEDING' : 'FATTENING';
-                        final finalStage = isSow ? 'Lactation' : 'Selling';
-
-                        return Container(
-                          margin: EdgeInsets.only(top: idx > 0 ? 12 : 0),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.pets_rounded,
-                                        size: 13,
-                                        color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        label,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: titleColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle_rounded,
-                                          size: 10,
-                                          color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
-                                        ),
-                                        const SizedBox(width: 3.5),
-                                        Text(
-                                          'COMPLETE',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w800,
-                                            color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              _buildDrawerLifecycleMap(
-                                currentStage: finalStage,
-                                pigType: t,
-                                isDark: isDark,
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
                 ),
-              ],
             ],
           ),
         );
@@ -646,8 +640,22 @@ class CycleHistoryDrawer {
     required bool isDark,
   }) {
     final List<String> stages = pigType.toLowerCase() == 'sow'
-        ? ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-        : ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+        ? [
+            'Booster',
+            'Pre-Starter',
+            'Starter',
+            'Grower',
+            'Breeder',
+            'Lactation',
+          ]
+        : [
+            'Booster',
+            'Pre-Starter',
+            'Starter',
+            'Grower',
+            'Finisher',
+            'Selling',
+          ];
 
     const circleSize = 22.0;
 
@@ -690,19 +698,27 @@ class CycleHistoryDrawer {
                           color: const Color(0xFF10B981),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isDark ? const Color(0xFF151F2E) : Colors.white,
+                            color: isDark
+                                ? const Color(0xFF151F2E)
+                                : Colors.white,
                             width: 2,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                              color: const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.25),
                               blurRadius: 4,
                               offset: const Offset(0, 1),
                             ),
                           ],
                         ),
                         child: const Center(
-                          child: Icon(Icons.check, size: 11, color: Colors.white),
+                          child: Icon(
+                            Icons.check,
+                            size: 11,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 5),
@@ -714,7 +730,9 @@ class CycleHistoryDrawer {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 8.5,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          color: isDark
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF64748B),
                         ),
                       ),
                     ],
