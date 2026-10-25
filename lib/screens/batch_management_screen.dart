@@ -129,14 +129,42 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
           (b['batch_id'] ?? b['id'] ?? '').toString(): (b['batch_name'] ?? 'Batch #${b['batch_id']}').toString()
       };
 
+      final Map<String, String> batchStatusMap = {
+        for (var b in batchesData)
+          (b['batch_id'] ?? b['id'] ?? '').toString(): (b['status'] ?? b['batch_status'] ?? 'Active').toString().toLowerCase()
+      };
+
       final Map<String, String> assignedToBatchMap = {};
       for (var a in assignmentsData) {
         if (a is! Map) continue;
         final st = (a['status'] ?? 'active').toString().toLowerCase();
-        if (st == 'completed' || st == 'archived') continue;
+        if (st == 'completed' || st == 'archived' || st == 'finished') continue;
+
+        final bId = (a['batch_id'] ?? '').toString();
+        final bStatus = batchStatusMap[bId] ?? 'active';
+        if (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived') continue;
+
+        final aIdStr = (a['assignment_id'] ?? a['id'] ?? '').toString();
+        final assignHogs = assignmentHogsMap[aIdStr] ?? [];
+        if (assignHogs.isNotEmpty) {
+          final bool allHogsDone = assignHogs.every((hog) {
+            final health = (hog['health_status'] ?? '').toString().toLowerCase();
+            if (health == 'dead') return true;
+            final sId = int.tryParse((hog['stage_id'] ?? '').toString());
+            final stageStr = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], false).toLowerCase();
+            final hogStatus = (hog['status'] ?? '').toString().toLowerCase();
+            return (sId != null && sId >= 6) ||
+                stageStr.contains('selling') ||
+                stageStr.contains('sold') ||
+                stageStr.contains('lactation') ||
+                stageStr.contains('complete') ||
+                hogStatus == 'completed' ||
+                hogStatus == 'archived';
+          });
+          if (allHogsDone) continue;
+        }
 
         final rId = (a['hog_raiser_id'] ?? '').toString();
-        final bId = (a['batch_id'] ?? '').toString();
         final bName = batchNamesMap[bId] ?? 'Batch #$bId';
         if (rId.isNotEmpty) {
           assignedToBatchMap[rId] = bName;

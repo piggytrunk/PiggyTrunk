@@ -277,8 +277,8 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
         final bStatus = batchStatusMap[bId] ?? 'active';
         final st = (a['status'] ?? 'active').toString().toLowerCase();
 
-        // Check if batch itself is explicitly completed or archived
-        final bool isBatchCompleted = bStatus == 'completed' || bStatus == 'archived' || bStatus == 'harvested' || bStatus == 'sold';
+        // Check if batch itself is explicitly completed, finished or archived
+        final bool isBatchCompleted = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || bStatus == 'harvested' || bStatus == 'sold';
         final bool isAssignCompleted = st == 'completed' || st == 'archived' || st == 'finished';
 
         // Check if all hogs of this assignment reached terminal stage (sow in lactation, fattening in selling/sold)
@@ -378,9 +378,10 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
           'name': resolvedFullName,
           'pig_type': rMap['pig_type'] ?? 'Fattening',
           'phone': rMap['phone'] ?? 'N/A',
-          'assigned_batch_id': assignedBatchId,
-          'assigned_batch_name': assignedBatchName,
+          'assigned_batch_id': isBatchCompleted ? null : assignedBatchId,
+          'assigned_batch_name': isBatchCompleted ? null : assignedBatchName,
           'is_batch_completed': isBatchCompleted,
+          'previous_completed_batch_name': isBatchCompleted ? assignedBatchName : null,
           'real_pk_col': 'hog_raiser_id',
         };
         parsedRaisers.add(raiserEntry);
@@ -406,7 +407,20 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
         if (bId.isEmpty) continue;
         final bName = bMap['batch_name']?.toString() ?? bMap['name']?.toString() ?? 'Batch $bId';
         final bStatus = (bMap['status'] ?? bMap['batch_status'] ?? 'Active').toString().toLowerCase();
-        final bool isBatchFinished = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived';
+        final batchHogs = hogsRaw.where((h) {
+          if (h is! Map) return false;
+          final hBatchId = (h['batch_id'] ?? '').toString();
+          return hBatchId == bId;
+        }).toList();
+
+        final bool allHogsFinished = batchHogs.isNotEmpty && batchHogs.every((h) {
+          final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+          final st = (h['status'] ?? '').toString().trim().toLowerCase();
+          final sId = int.tryParse(s);
+          return (sId != null && sId >= 6) || s == 'selling' || s == 'sold' || s == 'lactation' || st == 'completed' || st == 'archived';
+        });
+
+        final bool isBatchFinished = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || allHogsFinished;
         if (!_isEdit && isBatchFinished) {
           continue; // Finished batches cannot accept new investments
         }
@@ -627,12 +641,21 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
           final raiserAssigns = await _supabase
               .from('assignments')
-              .select('assignment_id, batch_id')
+              .select('assignment_id, batch_id, batches(status)')
               .eq('hog_raiser_id', parsedRaiserId)
               .neq('batch_id', _selectedBatchId!)
               .or('status.eq.active,status.eq.Active');
 
-          if ((raiserAssigns as List? ?? []).isNotEmpty && !_isEdit) {
+          final activeOtherAssigns = (raiserAssigns as List? ?? []).where((ra) {
+            if (ra is! Map) return false;
+            final bStatus = (ra['batches']?['status'] ?? '').toString().toLowerCase();
+            if (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived') {
+              return false; // Finished batch is not active!
+            }
+            return true;
+          }).toList();
+
+          if (activeOtherAssigns.isNotEmpty && !_isEdit) {
             if (!mounted) return;
             setState(() => _isSubmitting = false);
             widget.onShowSnackBar(
@@ -1545,7 +1568,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                             itemIcon = Icons.person_rounded;
                             iconCol = _isDark ? const Color(0xFF9CB0C9) : PiggyTrunkTheme.ptPrimary;
                           } else if (isBatchCompleted) {
-                            subText = 'Available (Completed $assignedBatchName)';
+                            subText = 'Available (Ready for new batch)';
                             bColor = PiggyTrunkTheme.ptSuccess;
                             badgeText = 'Available';
                             itemIcon = Icons.check_circle_outline_rounded;
@@ -1567,7 +1590,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                             isEnabled: !isLockedOut,
                             icon: itemIcon,
                             iconColor: iconCol,
-                            searchKeywords: '${r['name']} $assignedBatchName ${r['pig_type'] ?? ''} ${isBatchCompleted ? 'available completed' : ''}',
+                            searchKeywords: '${r['name']} $assignedBatchName ${r['pig_type'] ?? ''} ${isBatchCompleted ? 'available ready completed' : ''}',
                           );
                         }),
                       ],
@@ -1618,9 +1641,10 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                         setState(() {
                           _selectedRaiserId = val;
                           if (val != 'unassigned') {
-                            // If this raiser already has an active batch and no batch is currently selected, auto-select it!
+                            final isDone = matched['is_batch_completed'] == true;
+                            // Only auto-select if raiser has an ACTIVE batch (never if cycle is completed)
                             final rBatchId = matched['assigned_batch_id']?.toString();
-                            if (rBatchId != null && rBatchId.isNotEmpty && (_selectedBatchId == null || _selectedBatchId == 'unassigned')) {
+                            if (!isDone && rBatchId != null && rBatchId.isNotEmpty && (_selectedBatchId == null || _selectedBatchId == 'unassigned')) {
                               if (_activeBatches.any((b) => b['batch_id'].toString() == rBatchId)) {
                                 _selectedBatchId = rBatchId;
                               }

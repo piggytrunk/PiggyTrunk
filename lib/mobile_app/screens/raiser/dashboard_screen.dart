@@ -284,6 +284,21 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         return idA.compareTo(idB);
       });
 
+      // Pre-fetch all batches safely to check completion and avoid losing assignments
+      List<dynamic> allBatchesRaw = [];
+      try {
+        allBatchesRaw = await Supabase.instance.client
+            .from('batches')
+            .select('*');
+      } catch (_) {}
+      final Map<String, Map<String, dynamic>> allBatchesMap = {};
+      for (var bRow in allBatchesRaw) {
+        if (bRow is Map) {
+          final id = (bRow['batch_id'] ?? bRow['id'])?.toString();
+          if (id != null) allBatchesMap[id] = Map<String, dynamic>.from(bRow);
+        }
+      }
+
       double totalCapital = 0.0;
       final List<String> investmentHogTypes = [];
       for (var row in invRows) {
@@ -292,7 +307,22 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         final rawHType = (row['hog_type'] ?? 'Fattening').toString().trim().toLowerCase();
         final bool isSow = rawHType.contains('sow') || rawHType.contains('breed');
         final bool isFat = rawHType.contains('fatten');
-        totalCapital += cap;
+
+        final invStage = (row['stage'] ?? row['status'] ?? '').toString().toLowerCase();
+        final bId = (row['batch_id'] ?? '').toString();
+        final bRow = allBatchesMap[bId];
+        final bStatus = (bRow?['status'] ?? bRow?['batch_status'] ?? '').toString().toLowerCase();
+        final bool isInvConcluded = invStage == 'completed' ||
+            invStage == 'finished' ||
+            invStage == 'archived' ||
+            bStatus == 'finished' ||
+            bStatus == 'completed' ||
+            bStatus == 'archived';
+
+        // Only active investments contribute to the ongoing active capital
+        if (!isInvConcluded) {
+          totalCapital += cap;
+        }
 
         if (isSow && isFat) {
           final fC = (count / 2).ceil();
@@ -330,21 +360,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         } catch (_) {}
       }
 
-      // Pre-fetch all batches safely to avoid losing assignments if relational join returns list or null
-      List<dynamic> allBatchesRaw = [];
-      try {
-        allBatchesRaw = await Supabase.instance.client
-            .from('batches')
-            .select('*');
-      } catch (_) {}
-      final Map<String, Map<String, dynamic>> allBatchesMap = {};
-      for (var bRow in allBatchesRaw) {
-        if (bRow is Map) {
-          final id = (bRow['batch_id'] ?? bRow['id'])?.toString();
-          if (id != null) allBatchesMap[id] = Map<String, dynamic>.from(bRow);
-        }
-      }
-
       final rawAssignments = List<Map<String, dynamic>>.from(assignmentsRes);
       final assignments = <Map<String, dynamic>>[];
       for (var a in rawAssignments) {
@@ -372,24 +387,32 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       // Self-healing: If assignments is empty but investment_records has batch info for this raiser
       if (assignments.isEmpty && invRows.isNotEmpty) {
         final latestInvWithBatch = invRows.reversed.firstWhere(
-          (inv) =>
-              (inv['batch_name'] ?? '').toString().trim().isNotEmpty &&
-              inv['batch_name'] != 'Unassigned',
-          orElse: () => invRows.last,
+          (inv) {
+            final st = (inv['stage'] ?? inv['status'] ?? '').toString().toLowerCase();
+            final bId = (inv['batch_id'] ?? '').toString();
+            final b = allBatchesMap[bId];
+            final bSt = (b?['status'] ?? b?['batch_status'] ?? '').toString().toLowerCase();
+            final isDone = st == 'completed' || st == 'finished' || st == 'archived' ||
+                bSt == 'finished' || bSt == 'completed' || bSt == 'archived';
+            return !isDone && (inv['batch_name'] ?? '').toString().trim().isNotEmpty && inv['batch_name'] != 'Unassigned';
+          },
+          orElse: () => {},
         );
-        final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch')
-            .toString();
-        final bId = latestInvWithBatch['batch_id'];
-        assignments.add({
-          'assignment_id': null,
-          'batch_id': bId,
-          'batch_name': bName,
-          'status': 'active',
-          'is_cycle_completed': false,
-          'batches': {'batch_id': bId, 'batch_name': bName, 'status': 'Active'},
-          'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
-          'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
-        });
+        if (latestInvWithBatch.isNotEmpty) {
+          final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch')
+              .toString();
+          final bId = latestInvWithBatch['batch_id'];
+          assignments.add({
+            'assignment_id': null,
+            'batch_id': bId,
+            'batch_name': bName,
+            'status': 'active',
+            'is_cycle_completed': false,
+            'batches': {'batch_id': bId, 'batch_name': bName, 'status': 'Active'},
+            'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
+            'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
+          });
+        }
       }
 
       // 5. Fetch hogs strictly for this raiser's active assignments
@@ -542,14 +565,14 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           return !isTerminal && (sId == null || sId < 6);
         });
 
-        if (assignStatus == 'completed' || assignStatus == 'finished') {
+        final bool isBatchConcluded = bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested' || bStatus == 'archived';
+
+        if (isBatchConcluded || assignStatus == 'completed' || assignStatus == 'finished') {
           a['is_cycle_completed'] = true;
-        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
-          a['is_cycle_completed'] = false;
         } else if (assignHogs.isNotEmpty) {
           a['is_cycle_completed'] = !hasLivingActiveHogs;
-        } else if (bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested') {
-          a['is_cycle_completed'] = true;
+        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
+          a['is_cycle_completed'] = false;
         } else {
           final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '')
               .toString()

@@ -462,14 +462,12 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
         final isBatchExplicitlyFinished = (batchStatus == 'completed' || batchStatus == 'finished') && !hasLivingActiveHogs;
 
         final rawStage = (rMap['stage'] ?? rMap['status'] ?? '').toString().toLowerCase();
-        if (rawStage == 'completed' || rawStage == 'finished') {
+        if (rawStage == 'completed' || rawStage == 'finished' || allHogsFinished || isBatchExplicitlyFinished) {
           rMap['stage'] = 'completed';
-        } else if (rawStage == 'active' || hasLivingActiveHogs) {
-          rMap['stage'] = 'active';
         } else if (rawStage == 'archived') {
           rMap['stage'] = 'archived';
-        } else if (allHogsFinished || isBatchExplicitlyFinished) {
-          rMap['stage'] = 'completed';
+        } else if (rawStage == 'active' || hasLivingActiveHogs) {
+          rMap['stage'] = 'active';
         } else if (matchedBatchId != null && matchedBatchId.isNotEmpty && matchedBatchId != 'unassigned') {
           rMap['stage'] = 'active';
         } else {

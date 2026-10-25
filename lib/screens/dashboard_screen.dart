@@ -712,14 +712,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             });
           }
 
-          final bool isBatchActive = hasActiveHogs || hasActiveAssign;
-          final bool isBatchFinished = !isBatchActive &&
-              (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || allHogsDone);
+          final bool isBatchExplicitlyConcluded = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived';
+          final bool isBatchActive = !isBatchExplicitlyConcluded && (hasActiveHogs || hasActiveAssign || bStatus == 'active');
+          final bool isBatchFinished = isBatchExplicitlyConcluded || (!isBatchActive && allHogsDone);
 
           if (isBatchFinished) {
             if (bId.isNotEmpty) completedBatchIds.add(bId);
             if (bName.isNotEmpty) completedBatchNames.add(bName);
-          } else if (bId.isNotEmpty && (isBatchActive || bStatus == 'active')) {
+          } else if (bId.isNotEmpty && isBatchActive) {
             activeBatchIds.add(bId);
           }
         }
@@ -751,16 +751,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final bId = (inv['batch_id'] ?? '').toString();
           final bName = (inv['batch_name'] ?? '').toString().trim().toLowerCase();
 
-          final bool isInvCompleted;
-          if (invStage == 'completed' || invStage == 'finished' || invStage == 'archived') {
-            isInvCompleted = true;
-          } else if (invStage == 'active') {
-            isInvCompleted = false;
-          } else {
-            isInvCompleted = (bId.isNotEmpty && completedBatchIds.contains(bId)) ||
-                (bName.isNotEmpty && completedBatchNames.contains(bName)) ||
-                (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
-          }
+          final bool isBatchDone = (bId.isNotEmpty && completedBatchIds.contains(bId)) ||
+              (bName.isNotEmpty && completedBatchNames.contains(bName)) ||
+              (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+
+          final bool isInvCompleted = invStage == 'completed' ||
+              invStage == 'finished' ||
+              invStage == 'archived' ||
+              isBatchDone;
 
           final ht = (inv['hog_type'] ?? '').toString().toLowerCase();
           final bool isSow = ht.contains('sow') || ht.contains('inahin') || ht.contains('breed');

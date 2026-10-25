@@ -67,10 +67,11 @@ class RaiserHomeTab extends StatelessWidget {
     final raiserName = raiserData['name'] ?? strings.hogRaiserRole;
 
     // Active assignment & investment details
-    final hasActiveBatch = activeAssignments.isNotEmpty || hogsList.isNotEmpty;
+    final activeBatches = activeAssignments.where((a) => a['is_cycle_completed'] != true).toList();
+    final hasActiveBatch = activeBatches.isNotEmpty;
     final hasInvestment = investedAmount > 0;
     final List<String> allBatchNames = [];
-    for (var a in activeAssignments) {
+    for (var a in activeBatches) {
       String n = '';
       if (a['batches'] is Map) {
         n = (a['batches']['batch_name'] ?? a['batches']['name'] ?? '').toString();
@@ -88,9 +89,9 @@ class RaiserHomeTab extends StatelessWidget {
         allBatchNames.add(n);
       }
     }
-    final String activeBatchName = allBatchNames.isNotEmpty
+    final String activeBatchName = (hasActiveBatch && allBatchNames.isNotEmpty)
         ? allBatchNames.join(strings.isFilipino ? ' at ' : ' and ')
-        : (hasActiveBatch ? 'Active Batch' : '');
+        : '';
 
     // Pig Type and Lifecycle stage
     final String rawPigType = (raiserData['pig_type'] ?? '').toString().trim();
@@ -199,8 +200,8 @@ class RaiserHomeTab extends StatelessWidget {
                           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                         ),
                         child: Text(
-                          (hasActiveBatch || activeBatchName.isNotEmpty)
-                              ? (activeBatchName.isNotEmpty ? activeBatchName.toUpperCase() : 'ACTIVE BATCH')
+                          (hasActiveBatch && activeBatchName.isNotEmpty)
+                              ? activeBatchName.toUpperCase()
                               : (strings.isFilipino ? 'WALANG BATCH' : 'NO BATCH ASSIGNED'),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12.5,

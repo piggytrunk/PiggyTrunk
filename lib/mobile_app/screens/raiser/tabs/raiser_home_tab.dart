@@ -121,7 +121,7 @@ class RaiserHomeTab extends StatelessWidget {
     final hasCompletedBatch = completedBatches.isNotEmpty;
 
     final List<String> allBatchNames = [];
-    final targetBatches = hasActiveBatch ? activeBatches : activeAssignments;
+    final targetBatches = hasActiveBatch ? activeBatches : <Map<String, dynamic>>[];
     for (var a in targetBatches) {
       String n = '';
       if (a['batches'] is Map) {
@@ -140,9 +140,9 @@ class RaiserHomeTab extends StatelessWidget {
         allBatchNames.add(n);
       }
     }
-    final String activeBatchName = allBatchNames.isNotEmpty
+    final String activeBatchName = (hasActiveBatch && allBatchNames.isNotEmpty)
         ? allBatchNames.join(strings.isFilipino ? ' at ' : ' and ')
-        : (hasActiveBatch ? 'Active Batch' : '');
+        : '';
 
     // Pig Type and Lifecycle stage
     final String rawPigType = (raiserData['pig_type'] ?? '').toString().trim();
@@ -298,9 +298,11 @@ class RaiserHomeTab extends StatelessWidget {
                           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                         ),
                         child: Text(
-                          (hasActiveBatch || activeBatchName.isNotEmpty)
-                              ? (activeBatchName.isNotEmpty ? activeBatchName.toUpperCase() : 'ACTIVE BATCH')
-                              : (strings.isFilipino ? 'WALANG BATCH' : 'NO BATCH ASSIGNED'),
+                          (hasActiveBatch && activeBatchName.isNotEmpty)
+                              ? activeBatchName.toUpperCase()
+                              : (hasCompletedBatch
+                                  ? (strings.isFilipino ? 'SIKLO NATAPOS' : 'CYCLE COMPLETED')
+                                  : (strings.isFilipino ? 'WALANG BATCH' : 'NO BATCH ASSIGNED')),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
@@ -315,7 +317,7 @@ class RaiserHomeTab extends StatelessWidget {
                             width: 8,
                             height: 8,
                             decoration: BoxDecoration(
-                              color: isBatchCycleCompleted
+                              color: (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch))
                                   ? const Color(0xFF38BDF8)
                                   : (isInvestmentDepleted
                                       ? const Color(0xFFF87171)
@@ -325,7 +327,7 @@ class RaiserHomeTab extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            isBatchCycleCompleted
+                            (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch))
                                 ? (strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Completed')
                                 : (isInvestmentDepleted
                                     ? (strings.isFilipino ? 'Naubos ang Puhunan' : 'Depleted Budget')
@@ -396,9 +398,8 @@ class RaiserHomeTab extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  isBatchCycleCompleted
+                                const SizedBox(height: 6),                                 Text(
+                                  (isBatchCycleCompleted || !hasActiveBatch)
                                       ? _formatCurrency(0.0)
                                       : _formatCurrency(investedAmount),
                                   style: GoogleFonts.plusJakartaSans(
@@ -408,7 +409,7 @@ class RaiserHomeTab extends StatelessWidget {
                                     letterSpacing: -0.5,
                                   ),
                                 ),
-                                if (isBatchCycleCompleted) ...[
+                                if (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch)) ...[
                                   const SizedBox(height: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),

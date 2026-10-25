@@ -219,10 +219,36 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         } catch (_) {}
       }
 
+      List<dynamic> allBatchesRaw = [];
+      try {
+        allBatchesRaw = await Supabase.instance.client.from('batches').select('*');
+      } catch (_) {}
+      final Map<String, Map<String, dynamic>> allBatchesMap = {};
+      for (var bRow in allBatchesRaw) {
+        if (bRow is Map) {
+          final id = (bRow['batch_id'] ?? bRow['id'])?.toString();
+          if (id != null) allBatchesMap[id] = Map<String, dynamic>.from(bRow);
+        }
+      }
+
       final invRows = List<Map<String, dynamic>>.from(capitalRes);
       double totalCapital = 0.0;
       for (var row in invRows) {
-        totalCapital += (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
+        final cap = (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
+        final invStage = (row['stage'] ?? row['status'] ?? '').toString().toLowerCase();
+        final bId = (row['batch_id'] ?? '').toString();
+        final bRow = allBatchesMap[bId];
+        final bStatus = (bRow?['status'] ?? bRow?['batch_status'] ?? '').toString().toLowerCase();
+        final bool isInvConcluded = invStage == 'completed' ||
+            invStage == 'finished' ||
+            invStage == 'archived' ||
+            bStatus == 'finished' ||
+            bStatus == 'completed' ||
+            bStatus == 'archived';
+
+        if (!isInvConcluded) {
+          totalCapital += cap;
+        }
       }
 
       // 4. Fetch assignments with flexible status matching
@@ -240,18 +266,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
               .select('*')
               .eq('hog_raiser_id', raiserId);
         } catch (_) {}
-      }
-
-      List<dynamic> allBatchesRaw = [];
-      try {
-        allBatchesRaw = await Supabase.instance.client.from('batches').select('*');
-      } catch (_) {}
-      final Map<String, Map<String, dynamic>> allBatchesMap = {};
-      for (var bRow in allBatchesRaw) {
-        if (bRow is Map) {
-          final id = (bRow['batch_id'] ?? bRow['id'])?.toString();
-          if (id != null) allBatchesMap[id] = Map<String, dynamic>.from(bRow);
-        }
       }
 
       final rawAssignments = List<Map<String, dynamic>>.from(assignmentsRes);
@@ -277,25 +291,35 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       // Self-healing: If assignments is empty but investment_records has batch info for this raiser
       if (assignments.isEmpty && invRows.isNotEmpty) {
         final latestInvWithBatch = invRows.reversed.firstWhere(
-          (inv) => (inv['batch_name'] ?? '').toString().trim().isNotEmpty && inv['batch_name'] != 'Unassigned',
-          orElse: () => invRows.last,
+          (inv) {
+            final st = (inv['stage'] ?? inv['status'] ?? '').toString().toLowerCase();
+            final bId = (inv['batch_id'] ?? '').toString();
+            final b = allBatchesMap[bId];
+            final bSt = (b?['status'] ?? b?['batch_status'] ?? '').toString().toLowerCase();
+            final isDone = st == 'completed' || st == 'finished' || st == 'archived' ||
+                bSt == 'finished' || bSt == 'completed' || bSt == 'archived';
+            return !isDone && (inv['batch_name'] ?? '').toString().trim().isNotEmpty && inv['batch_name'] != 'Unassigned';
+          },
+          orElse: () => {},
         );
-        final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch').toString();
-        final bId = latestInvWithBatch['batch_id'];
-        assignments.add({
-          'assignment_id': null,
-          'batch_id': bId,
-          'batch_name': bName,
-          'status': 'active',
-          'is_cycle_completed': false,
-          'batches': {
+        if (latestInvWithBatch.isNotEmpty) {
+          final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch').toString();
+          final bId = latestInvWithBatch['batch_id'];
+          assignments.add({
+            'assignment_id': null,
             'batch_id': bId,
             'batch_name': bName,
-            'status': 'Active',
-          },
-          'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
-          'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
-        });
+            'status': 'active',
+            'is_cycle_completed': false,
+            'batches': {
+              'batch_id': bId,
+              'batch_name': bName,
+              'status': 'Active',
+            },
+            'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
+            'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
+          });
+        }
       }
 
       // 5. Fetch hogs strictly for this raiser's active assignments
@@ -432,14 +456,14 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           return !isTerminal && (sId == null || sId < 6);
         });
 
-        if (assignStatus == 'completed' || assignStatus == 'finished') {
+        final bool isBatchConcluded = bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested' || bStatus == 'archived';
+
+        if (isBatchConcluded || assignStatus == 'completed' || assignStatus == 'finished') {
           a['is_cycle_completed'] = true;
-        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
-          a['is_cycle_completed'] = false;
         } else if (assignHogs.isNotEmpty) {
           a['is_cycle_completed'] = !hasLivingActiveHogs;
-        } else if (bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested') {
-          a['is_cycle_completed'] = true;
+        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
+          a['is_cycle_completed'] = false;
         } else {
           final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '').toString().trim().toLowerCase();
           bool stageCompleted = false;
