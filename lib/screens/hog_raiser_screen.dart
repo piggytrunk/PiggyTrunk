@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -51,27 +52,59 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     if (!_hasCheckedRouteArgs) {
       _hasCheckedRouteArgs = true;
       final args = ModalRoute.of(context)?.settings.arguments;
+      bool isPending = false;
+      String targetRaiserName = '';
+      String? targetRaiserId;
+      String targetEmail = '';
+
       if (args == 'pending' || args == 'pending_raiser') {
+        isPending = true;
+      } else if (args is Map) {
+        final tab = args['tab']?.toString().toLowerCase();
+        final status = args['status']?.toString().toLowerCase();
+        isPending = tab == 'pending' || tab == 'pending_raiser' || status == 'pending';
+        targetRaiserName = (args['raiser_name'] ?? args['name'] ?? '').toString().trim();
+        targetRaiserId = (args['raiser_id'] ?? args['user_id'])?.toString();
+        targetEmail = (args['email'] ?? '').toString().trim().toLowerCase();
+      }
+
+      // Support direct query parameters on Flutter Web
+      if (kIsWeb) {
+        final uri = Uri.base;
+        if (uri.queryParameters['tab'] == 'pending' || uri.queryParameters['tab'] == 'pending_raiser') {
+          isPending = true;
+        }
+      }
+
+      if (isPending) {
         setState(() => _currentTab = 1);
-      } else if (args is Map<String, dynamic>) {
-        final targetRaiserName = (args['raiser_name'] ?? args['name'] ?? '').toString().trim();
-        final targetRaiserId = args['raiser_id']?.toString();
-        if (targetRaiserName.isNotEmpty || targetRaiserId != null) {
-          _searchCtrl.text = targetRaiserName;
-          _loadRaisers(keyword: targetRaiserName).then((_) {
-            if (mounted && _raisers.isNotEmpty) {
-              final match = _raisers.firstWhere(
-                (r) {
-                  final rId = (r['hog_raiser_id'] ?? r['id'] ?? '').toString();
-                  if (targetRaiserId != null && targetRaiserId.isNotEmpty && rId == targetRaiserId) {
-                    return true;
-                  }
-                  final rName = (r['name'] ?? '').toString().toLowerCase();
-                  final targetLower = targetRaiserName.toLowerCase();
-                  return targetLower.isNotEmpty && (rName == targetLower || rName.contains(targetLower) || targetLower.contains(rName));
-                },
-                orElse: () => _raisers.first,
-              );
+      }
+
+      // Do NOT set _searchCtrl.text! Keep search empty so all pending raisers are shown.
+      // Auto-search is strictly for Inventory product alerts.
+      if (targetRaiserName.isNotEmpty || targetRaiserId != null || targetEmail.isNotEmpty) {
+        _loadRaisers().then((_) {
+          if (mounted && _raisers.isNotEmpty) {
+            Map<String, dynamic>? match;
+            for (final r in _raisers) {
+              final rId = (r['hog_raiser_id'] ?? r['id'] ?? r['user_id'] ?? '').toString();
+              if (targetRaiserId != null && targetRaiserId.isNotEmpty && rId == targetRaiserId) {
+                match = r;
+                break;
+              }
+              final rEmail = (r['email'] ?? '').toString().toLowerCase();
+              if (targetEmail.isNotEmpty && rEmail == targetEmail) {
+                match = r;
+                break;
+              }
+              final rName = (r['name'] ?? '').toString().toLowerCase();
+              final targetLower = targetRaiserName.toLowerCase();
+              if (targetLower.isNotEmpty && (rName == targetLower || rName.contains(targetLower) || targetLower.contains(rName))) {
+                match = r;
+                break;
+              }
+            }
+            if (match != null) {
               RaiserProfileDrawer.show(
                 context: context,
                 row: match,
@@ -79,8 +112,8 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
                 onDelete: _deleteRaiser,
               );
             }
-          });
-        }
+          }
+        });
       }
     }
   }

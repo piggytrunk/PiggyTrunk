@@ -144,3 +144,42 @@ class CapitalizeSentencesInputFormatter extends TextInputFormatter {
     );
   }
 }
+
+/// Input formatter for Middle Initial field.
+/// - Automatically converts any typed letter to uppercase (e.g. 'i' -> 'I')
+/// - Restricts to a single uppercase letter
+/// - Blocks numbers, spaces, dots, and symbols
+class MiddleInitialInputFormatter extends TextInputFormatter {
+  const MiddleInitialInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+
+    // Filter to allowed letters only (including accents and Ñ)
+    final letters = newValue.text.replaceAll(
+      RegExp(r"[^a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]"),
+      '',
+    );
+
+    if (letters.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    // Take the last typed letter so typing another letter replaces the previous one
+    final letter = letters[letters.length - 1].toUpperCase();
+
+    return TextEditingValue(
+      text: letter,
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+  }
+}

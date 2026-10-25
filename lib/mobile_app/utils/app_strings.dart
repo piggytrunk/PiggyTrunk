@@ -392,6 +392,13 @@ class AppStrings {
   String get internetRequiredForPassword => isFilipino ? 'Kailangan ng koneksyon sa internet upang palitan ang iyong password.' : 'Internet connection required. Please connect to the internet to change your password.';
   String get connectionLostNotice => isFilipino ? 'Nawala ang koneksyon sa internet. Pakisubukang muli.' : 'Connection lost. Please check your internet and try again.';
 
+  // ================= App Updates =================
+  String get checkForUpdates => isFilipino ? 'Suriin ang mga Update' : 'Check for Updates';
+  String get checkForUpdatesSubtitle => isFilipino ? 'Tingnan kung may pinakabagong bersyon' : 'Check if a newer version is available';
+  String get checkingForUpdates => isFilipino ? 'Sinusuri ang mga update...' : 'Checking for updates...';
+  String get appUpToDate => isFilipino ? 'Nasa pinakabagong bersyon ka na ng Piggy Trunk' : "You're using the latest version of Piggy Trunk";
+  String get versionLabel => isFilipino ? 'Bersyon' : 'Version';
+
   // ================= Auth & Role Selection =================
   String get selectRoleTitle => isFilipino ? 'Mag-sign In sa Piggy Trunk' : 'Sign In to Piggy Trunk';
   String get selectRoleSubtitle => isFilipino ? 'Piliin ang uri ng iyong account upang magpatuloy' : 'Choose your account role to continue';

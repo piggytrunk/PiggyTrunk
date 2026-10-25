@@ -286,8 +286,15 @@ class NotificationItemCard extends StatelessWidget {
     } else if (targetRoute == '/investments') {
       routeArg = 'PARTNER';
     } else if (targetRoute == '/raisers') {
+      final isPending = notif.type == 'user_registration' ||
+          message.contains('pending') ||
+          title.contains('pending') ||
+          message.contains('registered') ||
+          title.contains('registration') ||
+          meta['status']?.toString().toLowerCase() == 'pending';
       routeArg = {
-        'tab': 'pending_raiser',
+        'tab': isPending ? 'pending_raiser' : 'active_raiser',
+        'status': isPending ? 'pending' : 'active',
         'name': meta['name'],
         'email': meta['email'],
         'raiser_id': meta['user_id'] ?? meta['raiser_id'],

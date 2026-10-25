@@ -321,6 +321,13 @@ class AppStrings {
   String get passwordChangedSuccess => isFilipino ? 'Matagumpay na napalitan ang iyong password!' : 'Password changed successfully!';
   String get googleAccountNotice => isFilipino ? 'Naka-link ang account mo gamit ang Google. Maaari kang mag-set ng password dito.' : 'Your account is linked with Google. You can set a password here to sign in with email and password as well.';
 
+  // ================= App Updates =================
+  String get checkForUpdates => isFilipino ? 'Suriin ang mga Update' : 'Check for Updates';
+  String get checkForUpdatesSubtitle => isFilipino ? 'Tingnan kung may pinakabagong bersyon' : 'Check if a newer version is available';
+  String get checkingForUpdates => isFilipino ? 'Sinusuri ang mga update...' : 'Checking for updates...';
+  String get appUpToDate => isFilipino ? 'Nasa pinakabagong bersyon ka na ng Piggy Trunk' : "You're using the latest version of Piggy Trunk";
+  String get versionLabel => isFilipino ? 'Bersyon' : 'Version';
+
   // ================= Formatting Helpers =================
   String formatStatus(String status) {
     final s = status.toLowerCase().trim();

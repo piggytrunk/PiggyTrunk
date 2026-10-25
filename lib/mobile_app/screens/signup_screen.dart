@@ -134,8 +134,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           keyboardType: TextInputType.name,
           maxLength: isInitial ? 1 : null,
           inputFormatters: [
-            if (isInitial)
-              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
+            if (isInitial) const MiddleInitialInputFormatter(),
             if (!isInitial) const NameInputFormatter(),
           ],
           onChanged: (_) {

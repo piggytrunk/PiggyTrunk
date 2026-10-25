@@ -82,7 +82,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
         targetTab = args;
       } else if (args is Map) {
         targetTab = args['tab']?.toString();
-        searchKeyword = (args['search'] ?? args['email'] ?? args['name'])?.toString();
+        // Only set searchKeyword if explicitly passed under 'search', not falling back to name/email
+        searchKeyword = args['search']?.toString();
       }
 
       // Also support direct query parameters on Flutter Web

@@ -48,17 +48,37 @@ class AppUpdateService {
     _hasDismissedThisSession = true;
   }
 
-  /// Checks if an update is available on Android. Returns UpdateCheckResult.
-  Future<UpdateCheckResult> checkForUpdate() async {
-    // Only check for updates on native Android mobile app
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      return const UpdateCheckResult(isAvailable: false);
-    }
-
+  /// Quick helper to get current semantic version without build number
+  Future<String> getCurrentVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version.trim();
-      final currentCode = int.tryParse(packageInfo.buildNumber.trim()) ?? 1;
+      final version = packageInfo.version.trim();
+      return version.isNotEmpty ? version.split('+').first.trim() : '1.0.0';
+    } catch (_) {
+      return '1.0.0';
+    }
+  }
+
+  /// Checks if an update is available on Android / Localhost. Returns UpdateCheckResult.
+  Future<UpdateCheckResult> checkForUpdate() async {
+    try {
+      String currentVersion = '1.0.0';
+      int currentCode = 1;
+
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        final rawVersion = packageInfo.version.trim();
+        if (rawVersion.isNotEmpty) {
+          currentVersion = rawVersion.split('+').first.trim();
+        }
+        final rawBuild = packageInfo.buildNumber.trim();
+        final parsedCode = int.tryParse(rawBuild);
+        if (parsedCode != null && parsedCode > 0) {
+          currentCode = parsedCode;
+        }
+      } catch (pkgErr) {
+        debugPrint('[AppUpdateService] PackageInfo lookup warning: $pkgErr');
+      }
 
       AppVersionModel? remoteModel;
 
@@ -81,11 +101,12 @@ class AppUpdateService {
         debugPrint('[AppUpdateService] Supabase table lookup: $dbErr');
       }
 
-      // Layer 2: Fallback to static version.json on web deployment
+      // Layer 2: Fallback to static version.json on web/localhost deployment
       if (remoteModel == null) {
         try {
+          final lookupUrl = kIsWeb ? 'version.json' : staticVersionUrl;
           final res = await http
-              .get(Uri.parse(staticVersionUrl))
+              .get(Uri.parse(lookupUrl))
               .timeout(const Duration(seconds: 4));
           if (res.statusCode == 200) {
             final jsonMap = jsonDecode(res.body) as Map<String, dynamic>;
@@ -93,6 +114,18 @@ class AppUpdateService {
           }
         } catch (netErr) {
           debugPrint('[AppUpdateService] Static version fallback lookup: $netErr');
+          // If relative web lookup failed, try static external url
+          if (kIsWeb) {
+            try {
+              final res2 = await http
+                  .get(Uri.parse(staticVersionUrl))
+                  .timeout(const Duration(seconds: 4));
+              if (res2.statusCode == 200) {
+                final jsonMap = jsonDecode(res2.body) as Map<String, dynamic>;
+                remoteModel = AppVersionModel.fromJson(jsonMap);
+              }
+            } catch (_) {}
+          }
         }
       }
 
@@ -145,14 +178,21 @@ class AppUpdateService {
         ),
       );
     } else if (isManualCheck) {
-      AppToast.success(
-        context,
-        "You're using the latest version of Piggy Trunk (${result.currentVersion})",
-      );
+      if (result.errorMessage != null && result.errorMessage!.isNotEmpty) {
+        AppToast.info(
+          context,
+          'Could not check for updates. Please check your internet connection.',
+        );
+      } else {
+        AppToast.success(
+          context,
+          "You're using the latest version of Piggy Trunk (${result.currentVersion})",
+        );
+      }
     }
   }
 
-  /// Initiates APK download and guides user to install
+  /// Initiates update (Play Store link or direct APK download) and guides user
   Future<void> launchApkDownload(BuildContext context, String apkUrl) async {
     final finalUrl = apkUrl.isNotEmpty ? apkUrl : defaultApkUrl;
     final uri = Uri.parse(finalUrl);
@@ -165,20 +205,23 @@ class AppUpdateService {
 
       if (context.mounted) {
         if (launched) {
+          final isPlayStore = finalUrl.contains('play.google.com') || finalUrl.startsWith('market://');
           AppToast.info(
             context,
-            'Downloading Piggy Trunk update... Open the file when finished to install.',
+            isPlayStore
+                ? 'Opening Google Play Store...'
+                : 'Downloading Piggy Trunk update... Open the file when finished to install.',
           );
         } else {
           AppToast.error(
             context,
-            'Could not open download link automatically.',
+            'Could not open update link automatically.',
           );
         }
       }
     } catch (e) {
       if (context.mounted) {
-        AppToast.error(context, 'Failed to launch download: $e');
+        AppToast.error(context, 'Failed to launch update link: $e');
       }
     }
   }

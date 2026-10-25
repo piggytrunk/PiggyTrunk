@@ -1157,15 +1157,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                   _buildDialogInputField(
                                     context,
                                     controller: middleInitialCtrl,
-                                    hintText: 'M.',
-                                    maxLength: 2,
+                                    hintText: 'M',
+                                    maxLength: 1,
                                     icon: Icons.edit_note_rounded,
                                     textCapitalization:
                                         TextCapitalization.characters,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.allow(
-                                        RegExp(r'[a-zA-Z\u00D1\u00F1]'),
-                                      ),
+                                    inputFormatters: const [
+                                      MiddleInitialInputFormatter(),
                                     ],
                                   ),
                                 ],

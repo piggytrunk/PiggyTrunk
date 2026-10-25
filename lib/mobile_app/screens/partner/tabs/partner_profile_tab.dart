@@ -5,6 +5,7 @@ import '../../../services/locale_provider.dart';
 import '../../../utils/app_strings.dart';
 import '../../../utils/screen_fit_util.dart';
 import '../../../widgets/change_password_modal.dart';
+import '../../../widgets/check_for_updates_tile.dart';
 
 class PartnerProfileTab extends StatelessWidget {
   final String partnerName;
@@ -387,10 +388,8 @@ class PartnerProfileTab extends StatelessWidget {
                 // 3. Password & Security Row (Tappable Tile with Chevron)
                 Material(
                   color: Colors.transparent,
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(fit.dp(18.0))),
                   child: InkWell(
                     onTap: () => ChangePasswordModal.show(context),
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(fit.dp(18.0))),
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: fit.dp(16.0), vertical: fit.dp(14.0)),
                       child: Row(
@@ -434,6 +433,18 @@ class PartnerProfileTab extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
+
+                Divider(height: 1, thickness: 1, color: cardBorderColor),
+
+                // 4. Check for Updates Row
+                CheckForUpdatesTile(
+                  isDark: isDark,
+                  labelColor: labelColor,
+                  subtitleColor: subtitleColor,
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(fit.dp(18.0))),
+                  horizontalPadding: fit.dp(16.0),
+                  verticalPadding: fit.dp(14.0),
                 ),
               ],
             ),

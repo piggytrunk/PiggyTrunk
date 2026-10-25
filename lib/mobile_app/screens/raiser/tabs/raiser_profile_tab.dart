@@ -4,6 +4,7 @@ import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../services/locale_provider.dart';
 import '../../../utils/app_strings.dart';
 import '../../../widgets/change_password_modal.dart';
+import '../../../widgets/check_for_updates_tile.dart';
 
 class RaiserProfileTab extends StatelessWidget {
   final Map<String, dynamic> raiserData;
@@ -547,10 +548,8 @@ class RaiserProfileTab extends StatelessWidget {
                 // 3. Password & Security Row (Tappable Tile with Chevron)
                 Material(
                   color: Colors.transparent,
-                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                   child: InkWell(
                     onTap: () => ChangePasswordModal.show(context),
-                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       child: Row(
@@ -594,6 +593,16 @@ class RaiserProfileTab extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
+
+                Divider(height: 1, thickness: 1, color: cardBorder),
+
+                // 4. Check for Updates Row
+                CheckForUpdatesTile(
+                  isDark: isDark,
+                  labelColor: labelColor,
+                  subtitleColor: subtitleColor,
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                 ),
               ],
             ),
