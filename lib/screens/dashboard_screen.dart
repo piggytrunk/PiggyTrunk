@@ -32,6 +32,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double _fatteningCapital = 0;
   double _sowCapital = 0;
   List<Map<String, dynamic>> _activeRaisersList = [];
+  List<Map<String, dynamic>> _completedLifecyclesList = [];
+  Set<String> _completedBatchNames = {};
+  Map<String, String> _batchStatusMap = {};
+  Map<String, String> _batchNameToStatusMap = {};
 
   // Theme-aware color getters
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
@@ -65,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
+    final List<Map<String, dynamic>> completedLifecycles = [];
     try {
       // 1. Load active raisers safely (do NOT select created_at which does not exist in hog_raisers)
       List<dynamic> raisersRes = [];
@@ -110,6 +115,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         for (var b in batchesRaw)
           (b['batch_id'] ?? b['id'] ?? '').toString(): (b['status'] ?? b['batch_status'] ?? 'Active').toString()
       };
+      final Map<String, String> batchNameToStatusMap = {
+        for (var b in batchesRaw)
+          (b['batch_name'] ?? '').toString().trim().toLowerCase(): (b['status'] ?? b['batch_status'] ?? 'Active').toString().toLowerCase()
+      };
+      final Set<String> earlyFinishedBatchNames = {
+        for (var b in batchesRaw)
+          if ((b['status'] ?? b['batch_status'] ?? '').toString().toLowerCase() == 'finished' ||
+              (b['status'] ?? b['batch_status'] ?? '').toString().toLowerCase() == 'completed' ||
+              (b['status'] ?? b['batch_status'] ?? '').toString().toLowerCase() == 'archived')
+            (b['batch_name'] ?? '').toString().trim().toLowerCase()
+      };
+
+      _batchStatusMap = Map.from(batchStatusMap);
+      _batchNameToStatusMap = Map.from(batchNameToStatusMap);
+      _completedBatchNames = Set.from(earlyFinishedBatchNames);
 
       // 3. Load investment records to compute Admin Initial Capital
       List<dynamic> invList = [];
@@ -130,6 +150,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final Map<String, Set<String>> raiserInvestmentTypesMap = {};
       final Map<String, DateTime> raiserLatestInvestmentDate = {};
       final Map<String, String> raiserBatchNameMap = {};
+      final Map<String, int> raiserInvTotalHogs = {};
+      final Map<String, int> raiserInvFatteningHogs = {};
+      final Map<String, int> raiserInvSowHogs = {};
 
       for (var inv in invList) {
         if (inv is! Map) continue;
@@ -151,6 +174,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final bName = (inv['batch_name'] ?? '').toString().trim();
         if (rId.isNotEmpty && bName.isNotEmpty && !raiserBatchNameMap.containsKey(rId)) {
           raiserBatchNameMap[rId] = bName;
+        }
+
+        final invSt = (inv['stage'] ?? inv['status'] ?? 'active').toString().toLowerCase();
+        if (rId.isNotEmpty && invSt != 'completed' && invSt != 'archived') {
+          final count = (inv['total_hog'] as num?)?.toInt() ?? 0;
+          final htLower = rawHt.toLowerCase();
+          final bool isSow = htLower.contains('sow') || htLower.contains('breed');
+          final bool isFat = htLower.contains('fatten');
+          if (isSow && isFat) {
+            final fC = (count / 2).ceil();
+            final sC = count - fC;
+            raiserInvFatteningHogs[rId] = (raiserInvFatteningHogs[rId] ?? 0) + fC;
+            raiserInvSowHogs[rId] = (raiserInvSowHogs[rId] ?? 0) + sC;
+            raiserInvTotalHogs[rId] = (raiserInvTotalHogs[rId] ?? 0) + count;
+          } else if (isSow) {
+            raiserInvSowHogs[rId] = (raiserInvSowHogs[rId] ?? 0) + count;
+            raiserInvTotalHogs[rId] = (raiserInvTotalHogs[rId] ?? 0) + count;
+          } else {
+            raiserInvFatteningHogs[rId] = (raiserInvFatteningHogs[rId] ?? 0) + count;
+            raiserInvTotalHogs[rId] = (raiserInvTotalHogs[rId] ?? 0) + count;
+          }
         }
       }
 
@@ -231,41 +275,111 @@ class _DashboardScreenState extends State<DashboardScreen> {
           assignHogsMap.putIfAbsent(aId, () => []).add(Map<String, dynamic>.from(h));
         }
 
+        // 1. Sort assignments newest date & highest ID first
+        assignmentsRes.sort((a, b) {
+          if (a is! Map || b is! Map) return 0;
+          final dateA = (a['assigned_date'] ?? '').toString();
+          final dateB = (b['assigned_date'] ?? '').toString();
+          final cmp = dateB.compareTo(dateA);
+          if (cmp != 0) return cmp;
+          final idA = int.tryParse((a['assignment_id'] ?? a['id'] ?? '0').toString()) ?? 0;
+          final idB = int.tryParse((b['assignment_id'] ?? b['id'] ?? '0').toString()) ?? 0;
+          return idB.compareTo(idA);
+        });
+
+        // 2. Classify each assignment as active or completed
+        final Map<String, List<Map<String, dynamic>>> activeAssignsByRaiser = {};
+        final Map<String, List<Map<String, dynamic>>> completedAssignsByRaiser = {};
+
         for (var a in assignmentsRes) {
           if (a is! Map) continue;
           final rId = (a['hog_raiser_id'] ?? '').toString();
           if (rId.isEmpty) continue;
 
+          final asgnId = (a['assignment_id'] ?? a['id'] ?? '').toString();
+          final asgnStatus = (a['status'] ?? '').toString().toLowerCase();
+          final asgnHogs = assignHogsMap[asgnId] ?? <Map<String, dynamic>>[];
+          final assignmentType = assignmentTypeMap[asgnId] ?? 'Fattening';
           final bId = (a['batch_id'] ?? '').toString();
-          if (!raiserBatchNameMap.containsKey(rId) && batchesMap.containsKey(bId)) {
-            raiserBatchNameMap[rId] = batchesMap[bId]!;
-          }
+          final bStatus = (batchStatusMap[bId] ?? '').toLowerCase();
+          final bool isBatchFinished = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived';
 
-          if (!raiserLatestAssignmentMap.containsKey(rId)) {
-            raiserLatestAssignmentMap[rId] = a;
+          final bool isExplicitlyDone = asgnStatus == 'completed' || asgnStatus == 'finished' || asgnStatus == 'archived';
+          final bool allHogsDone = asgnHogs.isNotEmpty && asgnHogs.every((h) {
+            final st = (h['status'] ?? '').toString().toLowerCase();
+            final sId = int.tryParse((h['stage_id'] ?? '').toString()) ?? 1;
+            final rawType = (h['pig_type'] ?? '').toString().toLowerCase();
+            final isBreed = rawType.contains('sow') || rawType.contains('breed') || rawType.contains('inahin');
+            final stage = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+            return (sId >= 6) || stage == 'selling' || stage == 'sold' || stage == 'lactation' || st == 'completed' || st == 'archived';
+          });
 
-            // Gather all hogs across all assignments for this raiser
-            final allRaiserHogs = <Map<String, dynamic>>[];
-            for (var asgn in assignmentsRes) {
-              if (asgn is! Map) continue;
-              if ((asgn['hog_raiser_id'] ?? '').toString() == rId) {
-                final asgnId = (asgn['assignment_id'] ?? '').toString();
-                final assignmentType = assignmentTypeMap[asgnId];
-                for (final rawHog in assignHogsMap[asgnId] ?? <Map<String, dynamic>>[]) {
-                  final hog = Map<String, dynamic>.from(rawHog);
-                  final hogType = (hog['pig_type'] ?? '').toString().trim();
-                  if (hogType.isEmpty && assignmentType != null) {
-                    hog['pig_type'] = assignmentType;
+          final bool isCompletedAssignment = isExplicitlyDone || isBatchFinished || allHogsDone;
+
+          if (isCompletedAssignment) {
+            completedAssignsByRaiser.putIfAbsent(rId, () => []).add(Map<String, dynamic>.from(a));
+            if (asgnHogs.isNotEmpty) {
+              final bName = batchesMap[bId] ?? (bId.isNotEmpty ? 'Batch #$bId' : 'Batch');
+              completedLifecycles.add({
+                'assignment_id': asgnId,
+                'hog_raiser_id': rId,
+                'batch_id': bId,
+                'batch_name': bName,
+                'pig_type': assignmentType,
+                'lifecycle_stage': 'Selling',
+                'hogs': asgnHogs.map((rawH) {
+                  final h = Map<String, dynamic>.from(rawH);
+                  if ((h['pig_type'] ?? '').toString().trim().isEmpty) {
+                    h['pig_type'] = assignmentType;
                   }
-                  allRaiserHogs.add(hog);
+                  return h;
+                }).toList(),
+                'is_completed_cycle': true,
+              });
+            }
+          } else {
+            activeAssignsByRaiser.putIfAbsent(rId, () => []).add(Map<String, dynamic>.from(a));
+          }
+        }
+
+        // 3. For each raiser, determine their active vs completed hogs
+        final Set<String> allRaiserIds = {
+          ...activeAssignsByRaiser.keys,
+          ...completedAssignsByRaiser.keys,
+        };
+
+        for (final rId in allRaiserIds) {
+          final bool hasActive = activeAssignsByRaiser.containsKey(rId) && activeAssignsByRaiser[rId]!.isNotEmpty;
+          final targetAssigns = hasActive
+              ? activeAssignsByRaiser[rId]!
+              : (completedAssignsByRaiser[rId] ?? []);
+
+          if (targetAssigns.isNotEmpty) {
+            final latestAssign = targetAssigns.first;
+            raiserLatestAssignmentMap[rId] = latestAssign;
+
+            final bId = (latestAssign['batch_id'] ?? '').toString();
+            if (batchesMap.containsKey(bId)) {
+              raiserBatchNameMap[rId] = batchesMap[bId]!;
+            }
+
+            final allRaiserHogs = <Map<String, dynamic>>[];
+            for (var asgn in targetAssigns) {
+              final asgnId = (asgn['assignment_id'] ?? asgn['id'] ?? '').toString();
+              final assignmentType = assignmentTypeMap[asgnId];
+              for (final rawHog in assignHogsMap[asgnId] ?? <Map<String, dynamic>>[]) {
+                final hog = Map<String, dynamic>.from(rawHog);
+                final hogType = (hog['pig_type'] ?? '').toString().trim();
+                if (hogType.isEmpty && assignmentType != null) {
+                  hog['pig_type'] = assignmentType;
                 }
+                allRaiserHogs.add(hog);
               }
             }
 
             if (allRaiserHogs.isNotEmpty) {
               allRaiserHogs.sort((x, y) => ((x['hog_id'] as num?)?.toInt() ?? 0).compareTo((y['hog_id'] as num?)?.toInt() ?? 0));
               int maxStage = 1;
-
               int maxSow = 1;
               int maxFat = 1;
               bool hasSow = false;
@@ -276,7 +390,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (sId > maxStage) maxStage = sId;
 
                 String pType = (hog['pig_type'] ?? '').toString().trim();
-
                 if (pType.isEmpty) pType = 'Fattening';
 
                 if (pType.toLowerCase().contains('sow') || pType.toLowerCase().contains('breed')) {
@@ -438,16 +551,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
           copy['hogs'] = raiserHogsMap[idStr] ?? [];
 
-          // Attach batch name (align with mobile app fallback if batches table is empty)
+          // Attach batch name and status
+          String assignedBatchId = '';
+          if (raiserLatestAssignmentMap.containsKey(idStr)) {
+            assignedBatchId = (raiserLatestAssignmentMap[idStr]?['batch_id'] ?? '').toString();
+          }
+          copy['batch_id'] = assignedBatchId;
+
           if (raiserBatchNameMap.containsKey(idStr)) {
             copy['batch_name'] = raiserBatchNameMap[idStr];
-          } else if (raiserLatestAssignmentMap.containsKey(idStr)) {
-            final aMap = raiserLatestAssignmentMap[idStr];
-            final bId = (aMap?['batch_id'] ?? '').toString();
-            copy['batch_name'] = batchesMap[bId] ?? (bId.isNotEmpty ? 'Batch #$bId' : 'Batch ${copy['name']}');
+          } else if (assignedBatchId.isNotEmpty) {
+            copy['batch_name'] = batchesMap[assignedBatchId] ?? 'Batch #$assignedBatchId';
           } else {
             copy['batch_name'] = 'Unassigned';
           }
+
+          final bNameLower = (copy['batch_name'] ?? '').toString().trim().toLowerCase();
+          copy['batch_status'] = batchStatusMap[assignedBatchId] ?? batchNameToStatusMap[bNameLower] ?? '';
+
+          // Calculate head count breakdown
+          int fatCount = 0;
+          int sowCount = 0;
+          final hogsList = copy['hogs'] as List? ?? [];
+          for (var h in hogsList) {
+            if (h is Map) {
+              final pt = (h['pig_type'] ?? '').toString().toLowerCase();
+              if (pt.contains('sow') || pt.contains('breed')) {
+                sowCount++;
+              } else {
+                fatCount++;
+              }
+            }
+          }
+          if (fatCount == 0 && sowCount == 0) {
+            fatCount = raiserInvFatteningHogs[idStr] ?? 0;
+            sowCount = raiserInvSowHogs[idStr] ?? 0;
+          }
+          copy['fattening_count'] = fatCount;
+          copy['sow_count'] = sowCount;
+          copy['total_hogs_count'] = fatCount + sowCount;
 
           // Calculate recency date for sorting (latest first)
           DateTime? recencyDate = raiserLatestInvestmentDate[idStr];
@@ -459,6 +601,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           return copy;
         }).toList();
+
+        // Attach raiser names to completed lifecycles
+        final Map<String, String> raiserNameMap = {};
+        for (var r in list) {
+          final id = (r['hog_raiser_id'] ?? r['id'] ?? '').toString();
+          final name = (r['name'] ?? '').toString().trim();
+          if (id.isNotEmpty && name.isNotEmpty) raiserNameMap[id] = name;
+        }
+        for (var cl in completedLifecycles) {
+          final rId = (cl['hog_raiser_id'] ?? '').toString();
+          if (raiserNameMap.containsKey(rId)) {
+            cl['name'] = raiserNameMap[rId];
+          }
+        }
 
         // Sort: Current / newest at the top (nasa una), earlier at the bottom (nasa last)
         list.sort((a, b) {
@@ -509,6 +665,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
           }
 
+          // Check if batch contains active (living, non-terminal) hogs
+          final bool hasActiveHogs = batchHogs.any((h) {
+            final health = (h['health_status'] ?? '').toString().toLowerCase();
+            if (health == 'dead') return false;
+            final sId = int.tryParse((h['stage_id'] ?? '').toString());
+            final rawType = (h['pig_type'] ?? '').toString().toLowerCase();
+            final isBreed = rawType.contains('sow') || rawType.contains('breed') || rawType.contains('inahin');
+            final stage = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+            final hStatus = (h['status'] ?? '').toString().toLowerCase();
+            final bool isConcluded = (sId != null && sId >= 6) ||
+                stage == 'selling' ||
+                stage == 'sold' ||
+                stage == 'lactation' ||
+                stage == 'completed' ||
+                hStatus == 'completed' ||
+                hStatus == 'archived';
+            return !isConcluded;
+          });
+
+          // Also check if any assignment in this batch has active status
+          final bool hasActiveAssign = assignmentsRes.any((a) {
+            if (a is! Map) return false;
+            if ((a['batch_id'] ?? '').toString() != bId) return false;
+            final st = (a['status'] ?? '').toString().toLowerCase();
+            return st == 'active';
+          });
+
           bool allHogsDone = false;
           if (batchHogs.isNotEmpty) {
             allHogsDone = batchHogs.every((h) {
@@ -529,18 +712,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
             });
           }
 
-          if (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || allHogsDone) {
+          final bool isBatchActive = hasActiveHogs || hasActiveAssign;
+          final bool isBatchFinished = !isBatchActive &&
+              (bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived' || allHogsDone);
+
+          if (isBatchFinished) {
             if (bId.isNotEmpty) completedBatchIds.add(bId);
             if (bName.isNotEmpty) completedBatchNames.add(bName);
-          } else if (bId.isNotEmpty) {
+          } else if (bId.isNotEmpty && (isBatchActive || bStatus == 'active')) {
             activeBatchIds.add(bId);
           }
         }
 
-        // Also register any batch names completed by raisers
+        // Also register any batch names completed by raisers (only if batch is NOT currently active)
         for (var cr in completedRaisers) {
           final bName = (cr['batch_name'] ?? '').toString().trim().toLowerCase();
-          if (bName.isNotEmpty && bName != 'unassigned') {
+          final bId = (cr['batch_id'] ?? '').toString();
+          if (bName.isNotEmpty && bName != 'unassigned' && !activeBatchIds.contains(bId)) {
             completedBatchNames.add(bName);
           }
         }
@@ -563,21 +751,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final bId = (inv['batch_id'] ?? '').toString();
           final bName = (inv['batch_name'] ?? '').toString().trim().toLowerCase();
 
-          final bool isInvCompleted = invStage == 'completed' ||
-              invStage == 'finished' ||
-              invStage == 'archived' ||
-              (bId.isNotEmpty && completedBatchIds.contains(bId)) ||
-              (bName.isNotEmpty && completedBatchNames.contains(bName)) ||
-              (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+          final bool isInvCompleted;
+          if (invStage == 'completed' || invStage == 'finished' || invStage == 'archived') {
+            isInvCompleted = true;
+          } else if (invStage == 'active') {
+            isInvCompleted = false;
+          } else {
+            isInvCompleted = (bId.isNotEmpty && completedBatchIds.contains(bId)) ||
+                (bName.isNotEmpty && completedBatchNames.contains(bName)) ||
+                (rId.isNotEmpty && completedRaiserIds.contains(rId) && !activeRaiserIds.contains(rId));
+          }
 
           final ht = (inv['hog_type'] ?? '').toString().toLowerCase();
-          final isSow = ht.contains('sow') || ht.contains('inahin') || ht.contains('breed');
+          final bool isSow = ht.contains('sow') || ht.contains('inahin') || ht.contains('breed');
+          final bool isFat = ht.contains('fatten') || ht.contains('pampataba');
 
           if (isInvCompleted) {
             calculatedCompletedCapital += amt;
           } else {
             calculatedActiveCapital += amt;
-            if (isSow) {
+            if (isSow && isFat) {
+              calculatedActiveSowCapital += amt / 2.0;
+              calculatedActiveFatteningCapital += amt / 2.0;
+            } else if (isSow) {
               calculatedActiveSowCapital += amt;
             } else {
               calculatedActiveFatteningCapital += amt;
@@ -607,13 +803,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
           final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
-          final isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+          final bool isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+          final bool isFat = raiserTypeStr.contains('fatten') || raiserTypeStr.contains('pampataba');
 
           if (isReqCompleted) {
             calculatedCompletedStocks += totalReqValue;
           } else {
             calculatedActiveStocks += totalReqValue;
-            if (isSow) {
+            if (isSow && isFat) {
+              calculatedActiveSowStocks += totalReqValue / 2.0;
+              calculatedActiveFatteningStocks += totalReqValue / 2.0;
+            } else if (isSow) {
               calculatedActiveSowStocks += totalReqValue;
             } else {
               calculatedActiveFatteningStocks += totalReqValue;
@@ -630,13 +830,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           final raiserTypes = raiserInvestmentTypesMap[rId] ?? {};
           final raiserTypeStr = raiserTypes.join(' ').toLowerCase();
-          final isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+          final bool isSow = raiserTypeStr.contains('sow') || raiserTypeStr.contains('inahin') || raiserTypeStr.contains('breed');
+          final bool isFat = raiserTypeStr.contains('fatten') || raiserTypeStr.contains('pampataba');
 
           if (isDistCompleted) {
             calculatedCompletedStocks += amt;
           } else {
             calculatedActiveStocks += amt;
-            if (isSow) {
+            if (isSow && isFat) {
+              calculatedActiveSowStocks += amt / 2.0;
+              calculatedActiveFatteningStocks += amt / 2.0;
+            } else if (isSow) {
               calculatedActiveSowStocks += amt;
             } else {
               calculatedActiveFatteningStocks += amt;
@@ -668,13 +872,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final double calculatedSowCapital = calculatedActiveSowCapital + calculatedActiveSowStocks;
 
         // Active batches count
-        final calculatedBatchCount = batchesRaw.isNotEmpty
+        final int calculatedBatchCount = batchesRaw.isNotEmpty
             ? activeBatchIds.length
             : inProgressRaisers.length;
 
-        final calculatedCompletedBatchCount = completedBatchIds.isNotEmpty
+        final Set<String> distinctFinishedKeys = {};
+        for (var cr in completedRaisers) {
+          final b = (cr['batch_id'] ?? cr['batch_name'] ?? '').toString();
+          if (b.isNotEmpty && !activeBatchIds.contains(b)) distinctFinishedKeys.add(b);
+        }
+        for (var cl in completedLifecycles) {
+          final b = (cl['batch_id'] ?? cl['batch_name'] ?? '').toString();
+          if (b.isNotEmpty && !activeBatchIds.contains(b)) distinctFinishedKeys.add(b);
+        }
+        final int calculatedCompletedBatchCount = completedBatchIds.isNotEmpty
             ? completedBatchIds.length
-            : completedRaisers.length;
+            : distinctFinishedKeys.length;
 
         setState(() {
           _activeRaisers = inProgressRaisers.length;
@@ -685,6 +898,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _fatteningCapital = calculatedFatteningCapital;
           _sowCapital = calculatedSowCapital;
           _activeRaisersList = list;
+          _completedLifecyclesList = completedLifecycles;
+          _completedBatchNames = completedBatchNames;
+          _batchStatusMap = batchStatusMap;
         });
       }
     } catch (e) {
@@ -1286,7 +1502,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isRaiserCycleCompleted(Map<String, dynamic> raiser) {
+    final bName = (raiser['batch_name'] ?? '').toString().trim().toLowerCase();
+    final bId = (raiser['batch_id'] ?? '').toString();
+    final bStatus = (_batchStatusMap[bId] ?? _batchNameToStatusMap[bName] ?? raiser['batch_status'] ?? '').toString().toLowerCase();
     final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+
+    // If parent batch is finished, raiser cycle is completed unless there are new living active hogs
+    final bool isBatchFinished = bStatus == 'finished' ||
+        bStatus == 'completed' ||
+        bStatus == 'archived' ||
+        _completedBatchNames.contains(bName);
+
+    if (isBatchFinished) {
+      final bool hasLivingActiveHogs = raiserHogs.any((h) {
+        final health = (h['health_status'] ?? '').toString().toLowerCase();
+        if (health == 'dead') return false;
+        final sId = int.tryParse((h['stage_id'] ?? '').toString()) ?? 1;
+        final st = (h['status'] ?? '').toString().toLowerCase();
+        return sId < 6 && st != 'completed' && st != 'archived';
+      });
+      if (!hasLivingActiveHogs) {
+        return true;
+      }
+    }
+
     if (raiserHogs.isNotEmpty) {
       return raiserHogs.every((h) {
         final health = (h['health_status'] ?? '').toString().toLowerCase();
@@ -1348,7 +1587,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isMobile = Responsive.isMobile(context);
     final assignedRaisers = _activeRaisersList.where(_isRaiserAssignedToBatch).toList();
     final inProgressRaisers = assignedRaisers.where((r) => !_isRaiserCycleCompleted(r)).toList();
-    final completedRaisers = assignedRaisers.where((r) => _isRaiserCycleCompleted(r)).toList();
+    final completedFromActive = assignedRaisers.where((r) => _isRaiserCycleCompleted(r)).toList();
+
+    // Combine wholly completed raisers + historical completed lifecycles
+    final completedRaisers = <Map<String, dynamic>>[];
+    final Set<String> seenCycleKeys = {};
+
+    for (var r in completedFromActive) {
+      final key = '${r['hog_raiser_id']}_${r['batch_name']}_${r['pig_type']}';
+      seenCycleKeys.add(key);
+      completedRaisers.add(r);
+    }
+    for (var cl in _completedLifecyclesList) {
+      final key = '${cl['hog_raiser_id']}_${cl['batch_name']}_${cl['pig_type']}';
+      if (!seenCycleKeys.contains(key)) {
+        seenCycleKeys.add(key);
+        completedRaisers.add(cl);
+      }
+    }
 
     return Container(
       width: double.infinity,
@@ -1586,242 +1842,215 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     .toString()
                     .trim();
 
-                final raiserHogs = (raiser['hogs'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+                final int totalHogs = (raiser['total_hogs_count'] as num?)?.toInt() ?? 0;
+                final int fatHogs = (raiser['fattening_count'] as num?)?.toInt() ?? 0;
+                final int sowHogs = (raiser['sow_count'] as num?)?.toInt() ?? 0;
+                    String headsLabel = '';
+                    if (fatHogs > 0 && sowHogs > 0) {
+                      headsLabel = '$totalHogs Heads ($fatHogs Fattening, $sowHogs Sow)';
+                    } else if (fatHogs > 0) {
+                      headsLabel = '$fatHogs Heads (Fattening)';
+                    } else if (sowHogs > 0) {
+                      headsLabel = '$sowHogs Heads (Sow)';
+                    } else if (totalHogs > 0) {
+                      headsLabel = '$totalHogs Heads';
+                    }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            name,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        if (batchName.isNotEmpty &&
-                            batchName != 'Unassigned')
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _isDark
-                                  ? const Color(0xFF1E293B)
-                                  : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: _isDark
-                                    ? const Color(0xFF475569)
-                                    : const Color(0xFFCBD5E1),
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              batchName,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: _isDark
-                                    ? const Color(0xFF94A3B8)
-                                    : const Color(0xFF64748B),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (raiserHogs.isNotEmpty)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: raiserHogs.asMap().entries.map((entry) {
-                          final idx = entry.key;
-                          final h = entry.value;
-                          final tag = h['tag_number'] ?? '#${idx + 1}';
-                          final rawHType = (h['pig_type'] ?? '').toString().trim();
-                          final hType = rawHType.isNotEmpty ? rawHType : 'Fattening';
-                          final hIsBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
-                          final ptKey = hIsBreed ? 'sow' : 'fattening';
-                          final stageForHog = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], hIsBreed);
-                          final isHogDone = stageForHog.toLowerCase() == 'selling' || stageForHog.toLowerCase() == 'lactation';
-
-                          return Container(
-                            margin: EdgeInsets.only(top: idx > 0 ? 18 : 0),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: _isDark ? const Color(0xFF0F172A).withValues(alpha: 0.6) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: _isDark ? const Color(0xFF26354A) : const Color(0xFFE2E8F0),
-                                width: 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.pets_rounded,
-                                          size: 15,
-                                          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                                        ),
-                                        const SizedBox(width: 7),
-                                        Text(
-                                          'Hog $tag',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w800,
-                                            color: _textDark,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                                          decoration: BoxDecoration(
-                                            color: _isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(
-                                              color: _isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            ptKey == 'sow' ? 'SOW / BREEDING' : 'FATTENING',
-                                            style: GoogleFonts.plusJakartaSans(
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.w700,
-                                              color: _isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (isHogDone)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF10B981).withValues(alpha: _isDark ? 0.22 : 0.12),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: const Color(0xFF10B981).withValues(alpha: _isDark ? 0.6 : 0.4),
-                                            width: 1,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF10B981)),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'COMPLETE',
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w800,
-                                                color: const Color(0xFF10B981),
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: _textDark,
                                 ),
-                                const SizedBox(height: 14),
-                                _buildLifecycleMap(
-                                  stageForHog,
-                                  ptKey,
-                                  isUnassigned: false,
-                                ),
-                              ],
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          );
-                        }).toList(),
-                      )
-                    else
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: () {
-                          // Determine which pig types to show lifecycles for
-                          final types = cleanList.isNotEmpty
-                              ? cleanList
-                              : ['FATTENING'];
-                          final widgets = <Widget>[];
-                          for (int i = 0; i < types.length; i++) {
-                            final pt = types[i];
-                            final ptKey = pt.toLowerCase().contains('sow') ||
-                                    pt.toLowerCase().contains('breed')
-                                ? 'sow'
-                                : 'fattening';
-                            if (i > 0) {
-                              widgets.add(const SizedBox(height: 16));
-                            }
-                            // Always show pig type label above lifecycle
-                            {
-                              widgets.add(
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 9,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _isDark
-                                              ? const Color(0xFF1E293B)
-                                              : const Color(0xFFF1F5F9),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: _isDark
-                                                ? const Color(0xFF334155)
-                                                : const Color(0xFFCBD5E1),
-                                            width: 1,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          ptKey == 'sow'
-                                              ? 'SOW / BREEDING'
-                                              : 'FATTENING',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 9.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: _isDark
-                                                ? const Color(0xFF94A3B8)
-                                                : const Color(0xFF64748B),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                            const SizedBox(width: 8),
+                            if (headsLabel.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: _isDark ? 0.2 : 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                                    width: 1,
                                   ),
                                 ),
-                              );
-                            }
-                            widgets.add(
+                                child: Text(
+                                  headsLabel,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF10B981),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 8),
+                            if (batchName.isNotEmpty &&
+                                batchName != 'Unassigned')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _isDark
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: _isDark
+                                        ? const Color(0xFF475569)
+                                        : const Color(0xFFCBD5E1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  batchName,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isDark
+                                        ? const Color(0xFF94A3B8)
+                                        : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                    const SizedBox(height: 16),
+                    Builder(
+                      builder: (context) {
+                        if (isUnassigned) {
+                          return _buildLifecycleMap(
+                            'Unassigned',
+                            'fattening',
+                            isUnassigned: true,
+                          );
+                        }
+
+                        final bool hasDualTypes = (fatHogs > 0 && sowHogs > 0) ||
+                            (cleanList.any((t) => t.toLowerCase().contains('sow') || t.toLowerCase().contains('breed')) &&
+                             cleanList.any((t) => t.toLowerCase().contains('fatten')));
+
+                        if (hasDualTypes) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 9,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _isDark
+                                            ? const Color(0xFF1E293B)
+                                            : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: _isDark
+                                              ? const Color(0xFF334155)
+                                              : const Color(0xFFCBD5E1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        sowHogs > 0
+                                            ? 'SOW / BREEDING • $sowHogs HEADS'
+                                            : 'SOW / BREEDING',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: _isDark
+                                              ? const Color(0xFF94A3B8)
+                                              : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               _buildLifecycleMap(
-                                currentStage,
-                                ptKey,
+                                (raiser['sow_lifecycle_stage'] ?? currentStage).toString(),
+                                'sow',
                                 isUnassigned: false,
                               ),
-                            );
-                          }
-                          return widgets;
-                        }(),
-                      ),
+                              const SizedBox(height: 18),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 9,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _isDark
+                                            ? const Color(0xFF1E293B)
+                                            : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: _isDark
+                                              ? const Color(0xFF334155)
+                                              : const Color(0xFFCBD5E1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        fatHogs > 0
+                                            ? 'FATTENING • $fatHogs HEADS'
+                                            : 'FATTENING',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: _isDark
+                                              ? const Color(0xFF94A3B8)
+                                              : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _buildLifecycleMap(
+                                (raiser['fattening_lifecycle_stage'] ?? currentStage).toString(),
+                                'fattening',
+                                isUnassigned: false,
+                              ),
+                            ],
+                          );
+                        }
+
+                        final ptKey = pigTypeString(rawPigType);
+                        final activeStage = ptKey == 'sow'
+                            ? (raiser['sow_lifecycle_stage'] ?? currentStage).toString()
+                            : (raiser['fattening_lifecycle_stage'] ?? currentStage).toString();
+
+                        return _buildLifecycleMap(
+                          activeStage,
+                          ptKey,
+                          isUnassigned: false,
+                        );
+                      },
+                    ),
                   ],
                 );
               },

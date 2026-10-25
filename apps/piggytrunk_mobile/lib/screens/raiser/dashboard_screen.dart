@@ -383,19 +383,72 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           }
         }
 
-        if (assignedBatchType.isNotEmpty) {
-          hog['pig_type'] = assignedBatchType.toLowerCase().contains('sow') || assignedBatchType.toLowerCase().contains('breed')
+        // 1. If hog already has explicit valid pig_type in DB, respect it
+        final rawHogType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '').toString().trim();
+        final bool hogHasValidType = rawHogType.isNotEmpty &&
+            rawHogType != 'null' &&
+            rawHogType != 'None' &&
+            rawHogType != 'N/A';
+
+        if (hogHasValidType) {
+          hog['pig_type'] = rawHogType.toLowerCase().contains('sow') || rawHogType.toLowerCase().contains('breed')
               ? 'Sow'
               : 'Fattening';
-        } else {
-          final rawHogType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '').toString().trim();
-          if (rawHogType.isNotEmpty && rawHogType != 'null' && rawHogType != 'None' && rawHogType != 'N/A') {
-            hog['pig_type'] = rawHogType.toLowerCase().contains('sow') || rawHogType.toLowerCase().contains('breed')
-                ? 'Sow'
-                : 'Fattening';
+        } else if (assignedBatchType.isNotEmpty) {
+          final isSow = assignedBatchType.toLowerCase().contains('sow') || assignedBatchType.toLowerCase().contains('breed');
+          final isFat = assignedBatchType.toLowerCase().contains('fatten');
+          if (isSow && !isFat) {
+            hog['pig_type'] = 'Sow';
           } else {
             hog['pig_type'] = 'Fattening';
           }
+        } else {
+          hog['pig_type'] = 'Fattening';
+        }
+      }
+
+      // Mark cycle completion for each assignment based on status or terminal hog stages
+      for (var a in assignments) {
+        final aIdStr = (a['assignment_id'] ?? a['id'])?.toString();
+        final b = a['batches'] is Map ? a['batches'] as Map : null;
+        final bStatus = (b?['status'] ?? b?['batch_status'] ?? '').toString().toLowerCase();
+
+        final assignHogs = hogs
+            .where((h) => h['assignment_id']?.toString() == aIdStr)
+            .toList();
+        final rawHogType = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+        final isSow = rawHogType.contains('sow') || rawHogType.contains('breed');
+
+        final assignStatus = (a['status'] ?? '').toString().toLowerCase();
+
+        final bool hasLivingActiveHogs = assignHogs.any((h) {
+          final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
+          final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+          final sId = int.tryParse(s);
+          final bool isTerminal = hStatus == 'completed' ||
+              (isSow
+                  ? (s == 'lactation' || s == '6' || s.contains('lactat'))
+                  : (s == 'selling' || s == 'sold' || s == '6' || s.contains('sell')));
+          return !isTerminal && (sId == null || sId < 6);
+        });
+
+        if (assignStatus == 'completed' || assignStatus == 'finished') {
+          a['is_cycle_completed'] = true;
+        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
+          a['is_cycle_completed'] = false;
+        } else if (assignHogs.isNotEmpty) {
+          a['is_cycle_completed'] = !hasLivingActiveHogs;
+        } else if (bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested') {
+          a['is_cycle_completed'] = true;
+        } else {
+          final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '').toString().trim().toLowerCase();
+          bool stageCompleted = false;
+          if (isSow && (assignStage == 'lactation' || assignStage.contains('lactat'))) {
+            stageCompleted = true;
+          } else if (!isSow && (assignStage == 'selling' || assignStage == 'sold' || assignStage.contains('sell'))) {
+            stageCompleted = true;
+          }
+          a['is_cycle_completed'] = stageCompleted;
         }
       }
 

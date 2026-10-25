@@ -113,16 +113,19 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
     final sortedActive = List<Map<String, dynamic>>.from(widget.activeAssignments)
       ..sort(_compareAssignments);
 
-    final firstActive = sortedActive.firstWhere(
+    final activeOnly = sortedActive.where(
       (a) => a['is_cycle_completed'] != true && (a['status'] ?? '').toString().toLowerCase() != 'completed',
-      orElse: () => {},
-    );
+    ).toList();
+
     if (widget.selectedAssignmentId != null &&
         sortedActive.any((a) =>
             BigInt.from(a['assignment_id'] as num) == widget.selectedAssignmentId)) {
       _selectedBatchAssignmentId = widget.selectedAssignmentId;
-    } else if (firstActive.isNotEmpty) {
-      _selectedBatchAssignmentId = BigInt.from(firstActive['assignment_id'] as num);
+    } else if (activeOnly.length > 1) {
+      // Mixed active assignments in batch (e.g. Fattening + Sow): show All Heads by default
+      _selectedBatchAssignmentId = null;
+    } else if (activeOnly.isNotEmpty) {
+      _selectedBatchAssignmentId = BigInt.from(activeOnly[0]['assignment_id'] as num);
     } else if (sortedActive.isNotEmpty) {
       _selectedBatchAssignmentId = BigInt.from(sortedActive[0]['assignment_id'] as num);
     } else {
@@ -156,6 +159,31 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
   }
 
   String _formatAssignmentLabel(Map<String, dynamic> a) {
+    final activeOnly = widget.activeAssignments.where(
+      (x) => x['is_cycle_completed'] != true && (x['status'] ?? '').toString().toLowerCase() != 'completed',
+    ).toList();
+    if (_selectedBatchAssignmentId == null && activeOnly.length > 1) {
+      final first = activeOnly.first;
+      final bData = first['batches'];
+      String rawBatchName = '';
+      if (bData is Map) {
+        rawBatchName = bData['batch_name']?.toString() ?? '';
+      } else if (bData is List && bData.isNotEmpty && bData.first is Map) {
+        rawBatchName = bData.first['batch_name']?.toString() ?? '';
+      }
+      if (rawBatchName.isEmpty) {
+        rawBatchName = (first['batch_name'] ?? 'Batch').toString();
+      }
+      if (rawBatchName.contains(' (')) {
+        final parts = rawBatchName.split(' (');
+        if (parts.last.endsWith(')')) {
+          rawBatchName = parts.sublist(0, parts.length - 1).join(' (');
+        }
+      }
+      final strings = AppStrings.of(context);
+      return '$rawBatchName (${strings.isFilipino ? "Lahat ng Ulo" : "All Heads"})';
+    }
+
     final bData = a['batches'];
     String rawBatchName = '';
     if (bData is Map) {
@@ -282,13 +310,145 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                     builder: (context) {
                       final sortedAssignments = List<Map<String, dynamic>>.from(widget.activeAssignments)
                         ..sort(_compareAssignments);
+                      final activeOnly = sortedAssignments.where(
+                        (a) => a['is_cycle_completed'] != true && (a['status'] ?? '').toString().toLowerCase() != 'completed',
+                      ).toList();
+                      final bool showAllHeads = activeOnly.length > 1;
+                      final totalCount = sortedAssignments.length + (showAllHeads ? 1 : 0);
+
                       return ListView.separated(
                         shrinkWrap: true,
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 108),
-                        itemCount: sortedAssignments.length,
+                        itemCount: totalCount,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (ctx, index) {
-                          final a = sortedAssignments[index];
+                          if (showAllHeads && index == 0) {
+                            final isSelected = _selectedBatchAssignmentId == null;
+                            final bData = activeOnly.first['batches'];
+                            String bName = '';
+                            if (bData is Map) bName = bData['batch_name']?.toString() ?? '';
+                            if (bName.isEmpty) bName = activeOnly.first['batch_name']?.toString() ?? 'Batch';
+                            if (bName.contains(' (')) {
+                              final parts = bName.split(' (');
+                              if (parts.last.endsWith(')')) {
+                                bName = parts.sublist(0, parts.length - 1).join(' (');
+                              }
+                            }
+                            final totalActiveHogs = widget.hogsList.where((h) {
+                              final aId = h['assignment_id'];
+                              return activeOnly.any((a) => (a['assignment_id'] ?? a['id']) == aId);
+                            }).length;
+
+                            return InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedBatchAssignmentId = null;
+                                  _selectedHogIndex = 0;
+                                });
+                                Navigator.pop(ctx);
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? (isDark ? const Color(0xFF0F172A) : const Color(0xFFEFF6FF))
+                                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                        : borderColor,
+                                    width: isSelected ? 1.8 : 1.0,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? (isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.2) : _brandColor.withValues(alpha: 0.1))
+                                            : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(
+                                        Icons.grid_view_rounded,
+                                        color: isSelected
+                                            ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                            : mutedColor,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            bName,
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 14,
+                                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                              color: isSelected
+                                                  ? (isDark ? Colors.white : _brandColor)
+                                                  : textColor,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  strings.isFilipino ? 'Lahat ng Ulo ($totalActiveHogs)' : 'All Heads ($totalActiveHogs)',
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    fontSize: 10.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isDark ? Colors.white70 : _brandColor,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  strings.isFilipino ? 'Aktibo' : 'Active',
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    fontSize: 9.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                      color: isSelected
+                                          ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                          : mutedColor.withValues(alpha: 0.5),
+                                      size: 22,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          final a = sortedAssignments[showAllHeads ? index - 1 : index];
                       final aId = BigInt.from(a['assignment_id'] as num);
                       final isSelected = aId == _selectedBatchAssignmentId;
 
@@ -1929,17 +2089,28 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
               // ==================== BATCH SELECTION & FILTERING (1:MANY) ====================
               Builder(
                 builder: (context) {
-                  final selectedAssignment = widget.activeAssignments.firstWhere(
-                    (a) =>
-                        _selectedBatchAssignmentId != null &&
-                        BigInt.from(a['assignment_id'] as num) == _selectedBatchAssignmentId,
-                    orElse: () => widget.activeAssignments.isNotEmpty
-                        ? widget.activeAssignments[0]
-                        : <String, dynamic>{},
-                  );
+                  final activeOnly = widget.activeAssignments.where(
+                    (x) => x['is_cycle_completed'] != true && (x['status'] ?? '').toString().toLowerCase() != 'completed',
+                  ).toList();
+                  final bool isAllHeads = _selectedBatchAssignmentId == null && activeOnly.length > 1;
 
-                  final selectedAssignId = _selectedBatchAssignmentId ?? (selectedAssignment['assignment_id'] != null ? BigInt.from(selectedAssignment['assignment_id'] as num) : null);
+                  final selectedAssignment = isAllHeads && activeOnly.isNotEmpty
+                      ? activeOnly.first
+                      : widget.activeAssignments.firstWhere(
+                          (a) =>
+                              _selectedBatchAssignmentId != null &&
+                              BigInt.from(a['assignment_id'] as num) == _selectedBatchAssignmentId,
+                          orElse: () => widget.activeAssignments.isNotEmpty
+                              ? widget.activeAssignments[0]
+                              : <String, dynamic>{},
+                        );
+
+                  final selectedAssignId = isAllHeads ? null : (_selectedBatchAssignmentId ?? (selectedAssignment['assignment_id'] != null ? BigInt.from(selectedAssignment['assignment_id'] as num) : null));
                   final visibleHogs = widget.hogsList.where((h) {
+                    if (isAllHeads) {
+                      final aId = h['assignment_id'];
+                      return activeOnly.any((a) => (a['assignment_id'] ?? a['id']) == aId);
+                    }
                     if (selectedAssignId == null && widget.activeAssignments.length <= 1) {
                       return true;
                     }

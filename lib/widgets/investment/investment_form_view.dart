@@ -31,10 +31,13 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
   late final TextEditingController _capitalCtrl;
   late final TextEditingController _totalHogCtrl;
+  late final TextEditingController _fatteningCountCtrl;
+  late final TextEditingController _sowCountCtrl;
 
   String? _selectedRaiserId;
   String? _selectedBatchId;
-  List<String> _selectedHogTypes = ['Fattening'];
+  bool _isFatteningSelected = true;
+  bool _isSowSelected = false;
 
   List<Map<String, dynamic>> _activeBatches = [];
   List<Map<String, dynamic>> _activeRaisers = [];
@@ -59,15 +62,134 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
   Color get _fieldBorder => _isDark ? const Color(0xFF28405D) : const Color(0xFFC9D8EC);
   Color get _fieldFocus => _isDark ? const Color(0xFF88A7CE) : const Color(0xFF315C8F);
 
+  int get _fatteningCount => _isFatteningSelected ? (int.tryParse(_fatteningCountCtrl.text.trim()) ?? 0) : 0;
+  int get _sowCount => _isSowSelected ? (int.tryParse(_sowCountCtrl.text.trim()) ?? 0) : 0;
+  int get _calculatedTotalHogs => _fatteningCount + _sowCount;
+
+  String get _breakdownSummaryText {
+    final f = _fatteningCount;
+    final s = _sowCount;
+    if (f > 0 && s > 0) {
+      return '$f Fattening + $s Sow / Breeding';
+    } else if (f > 0) {
+      return '$f Fattening';
+    } else if (s > 0) {
+      return '$s Sow / Breeding';
+    }
+    return '';
+  }
+
+  void _syncTotalHogCtrl() {
+    final total = _calculatedTotalHogs;
+    _totalHogCtrl.text = total > 0 ? total.toString() : '';
+    if (_totalHogError != null && total > 0) {
+      _totalHogError = null;
+    }
+  }
+
+  void _incrementFattening([int amount = 1]) {
+    final cur = int.tryParse(_fatteningCountCtrl.text.trim()) ?? 0;
+    setState(() {
+      _fatteningCountCtrl.text = (cur + amount).toString();
+      _isFatteningSelected = true;
+      _syncTotalHogCtrl();
+    });
+  }
+
+  void _decrementFattening([int amount = 1]) {
+    final cur = int.tryParse(_fatteningCountCtrl.text.trim()) ?? 0;
+    if (cur > 0) {
+      final newVal = (cur - amount).clamp(0, 99999);
+      setState(() {
+        _fatteningCountCtrl.text = newVal.toString();
+        _syncTotalHogCtrl();
+      });
+    }
+  }
+
+  void _incrementSow([int amount = 1]) {
+    final cur = int.tryParse(_sowCountCtrl.text.trim()) ?? 0;
+    setState(() {
+      _sowCountCtrl.text = (cur + amount).toString();
+      _isSowSelected = true;
+      _syncTotalHogCtrl();
+    });
+  }
+
+  void _decrementSow([int amount = 1]) {
+    final cur = int.tryParse(_sowCountCtrl.text.trim()) ?? 0;
+    if (cur > 0) {
+      final newVal = (cur - amount).clamp(0, 99999);
+      setState(() {
+        _sowCountCtrl.text = newVal.toString();
+        _syncTotalHogCtrl();
+      });
+    }
+  }
+
+  void _toggleFattening() {
+    setState(() {
+      _isFatteningSelected = !_isFatteningSelected;
+      if (!_isFatteningSelected) {
+        _fatteningCountCtrl.text = '0';
+      }
+      _syncTotalHogCtrl();
+    });
+  }
+
+  void _toggleSow() {
+    setState(() {
+      _isSowSelected = !_isSowSelected;
+      if (!_isSowSelected) {
+        _sowCountCtrl.text = '0';
+      }
+      _syncTotalHogCtrl();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    final initialCapitalVal = widget.existingInvestment?.initialCapital.toInt() ?? 0;
+    final initialCapitalStr = initialCapitalVal > 0
+        ? initialCapitalVal.toString().replaceAllMapped(
+            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (Match m) => '${m[1]},',
+          )
+        : '';
     _capitalCtrl = TextEditingController(
-      text: _isEdit ? widget.existingInvestment!.initialCapital.toInt().toString() : '',
+      text: _isEdit ? initialCapitalStr : '',
     );
     _totalHogCtrl = TextEditingController(
       text: _isEdit ? widget.existingInvestment!.totalHog.toString() : '',
     );
+
+    final existingTotal = widget.existingInvestment?.totalHog ?? 0;
+    final existingType = (widget.existingInvestment?.hogType ?? '').toLowerCase();
+    final bool hasExistingSow = existingType.contains('sow') || existingType.contains('breed');
+    final bool hasExistingFattening = existingType.contains('fatten') || !hasExistingSow;
+
+    if (_isEdit) {
+      _isFatteningSelected = hasExistingFattening;
+      _isSowSelected = hasExistingSow;
+      if (hasExistingSow && hasExistingFattening) {
+        final int fCount = (existingTotal / 2).ceil();
+        final int sCount = existingTotal - fCount;
+        _fatteningCountCtrl = TextEditingController(text: fCount.toString());
+        _sowCountCtrl = TextEditingController(text: sCount.toString());
+      } else if (hasExistingSow) {
+        _fatteningCountCtrl = TextEditingController(text: '0');
+        _sowCountCtrl = TextEditingController(text: existingTotal.toString());
+      } else {
+        _fatteningCountCtrl = TextEditingController(text: existingTotal.toString());
+        _sowCountCtrl = TextEditingController(text: '0');
+      }
+    } else {
+      _isFatteningSelected = true;
+      _isSowSelected = false;
+      _fatteningCountCtrl = TextEditingController(text: '0');
+      _sowCountCtrl = TextEditingController(text: '0');
+    }
 
     _selectedRaiserId = _isEdit
         ? (widget.existingInvestment!.hogRaiserId.isEmpty
@@ -81,17 +203,6 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
             : 'unassigned')
         : 'unassigned';
 
-    if (_isEdit && widget.existingInvestment!.hogType.isNotEmpty) {
-      final types = widget.existingInvestment!.hogType
-          .split(RegExp(r'[,;]'))
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .map((s) => s.toLowerCase().contains('sow') || s.toLowerCase().contains('breed') ? 'Sow / Breeding' : 'Fattening')
-          .toSet()
-          .toList();
-      if (types.isNotEmpty) _selectedHogTypes = types;
-    }
-
     _fetchDropdownData();
   }
 
@@ -99,6 +210,8 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
   void dispose() {
     _capitalCtrl.dispose();
     _totalHogCtrl.dispose();
+    _fatteningCountCtrl.dispose();
+    _sowCountCtrl.dispose();
     super.dispose();
   }
 
@@ -292,6 +405,11 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
         final bId = (bMap['batch_id'] ?? bMap['id'] ?? bMap['batch_number'] ?? bMap['batch_code'])?.toString() ?? '';
         if (bId.isEmpty) continue;
         final bName = bMap['batch_name']?.toString() ?? bMap['name']?.toString() ?? 'Batch $bId';
+        final bStatus = (bMap['status'] ?? bMap['batch_status'] ?? 'Active').toString().toLowerCase();
+        final bool isBatchFinished = bStatus == 'finished' || bStatus == 'completed' || bStatus == 'archived';
+        if (!_isEdit && isBatchFinished) {
+          continue; // Finished batches cannot accept new investments
+        }
 
         final batchAssigns = assignmentsRaw.where((a) => a is Map && (a['batch_id']?.toString() == bId || a['id']?.toString() == bId)).toList();
 
@@ -395,15 +513,18 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
   Future<void> _submitForm() async {
     if (_isSubmitting) return;
 
-    final parsedCapital = int.tryParse(_capitalCtrl.text.trim());
-    final parsedTotalHog = int.tryParse(_totalHogCtrl.text.trim());
+    final cleanCapitalStr = _capitalCtrl.text.replaceAll(',', '').trim();
+    final parsedCapital = int.tryParse(cleanCapitalStr);
+    final fatteningCount = _fatteningCount;
+    final sowCount = _sowCount;
+    final parsedTotalHog = fatteningCount + sowCount;
 
     if (parsedCapital == null || parsedCapital <= 0) {
       setState(() => _capitalError = 'Please enter a valid capital greater than ₱0.');
       return;
     }
-    if (parsedTotalHog == null || parsedTotalHog <= 0) {
-      setState(() => _totalHogError = 'Please enter total number of heads (min 1).');
+    if (parsedTotalHog <= 0) {
+      setState(() => _totalHogError = 'Please allocate at least 1 head across selected hog types.');
       return;
     }
 
@@ -463,10 +584,16 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
               orElse: () => {'batch_name': 'Batch'},
             )['batch_name'] ?? 'Batch');
 
-      final cleanTypes = _selectedHogTypes
-          .map((s) => s.toLowerCase().contains('sow') || s.toLowerCase().contains('breed') ? 'Sow' : 'Fattening')
-          .toSet()
-          .toList();
+      final List<String> activeTypes = [];
+      if (fatteningCount > 0) activeTypes.add('Fattening');
+      if (sowCount > 0) activeTypes.add('Sow');
+
+      final cleanTypes = activeTypes.isNotEmpty
+          ? activeTypes
+          : [
+              if (_isFatteningSelected) 'Fattening',
+              if (_isSowSelected) 'Sow',
+            ];
       final hogTypeStr = cleanTypes.length > 1
           ? 'Fattening, Sow'
           : (cleanTypes.isNotEmpty ? cleanTypes.first : 'Fattening');
@@ -577,33 +704,83 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
           return 1;
         }
 
-        final List<String> targetTypes = cleanTypes.isNotEmpty ? cleanTypes : ['Fattening'];
-        final int hogsPerType = (parsedTotalHog / targetTypes.length).round();
+        final List<Map<String, dynamic>> targetAllocations = [];
+        if (fatteningCount > 0) {
+          targetAllocations.add({
+            'type_name': 'Fattening',
+            'count': fatteningCount,
+            'hog_type_id': findHogTypeId('fatten'),
+          });
+        }
+        if (sowCount > 0) {
+          targetAllocations.add({
+            'type_name': 'Sow',
+            'count': sowCount,
+            'hog_type_id': findHogTypeId('sow'),
+          });
+        }
+        if (targetAllocations.isEmpty && parsedTotalHog > 0) {
+          final defType = _isSowSelected && !_isFatteningSelected ? 'Sow' : 'Fattening';
+          targetAllocations.add({
+            'type_name': defType,
+            'count': parsedTotalHog,
+            'hog_type_id': findHogTypeId(defType.toLowerCase().contains('sow') ? 'sow' : 'fatten'),
+          });
+        }
 
-        for (int tIdx = 0; tIdx < targetTypes.length; tIdx++) {
-          final typeName = targetTypes[tIdx];
-          final isTypeSow = typeName.toLowerCase().contains('sow') || typeName.toLowerCase().contains('breed');
-          final int typeHogId = isTypeSow ? findHogTypeId('sow') : findHogTypeId('fatten');
-          final int allocationForThisType = (tIdx == targetTypes.length - 1)
-              ? (parsedTotalHog - (hogsPerType * (targetTypes.length - 1)))
-              : hogsPerType;
+        for (final alloc in targetAllocations) {
+          final typeName = alloc['type_name'] as String;
+          final int allocationForThisType = alloc['count'] as int;
+          final int typeHogId = alloc['hog_type_id'] as int;
 
-          final existingTypeAssign = await _supabase
+          // Look for an existing assignment for this batch, raiser and hog type
+          final existingTypeAssignList = await _supabase
               .from('assignments')
-              .select('assignment_id, hog_type_id, hog_raiser_id')
+              .select('assignment_id, hog_type_id, hog_raiser_id, status')
               .eq('batch_id', _selectedBatchId!)
               .eq('hog_type_id', typeHogId)
-              .limit(1)
-              .maybeSingle();
+              .eq('hog_raiser_id', parsedRaiserId)
+              .order('assignment_id', ascending: false);
 
           dynamic targetAssignPk;
-          if (existingTypeAssign != null) {
-            targetAssignPk = existingTypeAssign['assignment_id'];
-            await _supabase.from('assignments').update({
-              'hog_raiser_id': parsedRaiserId,
-              'status': 'active',
-            }).eq('assignment_id', targetAssignPk);
-          } else {
+          bool reuseAssignment = false;
+
+          if (existingTypeAssignList.isNotEmpty) {
+            final latest = existingTypeAssignList.first as Map;
+            final assignId = latest['assignment_id'];
+            final assignStatus = (latest['status'] ?? '').toString().toLowerCase();
+            final bool isExplicitlyDone = assignStatus == 'completed' || assignStatus == 'finished' || assignStatus == 'archived';
+
+            if (!isExplicitlyDone) {
+              // Check if all its hogs are already sold or completed
+              final existingHogs = await _supabase
+                  .from('hogs')
+                  .select('hog_id, stage_id, status')
+                  .eq('assignment_id', assignId);
+              final existingList = existingHogs as List? ?? [];
+              final bool allHogsConcluded = existingList.isNotEmpty && existingList.every((h) {
+                final st = (h['status'] ?? '').toString().toLowerCase();
+                final sId = int.tryParse((h['stage_id'] ?? '').toString()) ?? 1;
+                return st == 'completed' || st == 'archived' || st == 'sold' || sId >= 6;
+              });
+
+              if (!allHogsConcluded) {
+                // Truly active ongoing cycle: reuse and top up
+                reuseAssignment = true;
+                targetAssignPk = assignId;
+                await _supabase.from('assignments').update({
+                  'status': 'active',
+                }).eq('assignment_id', targetAssignPk);
+              } else {
+                // Hogs are already at final stage / completed: mark past assignment as completed permanently
+                await _supabase.from('assignments').update({
+                  'status': 'completed',
+                }).eq('assignment_id', assignId);
+              }
+            }
+          }
+
+          if (!reuseAssignment) {
             final newAssign = await _supabase.from('assignments').insert({
               'batch_id': _selectedBatchId,
               'hog_raiser_id': parsedRaiserId,
@@ -619,20 +796,39 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
           // Seed or top up hogs for this assignment
           if (targetAssignPk != null && allocationForThisType > 0) {
             try {
-              final existingHogs = await _supabase
-                  .from('hogs')
-                  .select('hog_id, stage_id, status')
-                  .eq('assignment_id', targetAssignPk);
-              final existingList = existingHogs as List? ?? [];
-              final activeHogs = existingList.where((h) => (h['status'] ?? '').toString().toLowerCase() != 'completed').toList();
-              final needed = allocationForThisType - activeHogs.length;
-              if (needed > 0) {
-                for (int i = 0; i < needed; i++) {
+              if (reuseAssignment) {
+                final existingHogs = await _supabase
+                    .from('hogs')
+                    .select('hog_id, stage_id, status')
+                    .eq('assignment_id', targetAssignPk);
+                final existingList = existingHogs as List? ?? [];
+                final activeHogs = existingList.where((h) {
+                  final st = (h['status'] ?? '').toString().toLowerCase();
+                  final sId = int.tryParse((h['stage_id'] ?? '').toString()) ?? 1;
+                  return st != 'completed' && st != 'sold' && st != 'archived' && sId < 6;
+                }).toList();
+                final needed = allocationForThisType - activeHogs.length;
+                if (needed > 0) {
+                  for (int i = 0; i < needed; i++) {
+                    await _supabase.from('hogs').insert({
+                      'assignment_id': targetAssignPk,
+                      'status': 'active',
+                      'health_status': 'healthy',
+                      'stage_id': 1,
+                      'pig_type': typeName,
+                      'last_updated': DateTime.now().toIso8601String(),
+                    });
+                  }
+                }
+              } else {
+                // New assignment cycle: seed full allocation of fresh hogs at Stage 1
+                for (int i = 0; i < allocationForThisType; i++) {
                   await _supabase.from('hogs').insert({
                     'assignment_id': targetAssignPk,
                     'status': 'active',
                     'health_status': 'healthy',
                     'stage_id': 1,
+                    'pig_type': typeName,
                     'last_updated': DateTime.now().toIso8601String(),
                   });
                 }
@@ -645,12 +841,13 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
         // Reactivate batch in batches table
         try {
-          await _supabase.from('batches').update({'status': 'Active'}).eq('batch_id', _selectedBatchId!);
+          final parsedBId = int.tryParse(_selectedBatchId!) ?? _selectedBatchId!;
+          await _supabase.from('batches').update({'status': 'Active'}).eq('batch_id', parsedBId);
         } catch (_) {}
 
         // Update hog raiser status and pig_type without erasing existing types
-        final bool hasSow = targetTypes.any((t) => t.toLowerCase().contains('sow') || t.toLowerCase().contains('breed'));
-        final bool hasFattening = targetTypes.any((t) => t.toLowerCase().contains('fatten'));
+        final bool hasSow = sowCount > 0;
+        final bool hasFattening = fatteningCount > 0;
 
         String existingRaiserType = '';
         try {
@@ -676,17 +873,17 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
         // Fallback: If batch was left unassigned, attach newly added hogs to raiser's active assignment
         final parsedRaiserId = int.parse(_selectedRaiserId!);
         try {
-          final raiserAssign = await _supabase
+          final raiserAssignList = await _supabase
               .from('assignments')
-              .select('assignment_id, batch_id')
+              .select('assignment_id, batch_id, status')
               .eq('hog_raiser_id', parsedRaiserId)
+              .inFilter('status', ['active', 'Active'])
               .order('assignment_id', ascending: false)
-              .limit(1)
-              .maybeSingle();
+              .limit(1);
 
-          if (raiserAssign != null) {
-            final targetAssignId = raiserAssign['assignment_id'];
-            final bId = raiserAssign['batch_id'];
+          if (raiserAssignList.isNotEmpty) {
+            final targetAssignId = raiserAssignList.first['assignment_id'];
+            final bId = raiserAssignList.first['batch_id'];
             await _supabase.from('assignments').update({'status': 'active'}).eq('assignment_id', targetAssignId);
             if (bId != null) {
               try {
@@ -722,56 +919,159 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
     }
   }
 
-  Widget _buildCheckboxOption({
+  Widget _buildHogTypeCard({
     required String title,
     required bool isSelected,
+    required TextEditingController controller,
     required VoidCallback onToggle,
+    required VoidCallback onIncrement,
+    required VoidCallback onDecrement,
+    required ValueChanged<String> onChanged,
   }) {
     final activeColor = _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
     final checkColor = _isDark ? const Color(0xFF132238) : Colors.white;
     final inactiveBorder = _isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
+    final cardBorderColor = isSelected
+        ? (_isDark ? const Color(0xFF4B6F96) : const Color(0xFF90B3D6))
+        : (_isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3));
+    final cardBgColor = isSelected
+        ? (_isDark ? const Color(0xFF1B2E49) : const Color(0xFFF7FAFD))
+        : (_isDark ? const Color(0xFF16253B) : Colors.white);
 
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 19,
-              height: 19,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
-                color: isSelected ? activeColor : Colors.transparent,
-                border: Border.all(
-                  color: isSelected ? activeColor : inactiveBorder,
-                  width: 1.8,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: cardBgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: isSelected ? 1.5 : 1.0),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: PiggyTrunkTheme.ptPrimary.withValues(alpha: _isDark ? 0.25 : 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          // Checkbox + Title
+          Expanded(
+            child: InkWell(
+              onTap: onToggle,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(5),
+                        color: isSelected ? activeColor : Colors.transparent,
+                        border: Border.all(
+                          color: isSelected ? activeColor : inactiveBorder,
+                          width: 1.8,
+                        ),
+                      ),
+                      child: isSelected
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 14,
+                              color: checkColor,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                          color: isSelected ? _titleColor : _mutedColor,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: isSelected
-                  ? Icon(
-                      Icons.check_rounded,
-                      size: 14,
-                      color: checkColor,
-                    )
-                  : null,
             ),
-            const SizedBox(width: 10),
+          ),
+
+          // Stepper / Direct Number Input (Only active / visible when selected)
+          if (isSelected) ...[
+            const SizedBox(width: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: _fieldBg,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: _fieldBorder),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Minus Button
+                  InkWell(
+                    onTap: onDecrement,
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      child: Icon(Icons.remove_rounded, size: 16, color: _fieldText),
+                    ),
+                  ),
+                  // Number Field
+                  SizedBox(
+                    width: 48,
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: onChanged,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: _fieldText,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  // Plus Button
+                  InkWell(
+                    onTap: onIncrement,
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      child: Icon(Icons.add_rounded, size: 16, color: _fieldText),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
             Text(
-              title,
+              'heads',
               style: GoogleFonts.plusJakartaSans(
-                fontSize: 13.5,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                color: _isDark ? Colors.white : const Color(0xFF18314F),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _mutedColor,
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
+
 
   /// Skeleton for a single labeled form field (dropdown or text input).
   Widget _buildFormFieldSkeleton({
@@ -896,16 +1196,9 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                         ),
                         const SizedBox(height: 22),
 
-                        // TOTAL HEADS label + input skeleton
-                        _buildFormFieldSkeleton(
-                          label: 'TOTAL HEADS *',
-                          isMobile: isMobile,
-                        ),
-                        const SizedBox(height: 22),
-
-                        // HOG TYPE label + checkbox skeletons
+                        // HOG TYPE & HEADS ALLOCATION skeleton
                         Text(
-                          'HOG TYPE *',
+                          'HOG TYPE & HEADS ALLOCATION *',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
@@ -914,36 +1207,18 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            ShimmerBox(
-                              width: 19,
-                              height: 19,
-                              borderRadius: BorderRadius.circular(5),
-                              isDark: _isDark,
-                            ),
-                            const SizedBox(width: 10),
-                            ShimmerBox(
-                              width: 70,
-                              height: 13,
-                              borderRadius: BorderRadius.circular(4),
-                              isDark: _isDark,
-                            ),
-                            const SizedBox(width: 24),
-                            ShimmerBox(
-                              width: 19,
-                              height: 19,
-                              borderRadius: BorderRadius.circular(5),
-                              isDark: _isDark,
-                            ),
-                            const SizedBox(width: 10),
-                            ShimmerBox(
-                              width: 100,
-                              height: 13,
-                              borderRadius: BorderRadius.circular(4),
-                              isDark: _isDark,
-                            ),
-                          ],
+                        ShimmerBox(
+                          width: double.infinity,
+                          height: 140,
+                          borderRadius: BorderRadius.circular(14),
+                          isDark: _isDark,
+                        ),
+                        const SizedBox(height: 12),
+                        ShimmerBox(
+                          width: double.infinity,
+                          height: 48,
+                          borderRadius: BorderRadius.circular(10),
+                          isDark: _isDark,
                         ),
                       ],
                     ),
@@ -1147,8 +1422,19 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                             }
                             final pt = (matched['pig_type'] ?? 'Fattening').toString().trim();
                             if (pt.isNotEmpty && pt != 'N/A') {
-                              final parsed = pt.split(RegExp(r'[,;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).map((s) => s.toLowerCase().contains('sow') || s.toLowerCase().contains('breed') ? 'Sow / Breeding' : 'Fattening').toSet().toList();
-                              if (parsed.isNotEmpty) _selectedHogTypes = parsed;
+                              final ptLower = pt.toLowerCase();
+                              final hasSow = ptLower.contains('sow') || ptLower.contains('breed');
+                              final hasFat = ptLower.contains('fatten');
+                              if (hasSow && hasFat) {
+                                _isFatteningSelected = true;
+                                _isSowSelected = true;
+                              } else if (hasSow) {
+                                _isFatteningSelected = false;
+                                _isSowSelected = true;
+                              } else if (hasFat) {
+                                _isFatteningSelected = true;
+                                _isSowSelected = false;
+                              }
                             }
                           } else {
                             final currentRaiser = _activeRaisers.firstWhere(
@@ -1353,8 +1639,19 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                             }
                             final pt = (matched['pig_type'] ?? '').toString().trim();
                             if (pt.isNotEmpty && pt != 'N/A') {
-                              final parsed = pt.split(RegExp(r'[,;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).map((s) => s.toLowerCase().contains('sow') || s.toLowerCase().contains('breed') ? 'Sow / Breeding' : 'Fattening').toSet().toList();
-                              if (parsed.isNotEmpty) _selectedHogTypes = parsed;
+                              final ptLower = pt.toLowerCase();
+                              final hasSow = ptLower.contains('sow') || ptLower.contains('breed');
+                              final hasFat = ptLower.contains('fatten');
+                              if (hasSow && hasFat) {
+                                _isFatteningSelected = true;
+                                _isSowSelected = true;
+                              } else if (hasSow) {
+                                _isFatteningSelected = false;
+                                _isSowSelected = true;
+                              } else if (hasFat) {
+                                _isFatteningSelected = true;
+                                _isSowSelected = false;
+                              }
                             }
                           }
                         });
@@ -1376,7 +1673,9 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                     TextField(
                       controller: _capitalCtrl,
                       keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      inputFormatters: [
+                        ThousandsSeparatorInputFormatter(),
+                      ],
                       onChanged: (_) {
                         if (_capitalError != null) setState(() => _capitalError = null);
                       },
@@ -1386,7 +1685,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                         fontWeight: FontWeight.w600,
                       ),
                       decoration: InputDecoration(
-                        hintText: '0.00',
+                        hintText: '0',
                         hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
                         prefixIcon: Container(
                           width: 40,
@@ -1424,9 +1723,9 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                     ],
                     const SizedBox(height: 22),
 
-                    // Total Heads
+                    // HOG TYPE & HEADS
                     Text(
-                      'TOTAL HEADS *',
+                      'HOG TYPE & HEADS *',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
@@ -1434,90 +1733,111 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                         letterSpacing: 0.6,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _totalHogCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (_) {
-                        if (_totalHogError != null) setState(() => _totalHogError = null);
-                      },
-                      style: GoogleFonts.plusJakartaSans(
-                        color: _fieldText,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+
+                    // Fattening Card
+                    _buildHogTypeCard(
+                      title: 'Fattening',
+                      isSelected: _isFatteningSelected,
+                      controller: _fatteningCountCtrl,
+                      onToggle: _toggleFattening,
+                      onIncrement: () => _incrementFattening(1),
+                      onDecrement: () => _decrementFattening(1),
+                      onChanged: (_) => setState(() => _syncTotalHogCtrl()),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Sow / Breeding Card
+                    _buildHogTypeCard(
+                      title: 'Sow / Breeding',
+                      isSelected: _isSowSelected,
+                      controller: _sowCountCtrl,
+                      onToggle: _toggleSow,
+                      onIncrement: () => _incrementSow(1),
+                      onDecrement: () => _decrementSow(1),
+                      onChanged: (_) => setState(() => _syncTotalHogCtrl()),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Total Heads Banner
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: _calculatedTotalHogs > 0
+                            ? (_isDark ? PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.22) : const Color(0xFFEFF6FF))
+                            : (_isDark ? const Color(0xFF16253B) : const Color(0xFFF8FAFC)),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _totalHogError != null
+                              ? const Color(0xFFE53E3E)
+                              : (_calculatedTotalHogs > 0
+                                  ? (_isDark ? const Color(0xFF385579) : const Color(0xFFBFDBFE))
+                                  : _cardBorder),
+                          width: 1.2,
+                        ),
                       ),
-                      decoration: InputDecoration(
-                        hintText: '0',
-                        hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
-                        prefixIcon: Icon(Icons.pets_rounded, size: 18, color: _mutedColor),
-                        filled: true,
-                        fillColor: _fieldBg,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(
-                            color: _totalHogError != null ? const Color(0xFFE53E3E) : _fieldBorder,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Total Heads:',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: _mutedColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '$_calculatedTotalHogs',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: _calculatedTotalHogs > 0 ? _titleColor : _mutedColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_calculatedTotalHogs > 0) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _breakdownSummaryText,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: _mutedColor,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(
-                            color: _totalHogError != null ? const Color(0xFFE53E3E) : _fieldFocus,
-                            width: 1.5,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
                     if (_totalHogError != null) ...[
-                      const SizedBox(height: 4),
-                      Text(_totalHogError!, style: const TextStyle(color: Color(0xFFE53E3E), fontSize: 11.5)),
-                    ],
-                    const SizedBox(height: 22),
-
-                    // Hog Types
-                    Text(
-                      'HOG TYPE *',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: _mutedColor,
-                        letterSpacing: 0.6,
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFE53E3E)),
+                          const SizedBox(width: 6),
+                          Text(
+                            _totalHogError!,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xFFE53E3E),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 24,
-                      runSpacing: 10,
-                      children: [
-                        _buildCheckboxOption(
-                          title: 'Fattening',
-                          isSelected: _selectedHogTypes.contains('Fattening'),
-                          onToggle: () {
-                            setState(() {
-                              if (_selectedHogTypes.contains('Fattening')) {
-                                if (_selectedHogTypes.length > 1) _selectedHogTypes.remove('Fattening');
-                              } else {
-                                _selectedHogTypes.add('Fattening');
-                              }
-                            });
-                          },
-                        ),
-                        _buildCheckboxOption(
-                          title: 'Sow / Breeding',
-                          isSelected: _selectedHogTypes.contains('Sow / Breeding'),
-                          onToggle: () {
-                            setState(() {
-                              if (_selectedHogTypes.contains('Sow / Breeding')) {
-                                if (_selectedHogTypes.length > 1) _selectedHogTypes.remove('Sow / Breeding');
-                              } else {
-                                _selectedHogTypes.add('Sow / Breeding');
-                              }
-                            });
-                          },
-                        ),
-                      ],
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -1623,6 +1943,74 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Automatically adds thousand separators (commas) to numeric money inputs as the user types.
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+
+    String textToFormat = newValue.text;
+    int selectionEnd = newValue.selection.end;
+
+    // Handle backspace when the cursor was right after a comma
+    if (oldValue.text.length == newValue.text.length + 1 &&
+        oldValue.selection.end > 0 &&
+        oldValue.text[oldValue.selection.end - 1] == ',') {
+      final deleteIndex = oldValue.selection.end - 2;
+      if (deleteIndex >= 0) {
+        textToFormat = oldValue.text.substring(0, deleteIndex) +
+            oldValue.text.substring(oldValue.selection.end);
+        selectionEnd = deleteIndex;
+      }
+    }
+
+    final digitsOnly = textToFormat.replaceAll(RegExp(r'[^\d]'), '');
+    if (digitsOnly.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    final formatted = digitsOnly.replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+
+    // Calculate new cursor position based on digit count before the cursor
+    final textBeforeCursor = textToFormat.substring(
+      0,
+      selectionEnd.clamp(0, textToFormat.length),
+    );
+    final digitsBeforeCursor = textBeforeCursor.replaceAll(RegExp(r'[^\d]'), '').length;
+
+    int newCursorPos = 0;
+    int digitCount = 0;
+    for (int i = 0; i < formatted.length; i++) {
+      if (formatted[i] != ',') {
+        digitCount++;
+      }
+      if (digitCount == digitsBeforeCursor) {
+        newCursorPos = i + 1;
+        break;
+      }
+    }
+    if (digitCount < digitsBeforeCursor) {
+      newCursorPos = formatted.length;
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: newCursorPos.clamp(0, formatted.length)),
     );
   }
 }

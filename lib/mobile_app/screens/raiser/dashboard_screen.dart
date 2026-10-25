@@ -289,15 +289,28 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       for (var row in invRows) {
         final cap = (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
         final count = (row['total_hog'] as num?)?.toInt() ?? 0;
-        final rawHType = (row['hog_type'] ?? 'Fattening').toString().trim();
-        final hType =
-            rawHType.toLowerCase().contains('sow') ||
-                rawHType.toLowerCase().contains('breed')
-            ? 'Sow'
-            : 'Fattening';
+        final rawHType = (row['hog_type'] ?? 'Fattening').toString().trim().toLowerCase();
+        final bool isSow = rawHType.contains('sow') || rawHType.contains('breed');
+        final bool isFat = rawHType.contains('fatten');
         totalCapital += cap;
-        for (int i = 0; i < count; i++) {
-          investmentHogTypes.add(hType);
+
+        if (isSow && isFat) {
+          final fC = (count / 2).ceil();
+          final sC = count - fC;
+          for (int i = 0; i < fC; i++) {
+            investmentHogTypes.add('Fattening');
+          }
+          for (int i = 0; i < sC; i++) {
+            investmentHogTypes.add('Sow');
+          }
+        } else if (isSow) {
+          for (int i = 0; i < count; i++) {
+            investmentHogTypes.add('Sow');
+          }
+        } else {
+          for (int i = 0; i < count; i++) {
+            investmentHogTypes.add('Fattening');
+          }
         }
       }
 
@@ -475,30 +488,27 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           }
         }
 
-        if (assignedBatchType.isNotEmpty) {
-          // The batch's assignment is the authoritative type for hogs in that batch!
-          hog['pig_type'] =
-              assignedBatchType.toLowerCase().contains('sow') ||
-                  assignedBatchType.toLowerCase().contains('breed')
+        // 1. If hog already has explicit valid pig_type in DB, respect it
+        final rawHogType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '').toString().trim();
+        final bool hogHasValidType = rawHogType.isNotEmpty &&
+            rawHogType != 'null' &&
+            rawHogType != 'None' &&
+            rawHogType != 'N/A';
+
+        if (hogHasValidType) {
+          hog['pig_type'] = rawHogType.toLowerCase().contains('sow') || rawHogType.toLowerCase().contains('breed')
               ? 'Sow'
               : 'Fattening';
-        } else {
-          final rawHogType =
-              (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '')
-                  .toString()
-                  .trim();
-          if (rawHogType.isNotEmpty &&
-              rawHogType != 'null' &&
-              rawHogType != 'None' &&
-              rawHogType != 'N/A') {
-            hog['pig_type'] =
-                rawHogType.toLowerCase().contains('sow') ||
-                    rawHogType.toLowerCase().contains('breed')
-                ? 'Sow'
-                : 'Fattening';
+        } else if (assignedBatchType.isNotEmpty) {
+          final isSow = assignedBatchType.toLowerCase().contains('sow') || assignedBatchType.toLowerCase().contains('breed');
+          final isFat = assignedBatchType.toLowerCase().contains('fatten');
+          if (isSow && !isFat) {
+            hog['pig_type'] = 'Sow';
           } else {
             hog['pig_type'] = 'Fattening';
           }
+        } else {
+          hog['pig_type'] = 'Fattening';
         }
       }
 
@@ -519,34 +529,27 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         final isSow =
             rawHogType.contains('sow') || rawHogType.contains('breed');
 
-        final isExplicitlyCompleted =
-            bStatus == 'completed' ||
-            bStatus == 'sold' ||
-            bStatus == 'finished' ||
-            bStatus == 'harvested' ||
-            (a['status'] ?? '').toString().toLowerCase() == 'completed' ||
-            (a['status'] ?? '').toString().toLowerCase() == 'finished';
+        final assignStatus = (a['status'] ?? '').toString().toLowerCase();
 
-        if (isExplicitlyCompleted) {
+        final bool hasLivingActiveHogs = assignHogs.any((h) {
+          final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
+          final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+          final sId = int.tryParse(s);
+          final bool isTerminal = hStatus == 'completed' ||
+              (isSow
+                  ? (s == 'lactation' || s == '6' || s.contains('lactat'))
+                  : (s == 'selling' || s == 'sold' || s == '6' || s.contains('sell')));
+          return !isTerminal && (sId == null || sId < 6);
+        });
+
+        if (assignStatus == 'completed' || assignStatus == 'finished') {
           a['is_cycle_completed'] = true;
+        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
+          a['is_cycle_completed'] = false;
         } else if (assignHogs.isNotEmpty) {
-          // If there are hogs in this batch, the cycle is completed if ALL hogs reached final terminal stage or are marked completed!
-          final allHogsAtFinalStage = assignHogs.every((h) {
-            final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
-            final s =
-                (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
-            return hStatus == 'completed' ||
-                (isSow
-                    ? (s == 'lactation' || s == '6' || s.contains('lactat'))
-                    : (s == 'selling' ||
-                          s == 'sold' ||
-                          s == '6' ||
-                          s.contains('sell')));
-          });
-          a['is_cycle_completed'] = allHogsAtFinalStage;
+          a['is_cycle_completed'] = !hasLivingActiveHogs;
+        } else if (bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested') {
+          a['is_cycle_completed'] = true;
         } else {
           final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '')
               .toString()
@@ -692,11 +695,18 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           matchingInvs = invRows;
         }
 
-        final assignCapital = matchingInvs.fold<double>(
-          0.0,
-          (sum, row) =>
-              sum + ((row['initial_capital'] as num?)?.toDouble() ?? 0.0),
-        );
+        double assignCapital = 0.0;
+        for (var row in matchingInvs) {
+          final rowCap = (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
+          final rawHType = (row['hog_type'] ?? '').toString().toLowerCase();
+          final bool rowHasSow = rawHType.contains('sow') || rawHType.contains('breed');
+          final bool rowHasFat = rawHType.contains('fatten');
+          if (rowHasSow && rowHasFat) {
+            assignCapital += rowCap / 2.0;
+          } else {
+            assignCapital += rowCap;
+          }
+        }
 
         // Match requests strictly for this assignment
         double assignSpend = 0.0;
@@ -839,19 +849,18 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             )
           : null;
 
+      final activeBatchAssigns = assignments.where((a) => a['is_cycle_completed'] != true).toList();
       final double combinedInvestedAmount = hasActiveBatch
-          ? ((primaryAssign?['remaining_capital'] as num?)?.toDouble() ?? 0.0)
+          ? activeBatchAssigns.fold<double>(0.0, (sum, a) => sum + ((a['remaining_capital'] as num?)?.toDouble() ?? 0.0))
           : 0.0;
       totalCapital = hasActiveBatch
-          ? ((primaryAssign?['initial_capital'] as num?)?.toDouble() ?? 0.0)
+          ? activeBatchAssigns.fold<double>(0.0, (sum, a) => sum + ((a['initial_capital'] as num?)?.toDouble() ?? 0.0))
           : 0.0;
       final double totalStocksSpend = hasActiveBatch
-          ? ((primaryAssign?['stocks_spend'] as num?)?.toDouble() ?? 0.0)
+          ? activeBatchAssigns.fold<double>(0.0, (sum, a) => sum + ((a['stocks_spend'] as num?)?.toDouble() ?? 0.0))
           : 0.0;
       final List<Map<String, dynamic>> providedStocks = hasActiveBatch
-          ? List<Map<String, dynamic>>.from(
-              primaryAssign?['provided_stocks'] ?? [],
-            )
+          ? activeBatchAssigns.expand<Map<String, dynamic>>((a) => List<Map<String, dynamic>>.from(a['provided_stocks'] ?? [])).toList()
           : [];
 
       // 7. Fetch health reports

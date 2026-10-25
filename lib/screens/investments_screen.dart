@@ -438,31 +438,38 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           return health != 'dead';
         }).toList();
 
+        final bool hasLivingActiveHogs = livingHogs.any((h) {
+          final sId = int.tryParse((h['stage_id'] ?? '').toString());
+          final rawType = (h['pig_type'] ?? rMap['hog_type'] ?? '').toString().trim();
+          final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+          final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
+          final hStatus = (h['status'] ?? '').toString().toLowerCase();
+          final bool isConcluded = (sId != null && sId >= 6) ||
+              sName.contains('selling') ||
+              sName.contains('sold') ||
+              sName.contains('lactation') ||
+              sName.contains('complete') ||
+              hStatus == 'completed' ||
+              hStatus == 'archived';
+          return !isConcluded;
+        });
+
         if (livingHogs.isNotEmpty) {
-          allHogsFinished = livingHogs.every((h) {
-            final sId = int.tryParse((h['stage_id'] ?? '').toString());
-            final rawType = (h['pig_type'] ?? rMap['hog_type'] ?? '').toString().trim();
-            final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
-            final sName = _resolveStageName(h['stage_id'] ?? h['lifecycle_stage'], isBreed).toLowerCase();
-            final hStatus = (h['status'] ?? '').toString().toLowerCase();
-
-            final bool isStage6OrSelling = (sId != null && sId >= 6) ||
-                sName.contains('selling') ||
-                sName.contains('lactation') ||
-                sName.contains('complete');
-
-            return isStage6OrSelling || hStatus == 'completed' || hStatus == 'archived';
-          });
+          allHogsFinished = !hasLivingActiveHogs;
         }
 
         final batchStatus = (matchedBatchId != null ? batchStatusMap[matchedBatchId] : null)?.toLowerCase();
-        final isBatchExplicitlyFinished = batchStatus == 'completed' || batchStatus == 'finished';
+        final isBatchExplicitlyFinished = (batchStatus == 'completed' || batchStatus == 'finished') && !hasLivingActiveHogs;
 
         final rawStage = (rMap['stage'] ?? rMap['status'] ?? '').toString().toLowerCase();
-        if (rawStage == 'completed' || rawStage == 'finished' || allHogsFinished || isBatchExplicitlyFinished) {
+        if (rawStage == 'completed' || rawStage == 'finished') {
           rMap['stage'] = 'completed';
+        } else if (rawStage == 'active' || hasLivingActiveHogs) {
+          rMap['stage'] = 'active';
         } else if (rawStage == 'archived') {
           rMap['stage'] = 'archived';
+        } else if (allHogsFinished || isBatchExplicitlyFinished) {
+          rMap['stage'] = 'completed';
         } else if (matchedBatchId != null && matchedBatchId.isNotEmpty && matchedBatchId != 'unassigned') {
           rMap['stage'] = 'active';
         } else {

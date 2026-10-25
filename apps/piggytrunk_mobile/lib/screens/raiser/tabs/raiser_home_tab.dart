@@ -508,15 +508,47 @@ class RaiserHomeTab extends StatelessWidget {
 
             // ==================== FEEDS STAGES (CONDITIONAL ON ACTIVE BATCH) ====================
             if (hasActiveBatch) ...[
-              _buildFeedsCard(
-                context: context,
-                title: strings.isFilipino ? 'Mga Stage ng Pakain' : 'Feeds Stages',
-                badgeText: hasInvestment ? (pigType == 'Sow' ? 'Sow' : 'Fattening') : strings.unassigned,
-                stages: (hasInvestment && pigType == 'Sow')
-                    ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-                    : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'],
-                activeStage: displayStage,
-                hasInvestment: hasInvestment,
+              Builder(
+                builder: (context) {
+                  final bool isDualType = (pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed')) &&
+                      pigType.toLowerCase().contains('fatten');
+
+                  if (isDualType) {
+                    return Column(
+                      children: [
+                        _buildFeedsCard(
+                          context: context,
+                          title: strings.isFilipino ? 'Mga Stage ng Pakain (Inahing Baboy)' : 'Feeds Stages (Sow / Breeding)',
+                          badgeText: strings.isFilipino ? 'Inahing Baboy' : 'Sow / Breeding',
+                          stages: const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation'],
+                          activeStage: activeStage,
+                          hasInvestment: hasInvestment,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildFeedsCard(
+                          context: context,
+                          title: strings.isFilipino ? 'Mga Stage ng Pakain (Pangkaraniwan / Fattening)' : 'Feeds Stages (Fattening)',
+                          badgeText: strings.isFilipino ? 'Pangkaraniwan' : 'Fattening',
+                          stages: const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'],
+                          activeStage: activeStage,
+                          hasInvestment: hasInvestment,
+                        ),
+                      ],
+                    );
+                  }
+
+                  final bool isSow = pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed');
+                  return _buildFeedsCard(
+                    context: context,
+                    title: strings.isFilipino ? 'Mga Stage ng Pakain' : 'Feeds Stages',
+                    badgeText: hasInvestment ? (isSow ? (strings.isFilipino ? 'Inahing Baboy' : 'Sow') : (strings.isFilipino ? 'Pangkaraniwan' : 'Fattening')) : strings.unassigned,
+                    stages: isSow
+                        ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
+                        : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'],
+                    activeStage: displayStage,
+                    hasInvestment: hasInvestment,
+                  );
+                },
               ),
               const SizedBox(height: 28),
             ] else ...[

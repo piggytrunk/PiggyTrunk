@@ -228,28 +228,35 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
               }
             }
 
-            final assignStatus = (matchingAssign['status'] ?? '').toString().toLowerCase();
+            final bool hasActiveHogs = assignHogs.any((hog) {
+              final health = (hog['health_status'] ?? '').toString().toLowerCase();
+              if (health == 'dead') return false;
+              final sId = int.tryParse((hog['stage_id'] ?? '').toString());
+              final stageStr = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], false).toLowerCase();
+              final hogStatus = (hog['status'] ?? '').toString().toLowerCase();
+              final bool isConcluded = (sId != null && sId >= 6) ||
+                  stageStr.contains('selling') ||
+                  stageStr.contains('sold') ||
+                  stageStr.contains('lactation') ||
+                  stageStr.contains('complete') ||
+                  hogStatus == 'completed' ||
+                  hogStatus == 'archived';
+              return !isConcluded;
+            });
+
+            final bool hasActiveAssignment = allBatchAssigns.any((a) {
+              final st = (a['status'] ?? '').toString().toLowerCase();
+              return st == 'active';
+            });
 
             bool isAllHogsFinished = false;
             if (assignHogs.isNotEmpty) {
-              isAllHogsFinished = assignHogs.every((hog) {
-                final health = (hog['health_status'] ?? '').toString().toLowerCase();
-                if (health == 'dead') return true; // Dead hogs don't hold back batch completion
-
-                final sId = int.tryParse((hog['stage_id'] ?? '').toString());
-                final stageStr = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], false).toLowerCase();
-                final hogStatus = (hog['status'] ?? '').toString().toLowerCase();
-
-                final bool isStage6OrSelling = (sId != null && sId >= 6) ||
-                    stageStr.contains('selling') ||
-                    stageStr.contains('lactation') ||
-                    stageStr.contains('complete');
-
-                return isStage6OrSelling || hogStatus == 'completed' || hogStatus == 'archived';
-              });
+              isAllHogsFinished = !hasActiveHogs;
             }
 
-            if (rawStatus == 'completed' || rawStatus == 'finished' || assignStatus == 'completed' || assignStatus == 'finished' || isAllHogsFinished) {
+            if (hasActiveHogs || hasActiveAssignment || rawStatus == 'active') {
+              batchStatus = 'Active';
+            } else if (rawStatus == 'completed' || rawStatus == 'finished' || isAllHogsFinished) {
               batchStatus = 'Finished';
             } else {
               batchStatus = 'Active';

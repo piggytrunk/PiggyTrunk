@@ -504,7 +504,105 @@ class CycleHistoryDrawer {
                       ),
                     );
                   }).toList(),
+                )
+              else ...[
+                // Batch-level completed track fallback when individual hog rows are empty
+                Builder(
+                  builder: (context) {
+                    final rawRType = (raiser['pig_type'] ?? '').toString().toLowerCase();
+                    final bool hasSow = rawRType.contains('sow') || rawRType.contains('breed');
+                    final bool hasFat = rawRType.contains('fatten') || (!hasSow && rawRType != 'sow');
+                    final tracks = <String>[];
+                    if (hasFat) tracks.add('fattening');
+                    if (hasSow) tracks.add('sow');
+                    if (tracks.isEmpty) tracks.add('fattening');
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: tracks.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final t = entry.value;
+                        final isSow = t == 'sow';
+                        final label = isSow ? 'SOW / BREEDING' : 'FATTENING';
+                        final finalStage = isSow ? 'Lactation' : 'Selling';
+
+                        return Container(
+                          margin: EdgeInsets.only(top: idx > 0 ? 12 : 0),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.pets_rounded,
+                                        size: 13,
+                                        color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        label,
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: titleColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 10,
+                                          color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                                        ),
+                                        const SizedBox(width: 3.5),
+                                        Text(
+                                          'COMPLETE',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w800,
+                                            color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF03543F),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              _buildDrawerLifecycleMap(
+                                currentStage: finalStage,
+                                pigType: t,
+                                isDark: isDark,
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
                 ),
+              ],
             ],
           ),
         );
