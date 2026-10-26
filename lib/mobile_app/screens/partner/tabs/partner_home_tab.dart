@@ -4,7 +4,6 @@ import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../utils/screen_fit_util.dart';
 import '../../../utils/app_strings.dart';
 import '../widgets/partner_notification_drawer.dart';
-import '../widgets/batch_raiser_details_drawer.dart';
 
 class PartnerHomeTab extends StatelessWidget {
   final String partnerName;
@@ -146,7 +145,7 @@ class PartnerHomeTab extends StatelessWidget {
     final hasInvestments = investedAmount > 0;
 
     // Calculate unique active raisers and total hogs strictly from the partner's actual funded investments
-    final effectiveFunded = hasInvestments
+    final rawFunded = hasInvestments
         ? (fundedProjectsList.isNotEmpty
             ? fundedProjectsList
                 .where((p) =>
@@ -161,6 +160,27 @@ class PartnerHomeTab extends StatelessWidget {
                 .toList())
         : <Map<String, dynamic>>[];
 
+    // Ensure distinct batches so identical batch entries are never counted twice
+    final Map<String, Map<String, dynamic>> uniqueFundedMap = {};
+    for (var p in rawFunded) {
+      final bId = (p['batch_id'] ?? p['id'] ?? '').toString();
+      if (bId.isNotEmpty) {
+        if (!uniqueFundedMap.containsKey(bId)) {
+          uniqueFundedMap[bId] = Map<String, dynamic>.from(p);
+        } else {
+          final existing = uniqueFundedMap[bId]!;
+          final existingAmt = (existing['invested_amount'] as num?)?.toDouble() ?? 0.0;
+          final newAmt = (p['invested_amount'] as num?)?.toDouble() ?? 0.0;
+          if (newAmt > existingAmt) {
+            uniqueFundedMap[bId] = Map<String, dynamic>.from(p);
+          }
+        }
+      } else {
+        uniqueFundedMap['anon_${uniqueFundedMap.length}'] = Map<String, dynamic>.from(p);
+      }
+    }
+    final effectiveFunded = uniqueFundedMap.values.toList();
+
     final displayProjects = (hasInvestments && effectiveFunded.isNotEmpty)
         ? effectiveFunded
         : projectsList;
@@ -173,10 +193,15 @@ class PartnerHomeTab extends StatelessWidget {
 
     int totalHogsFunded = 0;
     for (var p in effectiveFunded) {
-      totalHogsFunded += (p['total_hogs'] as num?)?.toInt() ?? 0;
+      final selectedHogs = (p['selected_hogs_count'] as num?)?.toInt() ?? 0;
+      if (selectedHogs > 0) {
+        totalHogsFunded += selectedHogs;
+      } else {
+        totalHogsFunded += (p['total_hogs'] as num?)?.toInt() ?? 0;
+      }
     }
     if (totalHogsFunded == 0 && hasInvestments) {
-      totalHogsFunded = activeProjectsCount * 15;
+      totalHogsFunded = effectiveFunded.isNotEmpty ? (effectiveFunded.length * 15) : (activeProjectsCount * 15);
     }
 
     return RefreshIndicator(
@@ -648,37 +673,20 @@ class PartnerHomeTab extends StatelessWidget {
                 children: displayProjects.take(2).map((proj) {
                   final String bName = proj['batch_name'] ?? 'Batch Project';
                   final String raiser = proj['assigned_raiser'] ?? proj['raiser_name'] ?? 'Assigned Raiser';
-                  final String rawStage = (proj['stage'] ?? proj['lifecycle_stage'] ?? 'Grower').toString().trim();
-                  final String stage = (rawStage.isEmpty || rawStage.toUpperCase() == 'N/A') ? 'Grower' : rawStage;
-                  final String rawType = (proj['hog_type'] ?? proj['pig_type'] ?? 'Fattening').toString().trim();
+                  final String rawType = (proj['target_pig_type'] ?? proj['hog_type'] ?? proj['pig_type'] ?? 'Fattening').toString().trim();
                   final String hogType = (rawType.isEmpty || rawType.toUpperCase() == 'N/A') ? 'Fattening' : rawType;
-                  final int hogs = (proj['total_hogs'] as num?)?.toInt() ?? 0;
+                  final int hogs = (proj['selected_hogs_count'] as num?)?.toInt() ?? (proj['total_hogs'] as num?)?.toInt() ?? 0;
                   final double invAmt = (proj['invested_amount'] as num?)?.toDouble() ?? 0.0;
+                  final targetTags = (proj['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
 
                   return InkWell(
-                    onTap: () => showBatchRaiserDetailsDrawer(
-                      context: context,
-                      batch: proj,
-                      onInvestNow: () {
-                        if (onNavigateToTab != null) {
-                          onNavigateToTab!(1);
-                        } else {
-                          onViewProjects();
-                        }
-                      },
-                      onViewLifecycle: () {
-                        if (onNavigateToTab != null) {
-                          onNavigateToTab!(2);
-                        }
-                      },
-                      onViewActivities: () {
-                        if (onNavigateToTab != null) {
-                          onNavigateToTab!(3);
-                        } else {
-                          onSeeAllActivities();
-                        }
-                      },
-                    ),
+                    onTap: () {
+                      if (onNavigateToTab != null) {
+                        onNavigateToTab!(2);
+                      } else {
+                        onViewProjects();
+                      }
+                    },
                     borderRadius: BorderRadius.circular(fit.dp(18)),
                     child: Container(
                       margin: EdgeInsets.only(bottom: fit.dp(10)),
@@ -732,7 +740,7 @@ class PartnerHomeTab extends StatelessWidget {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            'Raiser: $raiser • $hogType',
+                                            'Raiser: $raiser',
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: fit.sp(12.0),
                                               fontWeight: FontWeight.w500,
@@ -741,6 +749,19 @@ class PartnerHomeTab extends StatelessWidget {
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
+                                          if (targetTags.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Funded: ${targetTags.join(', ')}',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: fit.sp(11.0),
+                                                fontWeight: FontWeight.w700,
+                                                color: _brandAccent,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -750,19 +771,19 @@ class PartnerHomeTab extends StatelessWidget {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
+                                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                                     width: 1,
                                   ),
                                 ),
                                 child: Text(
-                                  '$stage Stage',
+                                  hogType,
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: fit.sp(10.5),
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF10B981),
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
                                   ),
                                 ),
                               ),
@@ -773,7 +794,9 @@ class PartnerHomeTab extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                invAmt > 0 ? 'Invested: ₱${_formatCurrency(invAmt)}' : '$hogs Hogs Assigned',
+                                invAmt > 0
+                                    ? 'Invested: ₱${_formatCurrency(invAmt)}${hogs > 0 ? ' ($hogs Hogs)' : ''}'
+                                    : '$hogs Hogs Assigned',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: fit.sp(12.0),
                                   fontWeight: FontWeight.w600,

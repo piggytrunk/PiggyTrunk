@@ -8,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_version_model.dart';
 import '../widgets/update/app_update_dialog.dart';
 import '../utils/app_toast.dart';
+import '../mobile_app/services/connectivity_service.dart';
+import '../mobile_app/utils/app_strings.dart';
 
 class UpdateCheckResult {
   final bool isAvailable;
@@ -31,8 +33,7 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
-  static const String defaultApkUrl =
-      'https://piggytrunk.site/download/apk';
+  static const String defaultApkUrl = 'https://piggytrunk.site/download/apk';
   static const String staticVersionUrl =
       'https://piggy-trunk.vercel.app/version.json';
 
@@ -80,7 +81,19 @@ class AppUpdateService {
         debugPrint('[AppUpdateService] PackageInfo lookup warning: $pkgErr');
       }
 
+      // Check internet connectivity first
+      final bool hasNet = await ConnectivityService.hasInternet();
+      if (!hasNet) {
+        return UpdateCheckResult(
+          isAvailable: false,
+          currentVersion: currentVersion,
+          currentCode: currentCode,
+          errorMessage: 'NO_INTERNET',
+        );
+      }
+
       AppVersionModel? remoteModel;
+      bool hadNetworkError = false;
 
       // Layer 1: Query Supabase app_versions table
       try {
@@ -98,6 +111,7 @@ class AppUpdateService {
           remoteModel = AppVersionModel.fromJson(data);
         }
       } catch (dbErr) {
+        hadNetworkError = true;
         debugPrint('[AppUpdateService] Supabase table lookup: $dbErr');
       }
 
@@ -111,9 +125,13 @@ class AppUpdateService {
           if (res.statusCode == 200) {
             final jsonMap = jsonDecode(res.body) as Map<String, dynamic>;
             remoteModel = AppVersionModel.fromJson(jsonMap);
+            hadNetworkError = false;
           }
         } catch (netErr) {
-          debugPrint('[AppUpdateService] Static version fallback lookup: $netErr');
+          hadNetworkError = true;
+          debugPrint(
+            '[AppUpdateService] Static version fallback lookup: $netErr',
+          );
           // If relative web lookup failed, try static external url
           if (kIsWeb) {
             try {
@@ -123,8 +141,11 @@ class AppUpdateService {
               if (res2.statusCode == 200) {
                 final jsonMap = jsonDecode(res2.body) as Map<String, dynamic>;
                 remoteModel = AppVersionModel.fromJson(jsonMap);
+                hadNetworkError = false;
               }
-            } catch (_) {}
+            } catch (_) {
+              hadNetworkError = true;
+            }
           }
         }
       }
@@ -134,6 +155,7 @@ class AppUpdateService {
           isAvailable: false,
           currentVersion: currentVersion,
           currentCode: currentCode,
+          errorMessage: hadNetworkError ? 'NO_INTERNET' : null,
         );
       }
 
@@ -149,10 +171,7 @@ class AppUpdateService {
       );
     } catch (e) {
       debugPrint('[AppUpdateService] General error checking update: $e');
-      return UpdateCheckResult(
-        isAvailable: false,
-        errorMessage: e.toString(),
-      );
+      return UpdateCheckResult(isAvailable: false, errorMessage: 'NO_INTERNET');
     }
   }
 
@@ -172,16 +191,20 @@ class AppUpdateService {
       await showDialog(
         context: context,
         barrierDismissible: !result.isForce,
-        builder: (ctx) => AppUpdateDialog(
-          result: result,
-          onDismiss: () => markDismissed(),
-        ),
+        builder: (ctx) =>
+            AppUpdateDialog(result: result, onDismiss: () => markDismissed()),
       );
     } else if (isManualCheck) {
-      if (result.errorMessage != null && result.errorMessage!.isNotEmpty) {
-        AppToast.info(
+      final strings = AppStrings.of(context);
+      if (result.errorMessage == 'NO_INTERNET') {
+        AppToast.warning(
           context,
-          'Could not check for updates. Please check your internet connection.',
+          strings.noInternetForUpdates,
+        );
+      } else if (result.errorMessage != null && result.errorMessage!.isNotEmpty) {
+        AppToast.warning(
+          context,
+          strings.noInternetForUpdates,
         );
       } else {
         AppToast.success(
@@ -205,7 +228,9 @@ class AppUpdateService {
 
       if (context.mounted) {
         if (launched) {
-          final isPlayStore = finalUrl.contains('play.google.com') || finalUrl.startsWith('market://');
+          final isPlayStore =
+              finalUrl.contains('play.google.com') ||
+              finalUrl.startsWith('market://');
           AppToast.info(
             context,
             isPlayStore
@@ -213,10 +238,7 @@ class AppUpdateService {
                 : 'Downloading Piggy Trunk update... Open the file when finished to install.',
           );
         } else {
-          AppToast.error(
-            context,
-            'Could not open update link automatically.',
-          );
+          AppToast.error(context, 'Could not open update link automatically.');
         }
       }
     } catch (e) {

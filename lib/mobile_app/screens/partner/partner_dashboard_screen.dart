@@ -2294,11 +2294,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
           // Map each individual hog with its exact pig type and stage
           final mappedBatchHogs = <Map<String, dynamic>>[];
-          // Filter out dead or inactive hogs before assigning sequential batch numbers
+          // Filter out dead hogs before assigning sequential batch numbers
           final aliveBatchHogs = rawBatchHogs.where((h) {
             final st = (h['status'] ?? '').toString().toLowerCase();
             final hs = (h['health_status'] ?? '').toString().toLowerCase();
-            return st != 'dead' && hs != 'dead' && st != 'completed';
+            return st != 'dead' && hs != 'dead';
           }).toList();
 
           final isMixedBatch =
@@ -2475,6 +2475,29 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 s.contains('lactat');
           }
 
+          String effectiveBatchStage = stage;
+          if (mappedBatchHogs.isNotEmpty) {
+            if (isBatchCycleCompleted) {
+              effectiveBatchStage = hasSow ? 'Lactation' : 'Selling';
+            } else {
+              final activeHogs = mappedBatchHogs.where((h) {
+                final s = (h['stage'] ?? '').toString().trim().toLowerCase();
+                final sId = int.tryParse((h['stage_id'] ?? '').toString());
+                final isDone = (h['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                    (sId != null && sId >= 6) ||
+                    s == 'selling' ||
+                    s == 'sold' ||
+                    s == 'lactation';
+                return !isDone;
+              }).toList();
+              if (activeHogs.isNotEmpty) {
+                effectiveBatchStage = activeHogs.first['stage']?.toString() ?? stage;
+              } else {
+                effectiveBatchStage = mappedBatchHogs.first['stage']?.toString() ?? stage;
+              }
+            }
+          }
+
           allBatches.add({
             'batch_id': bId,
             'batch_name': b['batch_name'] ?? b['name'] ?? 'Batch #$bId',
@@ -2489,7 +2512,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 ? mappedBatchHogs.length
                 : hogsCount,
             'mortality': mortality,
-            'stage': stage,
+            'stage': effectiveBatchStage,
             'hogs': mappedBatchHogs,
             'date_created': b['date_created'],
             'hog_raiser_id': int.tryParse(raiserIdStr),
@@ -2611,6 +2634,28 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           ascending: false,
         );
 
+        // Fetch investment metadata from admin_notifications to enrich allocation targets
+        final Map<String, Map<String, dynamic>> notifMetadata = {};
+        try {
+          final notifsRes = await Supabase.instance.client
+              .from('admin_notifications')
+              .select('metadata')
+              .inFilter('type', ['investment', 'investment_request', 'partner_investment']);
+          for (var n in notifsRes) {
+            final m = n['metadata'];
+            if (m is Map) {
+              final bId = (m['batch_id'] ?? '').toString();
+              final pId = (m['partner_investor_id'] ?? '').toString();
+              if (bId.isNotEmpty) {
+                final key = '${bId}_$pId';
+                notifMetadata[key] = Map<String, dynamic>.from(m);
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Notice loading notifMetadata in partner dashboard: $e');
+        }
+
         if (investmentsRes.isNotEmpty) {
           for (var inv in investmentsRes) {
             final amt = (inv['amount'] as num?)?.toDouble() ?? 0.0;
@@ -2639,11 +2684,22 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               totalInvested += amt;
             }
 
+            final pId = (inv['partner_investor_id'] ?? partnerInvestorId ?? '').toString();
+            final metaKey = '${bId}_$pId';
+            final meta = notifMetadata[metaKey] ?? {};
+
+            final targetPigType = meta['target_pig_type'] ?? matchingBatch['hog_type'] ?? 'Fattening';
+            final targetHogTags = meta['target_hog_tags'] is List ? List<String>.from(meta['target_hog_tags']) : <String>[];
+            final selectedHogsCount = (meta['selected_hogs_count'] as num?)?.toInt() ?? targetHogTags.length;
+
             partnerProjects.add({
               'investment_id': inv['investment_id'],
               'amount': amt,
               'date_invested': inv['date_invested'],
               ...matchingBatch,
+              'target_pig_type': targetPigType,
+              'target_hog_tags': targetHogTags,
+              'selected_hogs_count': selectedHogsCount,
               'status': finalStatus,
               'is_cycle_completed': isConcluded,
               'invested_amount': amt,
@@ -2654,20 +2710,29 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         debugPrint('Notice: Fetching investments: $e');
       }
 
-      // Also merge local/session investments for instant reflection and offline persistence
+      // Also merge local/session investments for instant reflection and offline persistence (with smart deduplication)
       try {
         final localInvs = await AuthSessionService().getLocalInvestments();
+        final List<Map<String, dynamic>> remainingLocalInvs = [];
+
         for (var lInv in localInvs) {
           final lId = lInv['investment_id']?.toString();
-          final alreadyPresent = partnerProjects.any(
-            (p) => p['investment_id']?.toString() == lId,
-          );
+          final amt = (lInv['amount'] as num?)?.toDouble() ?? 0.0;
+          final bId = lInv['batch_id']?.toString();
+
+          final alreadyPresent = partnerProjects.any((p) {
+            final pId = p['investment_id']?.toString();
+            final pBatch = p['batch_id']?.toString();
+            final pAmt = (p['invested_amount'] ?? p['amount'] as num?)?.toDouble() ?? 0.0;
+            // Match either exact ID or matching batch with same invested amount
+            return (pId != null && pId == lId) ||
+                   (pBatch != null && pBatch.isNotEmpty && pBatch == bId && (pAmt - amt).abs() < 0.01);
+          });
+
           if (!alreadyPresent) {
-            final amt = (lInv['amount'] as num?)?.toDouble() ?? 0.0;
             final rawStatus = (lInv['status'] ?? 'active')
                 .toString()
                 .toLowerCase();
-            final bId = lInv['batch_id']?.toString();
             final matchingBatches = allBatches
                 .where((b) => b['batch_id']?.toString() == bId)
                 .toList();
@@ -2694,6 +2759,14 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               'is_cycle_completed': isConcluded,
               'invested_amount': amt,
             });
+            remainingLocalInvs.add(lInv);
+          }
+        }
+
+        // Clean up stale local investments that have already synced to Supabase DB
+        if (remainingLocalInvs.length != localInvs.length) {
+          if (remainingLocalInvs.isEmpty) {
+            await AuthSessionService().clearLocalInvestments();
           }
         }
       } catch (lErr) {
@@ -3254,6 +3327,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             p['is_cycle_completed'] != true &&
             (p['status'] ?? '').toString().toLowerCase() != 'completed')
         .toList();
+    final effectiveLifecycleProjects = activePartnerProjects.isNotEmpty
+        ? activePartnerProjects
+        : (_projectsList.isNotEmpty ? _projectsList : _availableBatches);
 
     final List<Widget> tabs = [
       PartnerHomeTab(
@@ -3277,31 +3353,35 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       ),
       PartnerProjectsTab(
         projectsList: _availableBatches,
+        fundedProjectsList: activePartnerProjects,
+        investedAmount: _investedAmount,
         onRefresh: _fetchPartnerData,
+        onNavigateToLifecycle: () => setState(() => _currentIndex = 2),
+        onNavigateToActivities: () => setState(() => _currentIndex = 3),
       ),
       PartnerLifecycleTab(
-        projectsList: activePartnerProjects,
-        batchName: activePartnerProjects.isNotEmpty
-            ? activePartnerProjects.first['batch_name']?.toString()
+        projectsList: effectiveLifecycleProjects,
+        batchName: effectiveLifecycleProjects.isNotEmpty
+            ? effectiveLifecycleProjects.first['batch_name']?.toString()
             : null,
-        raiserName: activePartnerProjects.isNotEmpty
-            ? (activePartnerProjects.first['assigned_raiser'] ??
-                      activePartnerProjects.first['raiser_name'])
+        raiserName: effectiveLifecycleProjects.isNotEmpty
+            ? (effectiveLifecycleProjects.first['assigned_raiser'] ??
+                      effectiveLifecycleProjects.first['raiser_name'])
                   ?.toString()
             : null,
-        hogsList: activePartnerProjects.isNotEmpty
-            ? List<Map<String, dynamic>>.from(activePartnerProjects.first['hogs'] ?? [])
+        hogsList: effectiveLifecycleProjects.isNotEmpty
+            ? List<Map<String, dynamic>>.from(effectiveLifecycleProjects.first['hogs'] ?? [])
             : [],
         currentStage:
-            (activePartnerProjects.isNotEmpty
-                    ? (activePartnerProjects.first['stage'] ??
-                          activePartnerProjects.first['lifecycle_stage'])
+            (effectiveLifecycleProjects.isNotEmpty
+                    ? (effectiveLifecycleProjects.first['stage'] ??
+                          effectiveLifecycleProjects.first['lifecycle_stage'])
                     : 'Booster')
                 .toString(),
-        hogType: activePartnerProjects.isNotEmpty
-            ? (activePartnerProjects.first['hog_type']?.toString() ?? 'Fattening')
+        hogType: effectiveLifecycleProjects.isNotEmpty
+            ? (effectiveLifecycleProjects.first['hog_type']?.toString() ?? 'Fattening')
             : 'Fattening',
-        hasActiveProject: activePartnerProjects.isNotEmpty,
+        hasActiveProject: effectiveLifecycleProjects.isNotEmpty,
         activitiesList: _activitiesList,
         onRefresh: _fetchPartnerData,
         onNavigateToBatches: () => setState(() => _currentIndex = 1),

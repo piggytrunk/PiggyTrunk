@@ -58,6 +58,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
 
   int _selectedProjectIndex = 0;
   int _selectedHogIndex = 0;
+  bool _filterOnlyFundedHogs = false;
 
   Map<String, dynamic>? get _currentProject {
     if (widget.projectsList.isNotEmpty) {
@@ -146,7 +147,9 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
         }
         final tagA = (a['tag_number'] ?? a['hog_id'] ?? '').toString();
         final tagB = (b['tag_number'] ?? b['hog_id'] ?? '').toString();
-        return tagA.compareTo(tagB);
+        final numA = int.tryParse(tagA.replaceAll(RegExp(r'[^0-9]'), '')) ?? (a['index'] as num?)?.toInt() ?? 0;
+        final numB = int.tryParse(tagB.replaceAll(RegExp(r'[^0-9]'), '')) ?? (b['index'] as num?)?.toInt() ?? 0;
+        return numA.compareTo(numB);
       });
     }
 
@@ -282,8 +285,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                     final uniqueProjects = <Map<String, dynamic>>[];
                     final seenBatchKeys = <String>{};
                     for (final p in widget.projectsList) {
+                      final hasInvested = (p['invested_amount'] as num?)?.toDouble() != null &&
+                          ((p['invested_amount'] as num?)?.toDouble() ?? 0) > 0;
                       final r = (p['assigned_raiser'] ?? p['raiser_name'] ?? '').toString().trim().toLowerCase();
-                      if (r.isEmpty || r == 'unassigned' || r == 'null') {
+                      if (!hasInvested && (r.isEmpty || r == 'unassigned' || r == 'null')) {
                         continue;
                       }
                       final key = (p['batch_id'] ?? p['id'] ?? p['batch_name'] ?? '').toString();
@@ -310,8 +315,8 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                   _currentProject!['batch_id'] == p['batch_id']);
                           final bName = p['batch_name'] ?? 'Batch #${index + 1}';
                           final rName = (p['assigned_raiser'] ?? p['raiser_name'] ?? 'Assigned Raiser').toString();
-                          final pType = (p['hog_type'] ?? 'Fattening').toString();
-                          final hogs = (p['hogs'] as List?)?.length ?? p['total_hogs'] ?? 0;
+                          final pType = (p['target_pig_type'] ?? p['hog_type'] ?? 'Fattening').toString();
+                          final hogs = (p['selected_hogs_count'] as num?)?.toInt() ?? (p['hogs'] as List?)?.length ?? p['total_hogs'] ?? 0;
 
                           return InkWell(
                             onTap: () {
@@ -435,7 +440,12 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
     final hogType = _getHogPigType(hog, fallbackType);
     final isSow = hogType == 'Sow';
     final currentStage = _getHogStage(hog, fallbackStage, isSow);
-    final isHogCompleted = currentStage.toLowerCase() == 'selling' || currentStage.toLowerCase() == 'lactation';
+    final isHogCompleted = (hog['status'] ?? '').toString().toLowerCase() == 'completed' ||
+        (hog['status'] ?? '').toString().toLowerCase() == 'sold' ||
+        currentStage.toLowerCase() == 'selling' ||
+        currentStage.toLowerCase() == 'lactation' ||
+        currentStage.toLowerCase().contains('sell') ||
+        currentStage.toLowerCase().contains('lactat');
 
     showModalBottomSheet(
       context: context,
@@ -501,7 +511,9 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
+                          hog['tag_number'] != null && hog['tag_number'].toString().isNotEmpty
+                              ? hog['tag_number'].toString()
+                              : '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -789,7 +801,17 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
       );
     }
 
-    final visibleHogs = _effectiveHogs;
+    final allBatchHogs = _effectiveHogs;
+    final proj = _currentProject;
+    final List<String> targetTags = (proj?['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+
+    final visibleHogs = (_filterOnlyFundedHogs && targetTags.isNotEmpty)
+        ? allBatchHogs.where((h) {
+            final tag = (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString();
+            return targetTags.contains(tag);
+          }).toList()
+        : allBatchHogs;
+
     final int totalHogs = visibleHogs.length;
     final int healthyCount = visibleHogs.where((h) {
       final s = (h['health_status'] ?? 'Healthy').toString().toLowerCase();
@@ -883,14 +905,27 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                             ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'Raiser: $_effectiveRaiserName • $totalHogs Hogs',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: mutedColor,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                          Builder(
+                            builder: (_) {
+                              final proj = _currentProject;
+                              final targetType = (proj?['target_pig_type'] ?? '').toString().trim();
+                              final targetTags = (proj?['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+                              String extra = '';
+                              if (targetTags.isNotEmpty) {
+                                extra = ' • Funded: ${targetTags.join(', ')}';
+                              } else if (targetType.isNotEmpty && targetType.toLowerCase() != 'entire batch') {
+                                extra = ' • Funded: $targetType';
+                              }
+                              return Text(
+                                'Raiser: $_effectiveRaiserName • $totalHogs Hogs$extra',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: mutedColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -932,6 +967,119 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 ),
               ),
             ),
+
+            // ==================== HOGS FILTER (MY FUNDED HOGS vs ALL BATCH HOGS) ====================
+            if (targetTags.isNotEmpty && allBatchHogs.length > targetTags.length) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor, width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_filterOnlyFundedHogs) {
+                            setState(() {
+                              _filterOnlyFundedHogs = false;
+                              _selectedHogIndex = 0;
+                            });
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: !_filterOnlyFundedHogs
+                                ? (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFE2E8F0))
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.grid_view_rounded,
+                                size: 14,
+                                color: !_filterOnlyFundedHogs ? (isDark ? Colors.white : _brandColor) : mutedColor,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                strings.isFilipino
+                                    ? 'Lahat ng Baboy (${allBatchHogs.length})'
+                                    : 'All Batch Hogs (${allBatchHogs.length})',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.5,
+                                  fontWeight: !_filterOnlyFundedHogs ? FontWeight.w800 : FontWeight.w600,
+                                  color: !_filterOnlyFundedHogs
+                                      ? (isDark ? Colors.white : _brandColor)
+                                      : mutedColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!_filterOnlyFundedHogs) {
+                            setState(() {
+                              _filterOnlyFundedHogs = true;
+                              _selectedHogIndex = 0;
+                            });
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _filterOnlyFundedHogs
+                                ? (_successGreen.withValues(alpha: isDark ? 0.25 : 0.12))
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(9),
+                            border: _filterOnlyFundedHogs
+                                ? Border.all(
+                                    color: _successGreen.withValues(alpha: isDark ? 0.5 : 0.3),
+                                    width: 1,
+                                  )
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 14,
+                                color: _filterOnlyFundedHogs ? _successGreen : mutedColor,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                strings.isFilipino
+                                    ? 'Aking Baboy (${targetTags.length})'
+                                    : 'My Funded Hogs (${targetTags.length})',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.5,
+                                  fontWeight: _filterOnlyFundedHogs ? FontWeight.w800 : FontWeight.w600,
+                                  color: _filterOnlyFundedHogs
+                                      ? (isDark ? Colors.white : _brandColor)
+                                      : mutedColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // ==================== FEEDS STAGES TIMELINE CARD ====================
             Container(
@@ -1007,8 +1155,20 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                             final isSelected = _selectedHogIndex == idx;
                             final hIsSow = _getHogPigType(h, widget.hogType) == 'Sow';
                             final hStage = _getHogStage(h, widget.currentStage, hIsSow);
-                            final isHogDone = hStage.toLowerCase() == 'selling' || hStage.toLowerCase() == 'lactation';
-                            final hogDisplayName = '${strings.isFilipino ? "Baboy" : "Hog"} ${idx + 1}';
+                            final isHogDone = (h['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                                (h['status'] ?? '').toString().toLowerCase() == 'sold' ||
+                                hStage.toLowerCase() == 'selling' ||
+                                hStage.toLowerCase() == 'lactation' ||
+                                hStage.toLowerCase().contains('sell') ||
+                                hStage.toLowerCase().contains('lactat');
+                            final rawTag = (h['tag_number'] ?? 'HOG-${h['hog_id'] ?? (idx + 1)}').toString();
+                            final hogNum = rawTag.replaceAll(RegExp(r'[^0-9]'), '');
+                            final hogDisplayName = hogNum.isNotEmpty
+                                ? '${strings.isFilipino ? "Baboy" : "Hog"} $hogNum'
+                                : rawTag;
+                            final isPillHogFunded = targetTags
+                                .map((e) => e.toUpperCase().trim())
+                                .contains(rawTag.toUpperCase().trim());
 
                             return Expanded(
                               child: GestureDetector(
@@ -1020,17 +1180,24 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
-                                        : Colors.transparent,
+                                        : (isPillHogFunded
+                                            ? (isDark ? const Color(0xFF0F2B1D) : const Color(0xFFF0FDF4))
+                                            : Colors.transparent),
                                     borderRadius: BorderRadius.circular(9),
                                     border: isSelected
                                         ? Border.all(
                                             color: isDark ? Colors.white : _brandColor,
                                             width: 1.6,
                                           )
-                                        : Border.all(
-                                            color: Colors.transparent,
-                                            width: 1.6,
-                                          ),
+                                        : (isPillHogFunded
+                                            ? Border.all(
+                                                color: _successGreen.withValues(alpha: isDark ? 0.8 : 0.6),
+                                                width: 1.2,
+                                              )
+                                            : Border.all(
+                                                color: Colors.transparent,
+                                                width: 1.6,
+                                              )),
                                     boxShadow: isSelected
                                         ? [
                                             BoxShadow(
@@ -1052,7 +1219,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                             size: 12,
                                             color: isSelected
                                                 ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
-                                                : mutedColor,
+                                                : (isPillHogFunded ? _successGreen : mutedColor),
                                           ),
                                           const SizedBox(width: 3),
                                           Flexible(
@@ -1060,15 +1227,21 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                               hogDisplayName,
                                               style: GoogleFonts.plusJakartaSans(
                                                 fontSize: 11.5,
-                                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                fontWeight: isSelected || isPillHogFunded
+                                                    ? FontWeight.w800
+                                                    : FontWeight.w600,
                                                 color: isSelected
                                                     ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
-                                                    : mutedColor,
+                                                    : (isPillHogFunded ? _successGreen : mutedColor),
                                               ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
+                                          if (isPillHogFunded) ...[
+                                            const SizedBox(width: 2),
+                                            const Icon(Icons.check_circle_rounded, size: 9, color: _successGreen),
+                                          ],
                                         ],
                                       ),
                                       const SizedBox(height: 2),
@@ -1150,6 +1323,56 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 ),
               ],
             ),
+            if (targetTags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                decoration: BoxDecoration(
+                  color: _successGreen.withValues(alpha: isDark ? 0.18 : 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _successGreen.withValues(alpha: isDark ? 0.45 : 0.25),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.stars_rounded, size: 16, color: _successGreen),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11.5,
+                            color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF065F46),
+                          ),
+                          children: [
+                            TextSpan(
+                              text: strings.isFilipino ? 'Iyong Pinondohang Baboy: ' : 'Your Funded Hogs: ',
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            TextSpan(
+                              text: targetTags.join(', '),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextSpan(
+                              text: strings.isFilipino
+                                  ? ' (${targetTags.length} sa $totalHogs ay may berdeng highlight sa ibaba)'
+                                  : ' (${targetTags.length} of $totalHogs hogs highlighted in emerald below)',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: isDark ? Colors.white70 : const Color(0xFF047857),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
 
             if (visibleHogs.isEmpty) ...[
@@ -1186,175 +1409,320 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 final hogStage = _getHogStage(hog, widget.currentStage, isSow);
                 final isHogCompleted = hogStage.toLowerCase() == 'selling' || hogStage.toLowerCase() == 'lactation';
 
+                final targetHogTags = (_currentProject?['target_hog_tags'] as List?)
+                        ?.map((e) => e.toString().toUpperCase().trim())
+                        .toSet() ??
+                    {};
+                final targetPigType = (_currentProject?['target_pig_type'] ?? '')
+                    .toString()
+                    .toUpperCase()
+                    .trim();
+                final hogTagStr = (hog['tag_number'] ?? 'HOG-${index + 1}').toString();
+                final hogTagUpper = hogTagStr.toUpperCase().trim();
+                final bool isFundedHog = targetHogTags.contains(hogTagUpper) ||
+                    (targetPigType.isNotEmpty &&
+                        (targetPigType == 'ENTIRE BATCH' ||
+                            (isSow && targetPigType.contains('SOW')) ||
+                            (!isSow && targetPigType.contains('FATTEN'))));
+
                 return GestureDetector(
                   onTap: () {
                     setState(() => _selectedHogIndex = index);
                     _showHogDetailModal(context, hog, index, widget.hogType, widget.currentStage);
                   },
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 14),
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
-                      color: surfaceBg,
+                      color: isFundedHog
+                          ? (isDark ? const Color(0xFF092617) : const Color(0xFFF0FDF4))
+                          : surfaceBg,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: _selectedHogIndex == index
-                            ? (isDark ? Colors.white : _brandColor)
-                            : borderColor,
-                        width: _selectedHogIndex == index ? 1.8 : 1,
+                        color: isFundedHog
+                            ? _successGreen
+                            : (_selectedHogIndex == index
+                                ? (isDark ? Colors.white : _brandColor)
+                                : borderColor),
+                        width: isFundedHog ? 2.2 : (_selectedHogIndex == index ? 1.8 : 1),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: _selectedHogIndex == index
-                              ? (isDark
-                                  ? Colors.white.withValues(alpha: 0.12)
-                                  : _brandColor.withValues(alpha: 0.12))
-                              : Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                          blurRadius: _selectedHogIndex == index ? 10 : 8,
-                          offset: const Offset(0, 3),
+                          color: isFundedHog
+                              ? _successGreen.withValues(alpha: isDark ? 0.38 : 0.22)
+                              : (_selectedHogIndex == index
+                                  ? (isDark
+                                      ? Colors.white.withValues(alpha: 0.12)
+                                      : _brandColor.withValues(alpha: 0.12))
+                                  : Colors.black.withValues(alpha: isDark ? 0.2 : 0.02)),
+                          blurRadius: isFundedHog ? 14 : (_selectedHogIndex == index ? 10 : 8),
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: borderColor,
-                              width: 1,
-                            ),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.pets_rounded,
-                              color: isDark ? Colors.white : _brandColor,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: textColor,
-                                ),
+                        // Prominent Header Banner for Funded Hogs
+                        if (isFundedHog)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7.5),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isDark
+                                    ? [const Color(0xFF047857), const Color(0xFF065F46)]
+                                    : [_successGreen, const Color(0xFF059669)],
                               ),
-                              const SizedBox(height: 5),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  // Track Badge
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: borderColor,
-                                        width: 0.8,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      isSow ? strings.sowBreedTag : strings.fatteningTag,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: isDark ? const Color(0xFFF1F5F9) : _brandColor,
-                                      ),
-                                    ),
-                                  ),
-                                  // Stage Badge
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                    decoration: BoxDecoration(
-                                      color: isHogCompleted
-                                          ? _successGreen.withValues(alpha: isDark ? 0.22 : 0.12)
-                                          : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF8FAFC)),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: isHogCompleted
-                                            ? _successGreen.withValues(alpha: isDark ? 0.6 : 0.4)
-                                            : borderColor,
-                                        width: 0.8,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isHogCompleted) ...[
-                                          const Icon(Icons.check_rounded, size: 10, color: _successGreen),
-                                          const SizedBox(width: 3),
-                                        ],
-                                        Text(
-                                          isHogCompleted ? '$hogStage • Complete' : hogStage,
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: isHogCompleted
-                                                ? _successGreen
-                                                : (isDark ? const Color(0xFFE2E8F0) : _brandColor),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (weight != null && weight.isNotEmpty) ...[
-                                const SizedBox(height: 5),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.stars_rounded, size: 16, color: Colors.white),
+                                const SizedBox(width: 6),
                                 Text(
-                                  weight,
+                                  strings.isFilipino ? 'IYONG PINONDOHANG ALAGA' : 'YOUR FUNDED HOG',
                                   style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: mutedColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.22),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.verified_rounded, size: 10.5, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        strings.isFilipino ? 'NAKA-ALLOCATE SA IYO' : 'DIRECT ALLOCATION',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                          letterSpacing: 0.4,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  // Leading Avatar: Solid Emerald with white verified icon for funded hogs
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: isFundedHog
+                                          ? _successGreen
+                                          : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9)),
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: isFundedHog
+                                          ? [
+                                              BoxShadow(
+                                                color: _successGreen.withValues(alpha: 0.35),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : null,
+                                      border: Border.all(
+                                        color: isFundedHog
+                                            ? _successGreen
+                                            : borderColor,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        isFundedHog ? Icons.verified_rounded : Icons.pets_rounded,
+                                        color: isFundedHog
+                                            ? Colors.white
+                                            : (isDark ? Colors.white : _brandColor),
+                                        size: 21,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              hog['tag_number'] != null && hog['tag_number'].toString().isNotEmpty
+                                                  ? hog['tag_number'].toString()
+                                                  : '${strings.isFilipino ? "Baboy" : "Hog"} ${index + 1}',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w800,
+                                                color: isFundedHog
+                                                    ? (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46))
+                                                    : textColor,
+                                              ),
+                                            ),
+                                            if (isFundedHog) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                                decoration: BoxDecoration(
+                                                  color: isDark ? const Color(0xFF047857) : _successGreen,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.stars_rounded, size: 10.5, color: Colors.white),
+                                                    const SizedBox(width: 3),
+                                                    Text(
+                                                      strings.isFilipino ? 'PINONDOHAN MO' : 'MY ALLOCATION',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 9.5,
+                                                        fontWeight: FontWeight.w800,
+                                                        color: Colors.white,
+                                                        letterSpacing: 0.4,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: [
+                                            // Track Badge
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                              decoration: BoxDecoration(
+                                                color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: borderColor,
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                isSow ? strings.sowBreedTag : strings.fatteningTag,
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isDark ? const Color(0xFFF1F5F9) : _brandColor,
+                                                ),
+                                              ),
+                                            ),
+                                            // Stage Badge
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                              decoration: BoxDecoration(
+                                                color: isHogCompleted
+                                                    ? _successGreen.withValues(alpha: isDark ? 0.22 : 0.12)
+                                                    : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : const Color(0xFFF8FAFC)),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: isHogCompleted
+                                                      ? _successGreen.withValues(alpha: isDark ? 0.6 : 0.4)
+                                                      : borderColor,
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (isHogCompleted) ...[
+                                                    const Icon(Icons.check_rounded, size: 10, color: _successGreen),
+                                                    const SizedBox(width: 3),
+                                                  ],
+                                                  Text(
+                                                    isHogCompleted ? '$hogStage • Complete' : hogStage,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: isHogCompleted
+                                                          ? _successGreen
+                                                          : (isDark ? const Color(0xFFE2E8F0) : _brandColor),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (weight != null && weight.isNotEmpty) ...[
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            weight,
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w500,
+                                              color: mutedColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isHealthy
+                                              ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F5E9))
+                                              : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFEBEE)),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isHealthy
+                                                ? _successGreen.withValues(alpha: isDark ? 0.5 : 0.3)
+                                                : _dangerRed.withValues(alpha: isDark ? 0.5 : 0.3),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isHealthy ? strings.healthy : rawStatus,
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: isHealthy ? _successGreen : _dangerRed,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Icon(Icons.chevron_right_rounded, size: 18, color: mutedColor),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              _buildTimeline(
+                                stages: isSow ? _sowStages : _fatteningStages,
+                                activeStage: hogStage,
+                                isSow: isSow,
+                                isDark: isDark,
+                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: isHealthy
-                                    ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F5E9))
-                                    : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFEBEE)),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isHealthy
-                                      ? _successGreen.withValues(alpha: isDark ? 0.5 : 0.3)
-                                      : _dangerRed.withValues(alpha: isDark ? 0.5 : 0.3),
-                                  width: 0.8,
-                                ),
-                              ),
-                              child: Text(
-                                isHealthy ? strings.healthy : rawStatus,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: isHealthy ? _successGreen : _dangerRed,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Icon(Icons.chevron_right_rounded, size: 18, color: mutedColor),
-                          ],
                         ),
                       ],
                     ),

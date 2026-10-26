@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/services/app_update_service.dart';
+import '../services/connectivity_service.dart';
 import '../utils/app_strings.dart';
 
 class CheckForUpdatesTile extends StatefulWidget {
@@ -72,122 +73,129 @@ class _CheckForUpdatesTileState extends State<CheckForUpdatesTile> {
     final vPad = widget.verticalPadding ?? 14.0;
     final radius = widget.borderRadius ?? const BorderRadius.vertical(bottom: Radius.circular(18));
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: _isChecking ? null : _handleCheck,
-        borderRadius: radius,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
-          child: Row(
-            children: [
-              // Icon Box
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: widget.isDark
-                      ? Colors.white.withValues(alpha: 0.09)
-                      : const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(11),
-                  border: Border.all(
-                    color: widget.isDark
-                        ? Colors.white.withValues(alpha: 0.16)
-                        : const Color(0xFFDBEAFE),
-                    width: 0.8,
-                  ),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.system_update_rounded,
-                    color: widget.isDark ? Colors.white : brandColor,
-                    size: 19,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Title & Subtitle
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.checkForUpdates,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: widget.labelColor,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _isChecking
-                          ? strings.checkingForUpdates
-                          : '${strings.versionLabel} $_currentVersion',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: widget.subtitleColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Trailing action / badge / spinner
-              if (_isChecking)
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.isDark ? Colors.white70 : brandColor,
-                    ),
-                  ),
-                )
-              else
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
+    return ValueListenableBuilder<bool>(
+      valueListenable: ConnectivityService.isOnline,
+      builder: (context, isOnline, _) {
+        return Material(
+          color: Colors.transparent,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: _isChecking ? null : _handleCheck,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+              child: Row(
+                children: [
+                  // Icon Box
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: widget.isDark
+                          ? Colors.white.withValues(alpha: 0.09)
+                          : const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
                         color: widget.isDark
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: widget.isDark
-                              ? Colors.white.withValues(alpha: 0.12)
-                              : const Color(0xFFE2E8F0),
-                          width: 0.8,
+                            ? Colors.white.withValues(alpha: 0.16)
+                            : const Color(0xFFDBEAFE),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        isOnline ? Icons.system_update_rounded : Icons.wifi_off_rounded,
+                        color: widget.isDark ? Colors.white : brandColor,
+                        size: 19,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Title & Subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          strings.checkForUpdates,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: widget.labelColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _isChecking
+                              ? strings.checkingForUpdates
+                              : (isOnline
+                                  ? '${strings.versionLabel} $_currentVersion'
+                                  : strings.offlineStatus),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            color: widget.subtitleColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Trailing action / badge / spinner
+                  if (_isChecking)
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          widget.isDark ? Colors.white70 : brandColor,
                         ),
                       ),
-                      child: Text(
-                        'v$_currentVersion',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: widget.isDark
+                                ? const Color(0xFF1B2638)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: widget.isDark
+                                  ? const Color(0xFF28354A)
+                                  : const Color(0xFFE2E8F0),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            isOnline ? 'v$_currentVersion' : 'Offline',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: widget.subtitleColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
                           color: widget.subtitleColor,
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 14,
-                      color: widget.subtitleColor,
-                    ),
-                  ],
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

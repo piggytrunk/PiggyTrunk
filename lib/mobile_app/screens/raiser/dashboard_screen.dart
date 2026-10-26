@@ -123,9 +123,53 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     super.dispose();
   }
 
+  int _mapStageNameToId(String stage, bool isBreeding) {
+    final s = stage.trim().toLowerCase();
+    if (s == 'booster') return 1;
+    if (s == 'pre-starter' || s == 'pre starter') return 2;
+    if (s == 'starter') return 3;
+    if (s == 'grower') return 4;
+    if (s == 'finisher' || s == 'breeder') return 5;
+    if (s == 'selling' || s == 'lactation') return 6;
+    return 1;
+  }
+
+  String _mapStageIdToName(dynamic raw, bool isSow, [String fallback = 'Booster']) {
+    if (raw == null) return fallback;
+    final s = raw.toString().trim();
+    final id = int.tryParse(s);
+    if (id != null) {
+      final fatteningStages = const [
+        'Booster',
+        'Pre-Starter',
+        'Starter',
+        'Grower',
+        'Finisher',
+        'Selling',
+      ];
+      final sowStages = const [
+        'Booster',
+        'Pre-Starter',
+        'Starter',
+        'Grower',
+        'Breeder',
+        'Lactation',
+      ];
+      final list = isSow ? sowStages : fatteningStages;
+      if (id >= 1 && id <= list.length) return list[id - 1];
+    }
+    if (s.isNotEmpty &&
+        s != 'null' &&
+        s != 'N/A' &&
+        int.tryParse(s) == null) {
+      return s;
+    }
+    return fallback;
+  }
+
   Future<void> _fetchRaiserData({bool showLoading = true}) async {
     if (!mounted) return;
-    if (showLoading) setState(() => _isLoading = true);
+    if (showLoading && _activeAssignments.isEmpty) setState(() => _isLoading = true);
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
@@ -299,6 +343,111 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         }
       }
 
+      // Pre-fetch partner investments, profiles, and notifications for partner investor attribution
+      List<dynamic> partnerInvestmentsRaw = [];
+      try {
+        partnerInvestmentsRaw = await Supabase.instance.client
+            .from('investments')
+            .select('*');
+      } catch (e) {
+        debugPrint('Notice fetching investments: $e');
+      }
+
+      List<dynamic> partnerInvestorsRaw = [];
+      try {
+        partnerInvestorsRaw = await Supabase.instance.client
+            .from('partner_investors')
+            .select('*');
+      } catch (_) {}
+
+      List<dynamic> appUsersRaw = [];
+      try {
+        appUsersRaw = await Supabase.instance.client
+            .from('app_users')
+            .select('user_id, name, email');
+      } catch (_) {
+        try {
+          appUsersRaw = await Supabase.instance.client
+              .from('users')
+              .select('user_id, name, email');
+        } catch (_) {}
+      }
+
+      final Map<String, Map<String, dynamic>> usersMap = {
+        for (var u in appUsersRaw)
+          (u['user_id'] ?? '').toString(): Map<String, dynamic>.from(u)
+      };
+
+      final Map<String, Map<String, dynamic>> partnersMap = {
+        for (var p in partnerInvestorsRaw)
+          (p['partner_investor_id'] ?? p['id'] ?? '').toString():
+              Map<String, dynamic>.from(p)
+      };
+
+      List<dynamic> investmentNotifsRaw = [];
+      try {
+        investmentNotifsRaw = await Supabase.instance.client
+            .from('raiser_notifications')
+            .select('*')
+            .eq('hog_raiser_id', raiserId)
+            .eq('type', 'investment');
+      } catch (_) {}
+
+      final List<Map<String, dynamic>> parsedPartnerInvestments = [];
+      for (var row in partnerInvestmentsRaw) {
+        if (row is! Map) continue;
+        final pMap = Map<String, dynamic>.from(row);
+        final pInvId = (pMap['investment_id'] ?? '').toString();
+        final pPartId = (pMap['partner_investor_id'] ?? '').toString();
+        final pBatchId = (pMap['batch_id'] ?? '').toString();
+        final pAmt = (pMap['amount'] as num?)?.toDouble() ?? 0.0;
+        final pStatus = (pMap['status'] ?? 'active').toString().toLowerCase();
+
+        if (pStatus == 'cancelled' || pStatus == 'declined') continue;
+
+        final partnerRec = partnersMap[pPartId];
+        final userId = (partnerRec?['user_id'] ?? '').toString();
+        final userRec = usersMap[userId];
+        String partnerName = (userRec?['name'] ?? userRec?['email'] ?? '').toString().trim();
+
+        List<String> targetHogTags = [];
+        String targetPigType = 'Selected Hogs';
+        for (var n in investmentNotifsRaw) {
+          final meta = n['metadata'];
+          if (meta is Map) {
+            final mBId = meta['batch_id']?.toString();
+            final mAmt = (meta['amount'] as num?)?.toDouble();
+            if (mBId == pBatchId && (mAmt == null || (mAmt - pAmt).abs() < 0.01)) {
+              if (meta['partner_name'] != null && meta['partner_name'].toString().trim().isNotEmpty) {
+                partnerName = meta['partner_name'].toString().trim();
+              }
+              if (meta['target_pig_type'] != null) {
+                targetPigType = meta['target_pig_type'].toString().trim();
+              }
+              if (meta['target_hog_tags'] is List) {
+                targetHogTags = List<String>.from((meta['target_hog_tags'] as List).map((e) => e.toString()));
+              }
+              break;
+            }
+          }
+        }
+
+        if (partnerName.isEmpty) {
+          partnerName = 'Partner Investor #$pPartId';
+        }
+
+        parsedPartnerInvestments.add({
+          'investment_id': pInvId,
+          'partner_investor_id': pPartId,
+          'partner_name': partnerName,
+          'batch_id': pBatchId,
+          'amount': pAmt,
+          'target_hog_tags': targetHogTags,
+          'target_pig_type': targetPigType,
+          'status': pStatus,
+        });
+      }
+
       double totalCapital = 0.0;
       final List<String> investmentHogTypes = [];
       for (var row in invRows) {
@@ -384,34 +533,81 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         }
       }
 
-      // Self-healing: If assignments is empty but investment_records has batch info for this raiser
-      if (assignments.isEmpty && invRows.isNotEmpty) {
-        final latestInvWithBatch = invRows.reversed.firstWhere(
-          (inv) {
-            final st = (inv['stage'] ?? inv['status'] ?? '').toString().toLowerCase();
-            final bId = (inv['batch_id'] ?? '').toString();
-            final b = allBatchesMap[bId];
-            final bSt = (b?['status'] ?? b?['batch_status'] ?? '').toString().toLowerCase();
-            final isDone = st == 'completed' || st == 'finished' || st == 'archived' ||
-                bSt == 'finished' || bSt == 'completed' || bSt == 'archived';
-            return !isDone && (inv['batch_name'] ?? '').toString().trim().isNotEmpty && inv['batch_name'] != 'Unassigned';
-          },
-          orElse: () => {},
-        );
-        if (latestInvWithBatch.isNotEmpty) {
-          final bName = (latestInvWithBatch['batch_name'] ?? 'Active Batch')
-              .toString();
-          final bId = latestInvWithBatch['batch_id'];
+      // Self-healing & Duality: Ensure all active investments have corresponding assignment(s)
+      for (var inv in invRows) {
+        final st = (inv['stage'] ?? inv['status'] ?? '').toString().toLowerCase();
+        final bId = (inv['batch_id'] ?? '').toString();
+        final b = allBatchesMap[bId];
+        final bSt = (b?['status'] ?? b?['batch_status'] ?? '').toString().toLowerCase();
+        final isDone = st == 'completed' || st == 'finished' || st == 'archived' ||
+            bSt == 'finished' || bSt == 'completed' || bSt == 'archived';
+        if (isDone) continue;
+
+        final bName = (inv['batch_name'] ?? (b?['batch_name'] ?? 'Active Batch')).toString().trim();
+        if (bName.isEmpty || bName == 'Unassigned') continue;
+
+        final rawHType = (inv['hog_type'] ?? 'Fattening').toString().trim().toLowerCase();
+        final bool invIsSow = rawHType.contains('sow') || rawHType.contains('breed');
+        final bool invIsFat = rawHType.contains('fatten') || (!invIsSow);
+
+        // Find existing assignments for this batch
+        final batchAssigns = assignments.where((a) {
+          final aBId = a['batch_id']?.toString();
+          final aBName = (a['batch_name'] ?? a['batches']?['batch_name'] ?? '').toString().trim();
+          return (bId.isNotEmpty && aBId == bId) || (aBName.isNotEmpty && aBName.toLowerCase() == bName.toLowerCase());
+        }).toList();
+
+        final hasFatAssign = batchAssigns.any((a) {
+          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+          return t.contains('fatten');
+        });
+        final hasSowAssign = batchAssigns.any((a) {
+          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+          return t.contains('sow') || t.contains('breed');
+        });
+
+        int nextAssignId = 900000;
+        for (var a in assignments) {
+          final id = a['assignment_id'] ?? a['id'];
+          if (id is num && id >= nextAssignId) {
+            nextAssignId = id.toInt() + 1;
+          }
+        }
+
+        if (invIsFat && !hasFatAssign) {
           assignments.add({
-            'assignment_id': null,
-            'batch_id': bId,
+            'assignment_id': nextAssignId++,
+            'batch_id': bId.isNotEmpty ? bId : null,
             'batch_name': bName,
             'status': 'active',
             'is_cycle_completed': false,
             'batches': {'batch_id': bId, 'batch_name': bName, 'status': 'Active'},
-            'pig_type': latestInvWithBatch['hog_type'] ?? 'Fattening',
-            'lifecycle_stage': latestInvWithBatch['stage'] ?? 'Booster',
+            'pig_type': 'Fattening',
+            'lifecycle_stage': inv['stage'] ?? 'Booster',
           });
+        }
+
+        if (invIsSow && !hasSowAssign) {
+          assignments.add({
+            'assignment_id': nextAssignId++,
+            'batch_id': bId.isNotEmpty ? bId : null,
+            'batch_name': bName,
+            'status': 'active',
+            'is_cycle_completed': false,
+            'batches': {'batch_id': bId, 'batch_name': bName, 'status': 'Active'},
+            'pig_type': 'Sow',
+            'lifecycle_stage': inv['stage'] ?? 'Booster',
+          });
+        }
+      }
+
+      // Ensure every assignment has a valid numeric assignment_id
+      int fallbackAssignIdCounter = 910000;
+      for (var a in assignments) {
+        if (a['assignment_id'] == null && a['id'] != null && a['id'] is num) {
+          a['assignment_id'] = a['id'];
+        } else if (a['assignment_id'] == null) {
+          a['assignment_id'] = fallbackAssignIdCounter++;
         }
       }
 
@@ -457,7 +653,256 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           )
           .toList();
 
+      // 1. Resolve production type and stage for every hog fetched from DB
+      for (int i = 0; i < hogs.length; i++) {
+        final h = hogs[i];
+        final aId = h['assignment_id']?.toString();
+        final assign = assignments.firstWhere(
+          (a) => (a['assignment_id'] ?? a['id'])?.toString() == aId,
+          orElse: () => <String, dynamic>{},
+        );
+        final aType = (assign['hog_types']?['type_name'] ?? assign['pig_type'] ?? '').toString().toLowerCase();
+        final isBreed = aType.contains('sow') || aType.contains('breed');
+        h['pig_type'] = isBreed ? 'Sow' : 'Fattening';
+        h['type_name'] = h['pig_type'];
+
+        final rawStage = h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'];
+        final stageName = _mapStageIdToName(rawStage, isBreed, 'Booster');
+        h['stage'] = stageName;
+        h['lifecycle_stage'] = stageName;
+      }
+
+      // Ensure the total hog count matches active investments/assignments (synthesize missing hogs if DB is incomplete or empty)
+      if (investmentHogTypes.isNotEmpty || assignments.isNotEmpty) {
+        dynamic fatAssignId;
+        dynamic sowAssignId;
+
+        // First, check actual hogs already in memory/DB for their assignment IDs
+        for (var h in hogs) {
+          final t = (h['pig_type'] ?? h['type_name'] ?? '').toString().toLowerCase();
+          final aId = h['assignment_id'];
+          if (t.contains('fatten') && fatAssignId == null && aId != null) {
+            fatAssignId = aId;
+          } else if ((t.contains('sow') || t.contains('breed')) && sowAssignId == null && aId != null) {
+            sowAssignId = aId;
+          }
+        }
+
+        for (var a in assignments) {
+          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+          final id = a['assignment_id'] ?? a['id'];
+          if (t.contains('fatten') && fatAssignId == null) {
+            fatAssignId = id;
+          } else if ((t.contains('sow') || t.contains('breed')) && sowAssignId == null) {
+            sowAssignId = id;
+          }
+        }
+        final defaultAssignId = assignments.isNotEmpty ? (assignments.first['assignment_id'] ?? assignments.first['id']) : 1;
+        fatAssignId ??= defaultAssignId;
+        sowAssignId ??= defaultAssignId;
+
+        final List<String> typesToSynthesize = List<String>.from(investmentHogTypes);
+        if (typesToSynthesize.isEmpty) {
+          for (var a in assignments) {
+            final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+            final isSow = t.contains('sow') || t.contains('breed');
+            final heads = (a['assigned_heads'] as num?)?.toInt() ?? 1;
+            for (int h = 0; h < heads; h++) {
+              typesToSynthesize.add(isSow ? 'Sow' : 'Fattening');
+            }
+          }
+        }
+
+        // Strictly prioritize Fattening first of all the time
+        typesToSynthesize.sort((a, b) {
+          final aFat = a.toLowerCase().contains('fatten');
+          final bFat = b.toLowerCase().contains('fatten');
+          if (aFat && !bFat) return -1;
+          if (!aFat && bFat) return 1;
+          return 0;
+        });
+
+        int expectedFatCount = typesToSynthesize.where((t) => t.toLowerCase().contains('fatten')).length;
+        int expectedSowCount = typesToSynthesize.length - expectedFatCount;
+
+        // If counts not determined from investments/assignments, default based on profile
+        if (expectedFatCount == 0 && expectedSowCount == 0) {
+          final pType = (raiser['pig_type'] ?? '').toString().toLowerCase();
+          if (pType.contains('fatten') && (pType.contains('sow') || pType.contains('breed'))) {
+            expectedFatCount = 3;
+            expectedSowCount = 3;
+          } else if (pType.contains('sow') || pType.contains('breed')) {
+            expectedSowCount = 3;
+          } else {
+            expectedFatCount = 3;
+          }
+        }
+
+        // Separate existing database hogs into Fattening and Sow, sorted by hog_id
+        final actualFatHogs = hogs.where((h) {
+          final t = (h['pig_type'] ?? h['type_name'] ?? '').toString().toLowerCase();
+          return t.contains('fatten');
+        }).toList()
+          ..sort((a, b) {
+            final idA = (a['hog_id'] as num?)?.toInt() ?? 0;
+            final idB = (b['hog_id'] as num?)?.toInt() ?? 0;
+            return idA.compareTo(idB);
+          });
+
+        final actualSowHogs = hogs.where((h) {
+          final t = (h['pig_type'] ?? h['type_name'] ?? '').toString().toLowerCase();
+          return t.contains('sow') || t.contains('breed');
+        }).toList()
+          ..sort((a, b) {
+            final idA = (a['hog_id'] as num?)?.toInt() ?? 0;
+            final idB = (b['hog_id'] as num?)?.toInt() ?? 0;
+            return idA.compareTo(idB);
+          });
+
+        if (expectedFatCount < actualFatHogs.length) expectedFatCount = actualFatHogs.length;
+        if (expectedSowCount < actualSowHogs.length) expectedSowCount = actualSowHogs.length;
+
+        final missingFat = (expectedFatCount - actualFatHogs.length).clamp(0, 9999);
+        final missingSow = (expectedSowCount - actualSowHogs.length).clamp(0, 9999);
+
+        int maxHogId = 0;
+        for (var h in hogs) {
+          final id = h['hog_id'];
+          if (id is num && id > maxHogId) maxHogId = id.toInt();
+        }
+
+        SharedPreferences? cachedPrefs;
+        try {
+          cachedPrefs = await SharedPreferences.getInstance();
+        } catch (_) {}
+
+        // --- DEDICATED FAT-SLOT ALLOCATION: strictly #1, #2, ... #expectedFatCount ---
+        for (int i = 0; i < actualFatHogs.length; i++) {
+          actualFatHogs[i]['tag_number'] = '#${i + 1}';
+        }
+
+        final List<Map<String, dynamic>> supplementedFatHogs = [];
+        for (int i = 0; i < missingFat; i++) {
+          final targetAssignId = fatAssignId;
+          final tagNum = actualFatHogs.length + i + 1;
+          final tagStr = '#$tagNum';
+          final cachedStage = cachedPrefs?.getString('hog_stage_${targetAssignId}_$tagStr') ??
+              cachedPrefs?.getString('hog_stage_${targetAssignId}_$tagNum');
+          final effectiveStage = cachedStage ?? 'Booster';
+          final int effectiveStageId = _mapStageNameToId(effectiveStage, false);
+          final String finalStageName = _mapStageIdToName(effectiveStageId, false, 'Booster');
+
+          if (cachedStage != null && cachedStage != 'Booster' && targetAssignId != null) {
+            final parsedAssignId = int.tryParse(targetAssignId.toString());
+            if (parsedAssignId != null && parsedAssignId < 900000) {
+              Supabase.instance.client
+                  .from('hogs')
+                  .insert({
+                    'assignment_id': parsedAssignId,
+                    'stage_id': effectiveStageId,
+                    'status': 'active',
+                    'health_status': 'Healthy',
+                    'last_updated': DateTime.now().toIso8601String(),
+                  })
+                  .select('hog_id')
+                  .maybeSingle()
+                  .then((res) {
+                    if (res != null && res['hog_id'] != null) {
+                      debugPrint('Synced cached fat hog stage to DB: ${res['hog_id']}');
+                    }
+                  }).catchError((e) {
+                    debugPrint('Notice syncing cached fat hog: $e');
+                  });
+            }
+          }
+
+          supplementedFatHogs.add({
+            'hog_id': ++maxHogId,
+            'tag_number': tagStr,
+            'pig_type': 'Fattening',
+            'type_name': 'Fattening',
+            'status': 'active',
+            'health_status': 'Healthy',
+            'lifecycle_stage': finalStageName,
+            'stage_id': effectiveStageId,
+            'stage': finalStageName,
+            'weight': 15.0,
+            'current_weight': 15.0,
+            'assignment_id': targetAssignId,
+            'last_updated': DateTime.now().toIso8601String(),
+          });
+        }
+
+        // --- DEDICATED SOW-SLOT ALLOCATION: strictly #(expectedFatCount + 1), ... ---
+        final int sowBaseTagNum = expectedFatCount;
+        for (int i = 0; i < actualSowHogs.length; i++) {
+          actualSowHogs[i]['tag_number'] = '#${sowBaseTagNum + i + 1}';
+        }
+
+        final List<Map<String, dynamic>> supplementedSowHogs = [];
+        for (int i = 0; i < missingSow; i++) {
+          final targetAssignId = sowAssignId;
+          final tagNum = sowBaseTagNum + actualSowHogs.length + i + 1;
+          final tagStr = '#$tagNum';
+          final cachedStage = cachedPrefs?.getString('hog_stage_${targetAssignId}_$tagStr') ??
+              cachedPrefs?.getString('hog_stage_${targetAssignId}_$tagNum');
+          final effectiveStage = cachedStage ?? 'Booster';
+          final int effectiveStageId = _mapStageNameToId(effectiveStage, true);
+          final String finalStageName = _mapStageIdToName(effectiveStageId, true, 'Booster');
+
+          if (cachedStage != null && cachedStage != 'Booster' && targetAssignId != null) {
+            final parsedAssignId = int.tryParse(targetAssignId.toString());
+            if (parsedAssignId != null && parsedAssignId < 900000) {
+              Supabase.instance.client
+                  .from('hogs')
+                  .insert({
+                    'assignment_id': parsedAssignId,
+                    'stage_id': effectiveStageId,
+                    'status': 'active',
+                    'health_status': 'Healthy',
+                    'last_updated': DateTime.now().toIso8601String(),
+                  })
+                  .select('hog_id')
+                  .maybeSingle()
+                  .then((res) {
+                    if (res != null && res['hog_id'] != null) {
+                      debugPrint('Synced cached sow hog stage to DB: ${res['hog_id']}');
+                    }
+                  }).catchError((e) {
+                    debugPrint('Notice syncing cached sow hog: $e');
+                  });
+            }
+          }
+
+          supplementedSowHogs.add({
+            'hog_id': ++maxHogId,
+            'tag_number': tagStr,
+            'pig_type': 'Sow',
+            'type_name': 'Sow',
+            'status': 'active',
+            'health_status': 'Healthy',
+            'lifecycle_stage': finalStageName,
+            'stage_id': effectiveStageId,
+            'stage': finalStageName,
+            'weight': 15.0,
+            'current_weight': 15.0,
+            'assignment_id': targetAssignId,
+            'last_updated': DateTime.now().toIso8601String(),
+          });
+        }
+
+        hogs = [
+          ...actualFatHogs,
+          ...supplementedFatHogs,
+          ...actualSowHogs,
+          ...supplementedSowHogs,
+        ];
+      }
+
       hogs.sort((a, b) {
+        final aTag = int.tryParse((a['tag_number'] ?? '').toString().replaceAll('#', '')) ?? 0;
+        final bTag = int.tryParse((b['tag_number'] ?? '').toString().replaceAll('#', '')) ?? 0;
+        if (aTag != 0 && bTag != 0) return aTag.compareTo(bTag);
         final aId = a['hog_id'] as num? ?? 0;
         final bId = b['hog_id'] as num? ?? 0;
         return aId.compareTo(bId);
@@ -567,28 +1012,24 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
         final bool isBatchConcluded = bStatus == 'completed' || bStatus == 'sold' || bStatus == 'finished' || bStatus == 'harvested' || bStatus == 'archived';
 
-        if (isBatchConcluded || assignStatus == 'completed' || assignStatus == 'finished') {
-          a['is_cycle_completed'] = true;
-        } else if (assignHogs.isNotEmpty) {
-          a['is_cycle_completed'] = !hasLivingActiveHogs;
-        } else if (assignStatus == 'active' || hasLivingActiveHogs) {
+        // Business logic: If ANY living active hog exists in this assignment, cycle CANNOT be completed!
+        if (hasLivingActiveHogs) {
           a['is_cycle_completed'] = false;
+        } else if (assignHogs.isNotEmpty && assignHogs.every((h) {
+          final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
+          final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+          final sId = int.tryParse(s);
+          final bool isTerminal = hStatus == 'completed' ||
+              (isSow
+                  ? (s == 'lactation' || s == '6' || s.contains('lactat'))
+                  : (s == 'selling' || s == 'sold' || s == '6' || s.contains('sell')));
+          return isTerminal || (sId != null && sId >= 6);
+        })) {
+          a['is_cycle_completed'] = true;
+        } else if (isBatchConcluded || assignStatus == 'completed' || assignStatus == 'finished') {
+          a['is_cycle_completed'] = true;
         } else {
-          final assignStage = (a['lifecycle_stage'] ?? a['current_stage'] ?? '')
-              .toString()
-              .trim()
-              .toLowerCase();
-          bool stageCompleted = false;
-          if (isSow &&
-              (assignStage == 'lactation' || assignStage.contains('lactat'))) {
-            stageCompleted = true;
-          } else if (!isSow &&
-              (assignStage == 'selling' ||
-                  assignStage == 'sold' ||
-                  assignStage.contains('sell'))) {
-            stageCompleted = true;
-          }
-          a['is_cycle_completed'] = stageCompleted;
+          a['is_cycle_completed'] = false;
         }
       }
 
@@ -718,18 +1159,95 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           matchingInvs = invRows;
         }
 
-        double assignCapital = 0.0;
+        double adminCapital = 0.0;
         for (var row in matchingInvs) {
           final rowCap = (row['initial_capital'] as num?)?.toDouble() ?? 0.0;
           final rawHType = (row['hog_type'] ?? '').toString().toLowerCase();
           final bool rowHasSow = rawHType.contains('sow') || rawHType.contains('breed');
           final bool rowHasFat = rawHType.contains('fatten');
           if (rowHasSow && rowHasFat) {
-            assignCapital += rowCap / 2.0;
+            adminCapital += rowCap / 2.0;
           } else {
-            assignCapital += rowCap;
+            adminCapital += rowCap;
           }
         }
+
+        // Match partner investments for this assignment
+        final assignHogs = hogs.where((h) => (h['assignment_id'] ?? '').toString() == aId).toList();
+        final assignTagNums = assignHogs.map((h) {
+          final t = (h['tag_number'] ?? h['tag_id'] ?? h['rfid_tag'] ?? '').toString();
+          return t.replaceAll(RegExp(r'\D'), '');
+        }).where((t) => t.isNotEmpty).toSet();
+
+        final List<Map<String, dynamic>> assignPartnerInvs = [];
+        double partnerCapital = 0.0;
+
+        final sameBatchAssigns = assignments
+            .where((x) => (x['batch_id'] ?? '').toString() == aBatchId)
+            .toList();
+
+        for (var pInv in parsedPartnerInvestments) {
+          final pBatchId = pInv['batch_id']?.toString();
+          final bool isBatchMatch = (aBatchId != null && pBatchId == aBatchId) ||
+              (aBatchName.isNotEmpty &&
+                  (allBatchesMap[pBatchId]?['batch_name'] ?? '')
+                          .toString()
+                          .trim()
+                          .toLowerCase() ==
+                      aBatchName);
+
+          if (!isBatchMatch) continue;
+
+          final double pAmt = (pInv['amount'] as num?)?.toDouble() ?? 0.0;
+          final targetTags = List<String>.from(pInv['target_hog_tags'] ?? []);
+          final targetTagNums = targetTags
+              .map((t) => t.replaceAll(RegExp(r'\D'), ''))
+              .where((t) => t.isNotEmpty)
+              .toSet();
+
+          final int matchingHogCount = targetTagNums.intersection(assignTagNums).length;
+
+          double allocatedAmount = 0.0;
+          List<String> allocatedTags = [];
+
+          if (targetTags.isNotEmpty && targetTagNums.isNotEmpty) {
+            if (matchingHogCount > 0) {
+              final fraction = matchingHogCount / targetTagNums.length;
+              allocatedAmount = pAmt * fraction;
+              allocatedTags = targetTags.where((t) => assignTagNums.contains(t.replaceAll(RegExp(r'\D'), ''))).toList();
+            } else if (sameBatchAssigns.length <= 1) {
+              allocatedAmount = pAmt;
+              allocatedTags = targetTags;
+            } else {
+              // Check if any target tags match any hog across all batch assignments
+              final allBatchAssignTagNums = hogs.map((h) {
+                final t = (h['tag_number'] ?? h['tag_id'] ?? h['rfid_tag'] ?? '').toString();
+                return t.replaceAll(RegExp(r'\D'), '');
+              }).where((t) => t.isNotEmpty).toSet();
+
+              final anyTagMatchesBatch = targetTagNums.any((t) => allBatchAssignTagNums.contains(t));
+              if (!anyTagMatchesBatch) {
+                allocatedAmount = pAmt / sameBatchAssigns.length;
+                allocatedTags = targetTags;
+              }
+            }
+          } else {
+            // General batch investment without specific tags
+            allocatedAmount = sameBatchAssigns.isNotEmpty
+                ? pAmt / sameBatchAssigns.length
+                : pAmt;
+          }
+
+          if (allocatedAmount > 0) {
+            final copy = Map<String, dynamic>.from(pInv);
+            copy['amount'] = allocatedAmount;
+            if (allocatedTags.isNotEmpty) copy['target_hog_tags'] = allocatedTags;
+            assignPartnerInvs.add(copy);
+            partnerCapital += allocatedAmount;
+          }
+        }
+
+        final double assignCapital = adminCapital + partnerCapital;
 
         // Match requests strictly for this assignment
         double assignSpend = 0.0;
@@ -807,6 +1325,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             ? (assignCapital - assignSpend).clamp(0.0, double.infinity)
             : 0.0;
 
+        a['admin_capital'] = adminCapital;
+        a['partner_capital'] = partnerCapital;
+        a['partner_investments'] = assignPartnerInvs;
         a['initial_capital'] = assignCapital;
         a['stocks_spend'] = assignSpend;
         a['remaining_capital'] = assignRemaining;
@@ -1242,11 +1763,22 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
               )
               .toList();
 
-          final fatRaw = fatHogs.isNotEmpty
-              ? (fatHogs[0]['stage_id'] ?? fatHogs[0]['lifecycle_stage'])
+          final activeFat = fatHogs.where((h) {
+            final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().toLowerCase();
+            return s != 'selling' && s != 'sold' && s != '6';
+          }).toList();
+          final targetFat = activeFat.isNotEmpty ? activeFat[0] : (fatHogs.isNotEmpty ? fatHogs[0] : null);
+          final fatRaw = targetFat != null
+              ? (targetFat['stage_id'] ?? targetFat['lifecycle_stage'])
               : fatAssign['lifecycle_stage'];
-          final sowRaw = sowHogs.isNotEmpty
-              ? (sowHogs[0]['stage_id'] ?? sowHogs[0]['lifecycle_stage'])
+
+          final activeSow = sowHogs.where((h) {
+            final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().toLowerCase();
+            return s != 'lactation' && s != '6';
+          }).toList();
+          final targetSow = activeSow.isNotEmpty ? activeSow[0] : (sowHogs.isNotEmpty ? sowHogs[0] : null);
+          final sowRaw = targetSow != null
+              ? (targetSow['stage_id'] ?? targetSow['lifecycle_stage'])
               : sowAssign['lifecycle_stage'];
 
           final fatStage = mapStageIdToName(fatRaw, false);
@@ -1305,9 +1837,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           if (_activeAssignments.isNotEmpty) {
             final currentSelected = _selectedAssignmentId != null
                 ? _activeAssignments.firstWhere(
-                    (a) =>
-                        BigInt.from(a['assignment_id'] as num) ==
-                        _selectedAssignmentId,
+                    (a) {
+                      final id = a['assignment_id'] ?? a['id'];
+                      return id != null && BigInt.from(id as num) == _selectedAssignmentId;
+                    },
                     orElse: () => {},
                   )
                 : <String, dynamic>{};
@@ -1335,9 +1868,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             if (currentSelected.isEmpty ||
                 (isCurrentCompleted && hasNonCompleted) ||
                 (hasFattening && !currentIsFattening)) {
-              _selectedAssignmentId = BigInt.from(
-                _activeAssignments[0]['assignment_id'] as num,
-              );
+              final firstId = _activeAssignments[0]['assignment_id'] ?? _activeAssignments[0]['id'];
+              _selectedAssignmentId = firstId != null
+                  ? BigInt.from(firstId as num)
+                  : null;
             }
           } else {
             _selectedAssignmentId = null;
@@ -1534,40 +2068,57 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     final raiserId = _raiserData['hog_raiser_id'] ?? _raiserData['id'];
     if (raiserId == null) return;
 
-    setState(() => _isLoading = true);
     try {
       if (targetHogId != null) {
-        final sLower = targetStage.trim().toLowerCase();
-        int stageNum = 1;
-        if (sLower == 'booster') {
-          stageNum = 1;
-        } else if (sLower == 'pre-starter' || sLower == 'pre starter') {
-          stageNum = 2;
-        } else if (sLower == 'starter') {
-          stageNum = 3;
-        } else if (sLower == 'grower') {
-          stageNum = 4;
-        } else if (sLower == 'finisher' || sLower == 'breeder') {
-          stageNum = 5;
-        } else if (sLower == 'selling' || sLower == 'lactation') {
-          stageNum = 6;
-        }
-
-        await Supabase.instance.client
-            .from('hogs')
-            .update({
-              'stage_id': stageNum,
-              'last_updated': DateTime.now().toIso8601String(),
-            })
-            .eq('hog_id', targetHogId);
-      } else {
-        await Supabase.instance.client
-            .from('hog_raisers')
-            .update({'lifecycle_stage': targetStage})
-            .eq('hog_raiser_id', raiserId);
+        final stageNum = _mapStageNameToId(targetStage, false);
+        try {
+          await Supabase.instance.client
+              .from('hogs')
+              .update({
+                'stage_id': stageNum,
+                'last_updated': DateTime.now().toIso8601String(),
+              })
+              .eq('hog_id', targetHogId);
+        } catch (_) {}
       }
 
-      await _fetchRaiserData();
+      // Only sync raiser profile & investment_records to terminal targetStage if ALL hogs in the batch are terminal
+      final targetLower = targetStage.trim().toLowerCase();
+      final bool isTerminalTarget = targetLower == 'selling' || targetLower == 'lactation';
+      bool shouldAdvanceGlobalStage = !isTerminalTarget;
+      if (isTerminalTarget) {
+        shouldAdvanceGlobalStage = _hogsList.isNotEmpty && _hogsList.every((h) {
+          final hId = h['hog_id'];
+          if (hId == targetHogId) return true;
+          final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+          final sId = int.tryParse(s);
+          return (sId != null && sId >= 6) || s == 'selling' || s == 'sold' || s == 'lactation';
+        });
+      }
+
+      if (shouldAdvanceGlobalStage) {
+        try {
+          await Supabase.instance.client
+              .from('hog_raisers')
+              .update({'lifecycle_stage': targetStage})
+              .eq('hog_raiser_id', raiserId);
+        } catch (_) {}
+
+        try {
+          final activeBatchIds = _activeAssignments
+              .map((a) => a['batch_id'] ?? a['batches']?['batch_id'])
+              .where((id) => id != null)
+              .toList();
+          for (var bId in activeBatchIds) {
+            await Supabase.instance.client
+                .from('investment_records')
+                .update({'stage': targetStage})
+                .eq('batch_id', bId);
+          }
+        } catch (_) {}
+      }
+
+      await _fetchRaiserData(showLoading: false);
 
       if (targetStage.trim().toLowerCase() == 'selling' ||
           targetStage.trim().toLowerCase() == 'lactation') {
@@ -1586,10 +2137,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           context,
           'Failed to update stage: ${e.toString()}',
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -1832,9 +2379,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       _showOfflineProfileUploadToast();
       return;
     }
-    if (raiserId == null) return;
+    if (raiserId == null || !mounted) return;
 
-    // Show Tagalog Confirmation Dialog
+    // Show Confirmation Dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -2592,10 +3139,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                                       NameInputFormatter(),
                                     ],
                                     onChanged: (_) {
-                                      if (firstNameError != null)
+                                      if (firstNameError != null) {
                                         setModalState(
                                           () => firstNameError = null,
                                         );
+                                      }
                                     },
                                   ),
                                   _buildRaiserInlineErrorText(firstNameError),
@@ -2652,8 +3200,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                           hasError: lastNameError != null,
                           inputFormatters: const [NameInputFormatter()],
                           onChanged: (_) {
-                            if (lastNameError != null)
+                            if (lastNameError != null) {
                               setModalState(() => lastNameError = null);
+                            }
                           },
                         ),
                         _buildRaiserInlineErrorText(lastNameError),
@@ -2684,8 +3233,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                             LengthLimitingTextInputFormatter(11),
                           ],
                           onChanged: (_) {
-                            if (phoneError != null)
+                            if (phoneError != null) {
                               setModalState(() => phoneError = null);
+                            }
                           },
                         ),
                         _buildRaiserInlineErrorText(phoneError),

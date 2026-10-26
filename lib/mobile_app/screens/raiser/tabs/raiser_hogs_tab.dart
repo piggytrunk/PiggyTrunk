@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../utils/app_strings.dart';
 import '../../../utils/capitalization_formatters.dart';
@@ -56,11 +57,50 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
   void initState() {
     super.initState();
     _initSelectedBatch();
+    _loadCachedHogStages();
+  }
+
+  Future<void> _loadCachedHogStages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((k) => k.startsWith('hog_stage_') && !k.endsWith('_id'));
+      if (keys.isNotEmpty && mounted) {
+        setState(() {
+          for (final key in keys) {
+            final val = prefs.getString(key);
+            if (val != null && val.isNotEmpty) {
+              final parts = key.split('_');
+              if (parts.length >= 4) {
+                final idOrTag = parts.sublist(3).join('_');
+                _hogSpecificStages[idOrTag] = val;
+              }
+            }
+          }
+          _syncLocalStagesWithHogsList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _syncLocalStagesWithHogsList() {
+    for (var h in widget.hogsList) {
+      final idStr = (h['hog_id'] ?? '').toString();
+      final tagStr = (h['tag_number'] ?? '').toString();
+      final staged = _hogSpecificStages[idStr] ?? _hogSpecificStages[tagStr];
+      if (staged != null) {
+        final isBreeding = _getHogPigType(h, '').toLowerCase() == 'sow';
+        final stageId = _stageNameToId(staged, isBreeding);
+        h['stage_id'] = stageId;
+        h['stage'] = staged;
+        h['lifecycle_stage'] = staged;
+      }
+    }
   }
 
   @override
   void didUpdateWidget(covariant RaiserHogsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncLocalStagesWithHogsList();
     if (widget.selectedAssignmentId != oldWidget.selectedAssignmentId && widget.selectedAssignmentId != null) {
       _selectedBatchAssignmentId = widget.selectedAssignmentId;
       _selectedHogIndex = 0;
@@ -117,17 +157,19 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
       (a) => a['is_cycle_completed'] != true && (a['status'] ?? '').toString().toLowerCase() != 'completed',
     ).toList();
 
-    if (widget.selectedAssignmentId != null &&
-        sortedActive.any((a) =>
-            BigInt.from(a['assignment_id'] as num) == widget.selectedAssignmentId)) {
-      _selectedBatchAssignmentId = widget.selectedAssignmentId;
-    } else if (activeOnly.length > 1) {
+    if (activeOnly.length > 1) {
       // Mixed active assignments in batch (e.g. Fattening + Sow): show All Heads by default
       _selectedBatchAssignmentId = null;
-    } else if (activeOnly.isNotEmpty) {
-      _selectedBatchAssignmentId = BigInt.from(activeOnly[0]['assignment_id'] as num);
-    } else if (sortedActive.isNotEmpty) {
-      _selectedBatchAssignmentId = BigInt.from(sortedActive[0]['assignment_id'] as num);
+    } else if (widget.selectedAssignmentId != null &&
+        sortedActive.any((a) {
+          final id = a['assignment_id'] ?? a['id'];
+          return id != null && BigInt.from(id as num) == widget.selectedAssignmentId;
+        })) {
+      _selectedBatchAssignmentId = widget.selectedAssignmentId;
+    } else if (activeOnly.isNotEmpty && (activeOnly[0]['assignment_id'] ?? activeOnly[0]['id']) != null) {
+      _selectedBatchAssignmentId = BigInt.from((activeOnly[0]['assignment_id'] ?? activeOnly[0]['id']) as num);
+    } else if (sortedActive.isNotEmpty && (sortedActive[0]['assignment_id'] ?? sortedActive[0]['id']) != null) {
+      _selectedBatchAssignmentId = BigInt.from((sortedActive[0]['assignment_id'] ?? sortedActive[0]['id']) as num);
     } else {
       _selectedBatchAssignmentId = null;
     }
@@ -782,14 +824,18 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
 
   String _getHogStage(Map<String, dynamic> hog, String fallbackStage, bool isBreeding) {
     final hogId = hog['hog_id']?.toString() ?? '';
+    final hogTag = (hog['tag_number'] ?? '').toString();
     if (hogId.isNotEmpty && _hogSpecificStages.containsKey(hogId)) {
       return _hogSpecificStages[hogId]!;
     }
+    if (hogTag.isNotEmpty && _hogSpecificStages.containsKey(hogTag)) {
+      return _hogSpecificStages[hogTag]!;
+    }
     final dbStage = hog['stage_id'] ?? hog['lifecycle_stage'] ?? hog['stage'];
     if (dbStage != null) {
-      return _stageIdToName(dbStage, isBreeding, 'Booster');
+      return _stageIdToName(dbStage, isBreeding, fallbackStage.isNotEmpty ? fallbackStage : 'Booster');
     }
-    return 'Booster';
+    return fallbackStage.isNotEmpty ? fallbackStage : 'Booster';
   }
 
   Future<void> _notifyAdminFinalStageReached(String targetStage, Map<String, dynamic> hog, bool isBreeding) async {
@@ -858,63 +904,93 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
 
   Future<void> _updateSpecificHogStage(Map<String, dynamic> hog, String targetStage, bool isBreeding) async {
     final hogAssignId = hog['assignment_id']?.toString();
-    final hogAssign = widget.activeAssignments.firstWhere(
-      (a) => (a['assignment_id'] ?? a['id'])?.toString() == hogAssignId,
-      orElse: () => <String, dynamic>{},
-    );
-    if (hogAssign['is_cycle_completed'] == true || (hogAssign['status'] ?? '').toString().toLowerCase() == 'completed') {
+    final hogId = hog['hog_id'];
+    final hogIdStr = hogId?.toString() ?? '';
+    final hogTag = (hog['tag_number'] ?? '').toString();
+    final hogName = _getHogDisplayName(hogId, AppStrings.of(context));
+
+    final s = (hog['stage_id'] ?? hog['lifecycle_stage'] ?? hog['stage'] ?? '').toString().trim().toLowerCase();
+    final isTerminalHog = (hog['status'] ?? '').toString().toLowerCase() == 'completed' ||
+        (isBreeding ? (s == 'lactation' || s == '6' || s.contains('lactat')) : (s == 'selling' || s == 'sold' || s == '6' || s.contains('sell')));
+
+    if (isTerminalHog) {
       final strings = AppStrings.of(context);
-      PiggyToast.showWarning(
+      PiggyToast.showInfo(
         context,
         strings.isFilipino
-            ? 'Hindi maaaring baguhin ang stage ng alagang ito dahil tapos na ang siklo ng batch at nasa history na.'
-            : 'Cannot update stage. This hog belongs to a completed batch cycle archived in history.',
-        title: strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Completed',
+            ? 'Naitapos na ang siklo ng alagang ito ($hogName).'
+            : '$hogName has already reached its final lifecycle stage.',
       );
       return;
     }
 
-    final hogId = hog['hog_id'];
-    final hogIdStr = hogId?.toString() ?? '';
     final int stageNum = _stageNameToId(targetStage, isBreeding);
-    final hogName = _getHogDisplayName(hogId, AppStrings.of(context));
 
     setState(() {
       if (hogIdStr.isNotEmpty) {
         _hogSpecificStages[hogIdStr] = targetStage;
       }
+      if (hogTag.isNotEmpty) {
+        _hogSpecificStages[hogTag] = targetStage;
+      }
       hog['stage_id'] = stageNum;
+      hog['stage'] = targetStage;
+      hog['lifecycle_stage'] = targetStage;
     });
 
+    // Save to local SharedPreferences cache so stage survives page reloads
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'hog_stage_${hogAssignId}_${hogTag.isNotEmpty ? hogTag : hogIdStr}';
+      await prefs.setString(cacheKey, targetStage);
+      await prefs.setInt('${cacheKey}_id', stageNum);
+    } catch (_) {}
+
+    // Persist to Supabase
+    bool dbUpdated = false;
     if (hogId != null) {
-      final pType = isBreeding ? 'Sow' : 'Fattening';
       try {
-        await Supabase.instance.client
+        final updateRes = await Supabase.instance.client
             .from('hogs')
             .update({
               'stage_id': stageNum,
-              'pig_type': pType,
               'last_updated': DateTime.now().toIso8601String(),
             })
-            .eq('hog_id', hogId);
+            .eq('hog_id', hogId)
+            .select('hog_id');
+        if ((updateRes as List).isNotEmpty) {
+          dbUpdated = true;
+        }
       } catch (e) {
-        debugPrint('Notice updating hog stage_id with pig_type: $e');
-        try {
-          await Supabase.instance.client
+        debugPrint('Notice updating hog stage_id: $e');
+      }
+    }
+
+    // Fallback: If hog was in-memory or not found in public.hogs, attempt to insert a real hog row if assignment exists in DB
+    if (!dbUpdated && hogAssignId != null) {
+      try {
+        final parsedAssignId = int.tryParse(hogAssignId.toString());
+        if (parsedAssignId != null && parsedAssignId < 900000) {
+          final insertRes = await Supabase.instance.client
               .from('hogs')
-              .update({
+              .insert({
+                'assignment_id': parsedAssignId,
                 'stage_id': stageNum,
+                'status': 'active',
+                'health_status': hog['health_status'] ?? 'Healthy',
                 'last_updated': DateTime.now().toIso8601String(),
               })
-              .eq('hog_id', hogId);
-        } catch (_) {
-          try {
-            await Supabase.instance.client
-                .from('hogs')
-                .update({'lifecycle_stage': targetStage})
-                .eq('hog_id', hogId);
-          } catch (_) {}
+              .select('hog_id')
+              .maybeSingle();
+          if (insertRes != null && insertRes['hog_id'] != null) {
+            hog['hog_id'] = insertRes['hog_id'];
+            final newIdStr = insertRes['hog_id'].toString();
+            _hogSpecificStages[newIdStr] = targetStage;
+            dbUpdated = true;
+          }
         }
+      } catch (e) {
+        debugPrint('Notice inserting real hog row into public.hogs: $e');
       }
     }
 
@@ -2109,17 +2185,31 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                   final visibleHogs = widget.hogsList.where((h) {
                     if (isAllHeads) {
                       final aId = h['assignment_id'];
-                      return activeOnly.any((a) => (a['assignment_id'] ?? a['id']) == aId);
+                      return activeOnly.any((a) => (a['assignment_id'] ?? a['id'])?.toString() == aId?.toString());
                     }
                     if (selectedAssignId == null && widget.activeAssignments.length <= 1) {
                       return true;
                     }
                     final aId = h['assignment_id'];
                     if (aId != null && selectedAssignId != null) {
-                      return BigInt.from(aId as num) == selectedAssignId;
+                      final parsedAId = aId is num ? BigInt.from(aId) : BigInt.tryParse(aId.toString());
+                      return parsedAId == selectedAssignId;
                     }
                     return selectedAssignId == null;
                   }).toList();
+
+                  visibleHogs.sort((a, b) {
+                    final aType = (a['pig_type'] ?? a['type_name'] ?? '').toString().toLowerCase();
+                    final bType = (b['pig_type'] ?? b['type_name'] ?? '').toString().toLowerCase();
+                    final aIsFat = aType.contains('fatten');
+                    final bIsFat = bType.contains('fatten');
+                    if (aIsFat && !bIsFat) return -1;
+                    if (!aIsFat && bIsFat) return 1;
+
+                    final aTag = int.tryParse((a['tag_number'] ?? a['hog_id'] ?? '').toString().replaceAll('#', '')) ?? 0;
+                    final bTag = int.tryParse((b['tag_number'] ?? b['hog_id'] ?? '').toString().replaceAll('#', '')) ?? 0;
+                    return aTag.compareTo(bTag);
+                  });
 
                   final String batchType = (selectedAssignment['hog_types']?['type_name'] ??
                           selectedAssignment['pig_type'] ??
@@ -2128,18 +2218,21 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                   final bool isBatchSow = batchType.toLowerCase() == 'sow' ||
                       batchType.toLowerCase().contains('breed');
 
-                  final bool allVisibleHogsDone = visibleHogs.isNotEmpty && visibleHogs.every((h) {
+                  final bool hasActiveUnfinishedHogs = visibleHogs.any((h) {
                     final hStatus = (h['status'] ?? '').toString().trim().toLowerCase();
-                    final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? '').toString().trim().toLowerCase();
+                    final s = (h['stage_id'] ?? h['lifecycle_stage'] ?? h['stage'] ?? '').toString().trim().toLowerCase();
+                    final sId = int.tryParse(s);
                     final isBreed = _getHogPigType(h, displayPigType) == 'Sow';
-                    return hStatus == 'completed' || (isBreed
+                    final bool isTerminal = hStatus == 'completed' || (isBreed
                         ? (s == 'lactation' || s == '6' || s.contains('lactat'))
                         : (s == 'selling' || s == 'sold' || s == '6' || s.contains('sell')));
+                    return !isTerminal && (sId == null || sId < 6);
                   });
 
-                  final bool isBatchConcluded = selectedAssignment['is_cycle_completed'] == true ||
-                      (selectedAssignment['status'] ?? '').toString().toLowerCase() == 'completed' ||
-                      allVisibleHogsDone;
+                  final bool allVisibleHogsDone = visibleHogs.isNotEmpty && !hasActiveUnfinishedHogs;
+
+                  // Strict business logic: Batch cycle concludes ONLY when ALL visible hogs are finished and NONE are active
+                  final bool isBatchConcluded = visibleHogs.isNotEmpty && !hasActiveUnfinishedHogs && allVisibleHogsDone;
 
                   final selectedHog = visibleHogs.isNotEmpty
                       ? visibleHogs[_selectedHogIndex.clamp(0, visibleHogs.length - 1)]
@@ -2397,25 +2490,26 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                             final rawStatus = (hog['health_status'] ?? 'Healthy').toString();
                             final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
                             final tagNumber = hog['tag_number'] ?? '#${index + 1}';
-                            final weight = hog['current_weight'] != null
-                                ? '${hog['current_weight']} kg'
-                                : (hog['weight'] != null ? '${hog['weight']} kg' : null);
+                            final String? weight = null;
                             final hogType = _getHogPigType(hog, batchType);
                             final isSow = hogType == 'Sow';
                             final hogStage = _getHogStage(hog, displayStage, isSow);
+                            final bool isThisHogDone = (hogStage.toLowerCase() == 'selling' ||
+                                hogStage.toLowerCase() == 'lactation' ||
+                                (hog['status'] ?? '').toString().toLowerCase() == 'completed');
 
                             return GestureDetector(
-                              onTap: () => _showHogDetailModal(context, hog, index, batchType, displayStage, isConcluded: isBatchConcluded),
+                              onTap: () => _showHogDetailModal(context, hog, index, batchType, displayStage, isConcluded: isBatchConcluded || isThisHogDone),
                               child: Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: isBatchConcluded
+                                  color: (isBatchConcluded || isThisHogDone)
                                       ? (isDark ? const Color(0xFF142032) : const Color(0xFFF8FAFC))
                                       : (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white),
                                   borderRadius: BorderRadius.circular(18),
                                   border: Border.all(
-                                    color: isBatchConcluded
+                                    color: (isBatchConcluded || isThisHogDone)
                                         ? (isDark ? const Color(0xFF24334A) : const Color(0xFFE2E8F0))
                                         : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
                                   ),
@@ -2467,7 +2561,7 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                                                       : (isDark ? Colors.white : _brandColor),
                                                 ),
                                               ),
-                                              if (isBatchConcluded) ...[
+                                              if (isBatchConcluded && isThisHogDone) ...[
                                                 const SizedBox(width: 8),
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),

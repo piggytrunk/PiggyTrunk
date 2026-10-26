@@ -10,12 +10,20 @@ import '../../../widgets/piggy_toast.dart';
 
 class PartnerProjectsTab extends StatefulWidget {
   final List<Map<String, dynamic>> projectsList;
+  final List<Map<String, dynamic>> fundedProjectsList;
+  final double investedAmount;
   final Future<void> Function() onRefresh;
+  final VoidCallback? onNavigateToLifecycle;
+  final VoidCallback? onNavigateToActivities;
 
   const PartnerProjectsTab({
     super.key,
     required this.projectsList,
+    this.fundedProjectsList = const [],
+    this.investedAmount = 0.0,
     required this.onRefresh,
+    this.onNavigateToLifecycle,
+    this.onNavigateToActivities,
   });
 
   @override
@@ -27,15 +35,33 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
   static const Color _brandAccent = Color(0xFF2FB36F);
 
   bool _isInvesting = false;
+  int _selectedSubTab = 0; // 0: My Investments, 1: Explore Batches
   Map<String, dynamic>? _selectedBatch;
   final TextEditingController _amountController = TextEditingController(text: '');
   double _parsedAmount = 0.0;
   bool _isSubmitting = false;
+  bool _hasAttemptedSubmit = false;
+
+  // Specific Hog / Pig Type Target Allocation State
+  String _selectedTargetType = 'ALL'; // 'ALL', 'FATTENING', 'SOW', 'CUSTOM'
+  Set<String> _selectedHogTags = {};
+  List<Map<String, dynamic>> _currentBatchHogs = [];
 
   @override
   void initState() {
     super.initState();
     _amountController.addListener(_onAmountChanged);
+    if (widget.fundedProjectsList.isEmpty && widget.projectsList.isNotEmpty) {
+      _selectedSubTab = 1;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PartnerProjectsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.fundedProjectsList.isEmpty && widget.projectsList.isNotEmpty && _selectedSubTab == 0) {
+      _selectedSubTab = 1;
+    }
   }
 
   @override
@@ -51,8 +77,19 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
     if (_parsedAmount != val) {
       setState(() {
         _parsedAmount = val;
+        if (val > 0) {
+          _hasAttemptedSubmit = false;
+        }
       });
     }
+  }
+
+  void _setPresetAmount(double amount) {
+    setState(() {
+      _amountController.text = amount.toStringAsFixed(0);
+      _parsedAmount = amount;
+      _hasAttemptedSubmit = false;
+    });
   }
 
   String _formatCurrency(double amount) {
@@ -70,11 +107,41 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
       );
       return;
     }
+
+    final selected = batch ?? (widget.projectsList.isNotEmpty ? widget.projectsList.first : null);
+    List<Map<String, dynamic>> rawHogs = [];
+    if (selected != null && selected['hogs'] is List) {
+      rawHogs = List<Map<String, dynamic>>.from(
+        (selected['hogs'] as List).whereType<Map<String, dynamic>>(),
+      );
+    }
+    // Synthesize hogs if batch has empty hogs array
+    if (rawHogs.isEmpty && selected != null) {
+      final count = (selected['total_hogs'] as num?)?.toInt() ?? 6;
+      final rawType = (selected['hog_type'] ?? selected['pig_type'] ?? 'Fattening').toString();
+      final half = (count / 2).ceil();
+      for (int i = 0; i < count; i++) {
+        final isSow = i >= half && (rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed'));
+        rawHogs.add({
+          'hog_id': i + 1,
+          'tag_number': 'HOG-${i + 1}',
+          'pig_type': isSow ? 'Sow / Breeding' : 'Fattening',
+          'stage': 'Grower',
+          'health_status': 'Healthy',
+          'status': 'active',
+        });
+      }
+    }
+
     setState(() {
-      _selectedBatch = batch ?? (widget.projectsList.isNotEmpty ? widget.projectsList.first : null);
+      _selectedBatch = selected;
       _isInvesting = true;
       _amountController.text = '';
       _parsedAmount = 0.0;
+      _hasAttemptedSubmit = false;
+      _currentBatchHogs = rawHogs;
+      _selectedHogTags = rawHogs.map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString()).toSet();
+      _selectedTargetType = 'ALL';
     });
   }
 
@@ -84,16 +151,245 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
       _selectedBatch = null;
       _amountController.clear();
       _parsedAmount = 0.0;
+      _hasAttemptedSubmit = false;
+      _selectedHogTags.clear();
+      _currentBatchHogs.clear();
+      _selectedTargetType = 'ALL';
     });
   }
 
+  void _setTargetType(String type) {
+    setState(() {
+      _selectedTargetType = type;
+      if (type == 'ALL') {
+        _selectedHogTags = _currentBatchHogs.map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString()).toSet();
+      } else if (type == 'FATTENING') {
+        _selectedHogTags = _currentBatchHogs
+            .where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('fatten'))
+            .map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString())
+            .toSet();
+      } else if (type == 'SOW') {
+        _selectedHogTags = _currentBatchHogs
+            .where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('sow') ||
+                          (h['pig_type'] ?? '').toString().toLowerCase().contains('breed'))
+            .map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString())
+            .toSet();
+      }
+    });
+  }
 
+  void _toggleHogTag(String tag) {
+    setState(() {
+      if (_selectedHogTags.contains(tag)) {
+        if (_selectedHogTags.length > 1) {
+          _selectedHogTags.remove(tag);
+        } else {
+          PiggyToast.showWarning(context, 'At least one hog must remain selected for allocation.');
+        }
+      } else {
+        _selectedHogTags.add(tag);
+      }
+
+      final allTags = _currentBatchHogs.map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString()).toSet();
+      final fatTags = _currentBatchHogs
+          .where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('fatten'))
+          .map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString())
+          .toSet();
+      final sowTags = _currentBatchHogs
+          .where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('sow') ||
+                        (h['pig_type'] ?? '').toString().toLowerCase().contains('breed'))
+          .map((h) => (h['tag_number'] ?? 'HOG-${h['hog_id']}').toString())
+          .toSet();
+
+      if (_selectedHogTags.length == allTags.length) {
+        _selectedTargetType = 'ALL';
+      } else if (fatTags.isNotEmpty && _selectedHogTags.length == fatTags.length && _selectedHogTags.containsAll(fatTags)) {
+        _selectedTargetType = 'FATTENING';
+      } else if (sowTags.isNotEmpty && _selectedHogTags.length == sowTags.length && _selectedHogTags.containsAll(sowTags)) {
+        _selectedTargetType = 'SOW';
+      } else {
+        _selectedTargetType = 'CUSTOM';
+      }
+    });
+  }
+
+  String _getAllocationSummaryText(bool isFilipino) {
+    if (_selectedHogTags.isEmpty) {
+      return isFilipino ? 'Pumili ng kahit isang baboy.' : 'Select at least one hog.';
+    }
+    final count = _selectedHogTags.length;
+    final total = _currentBatchHogs.length;
+    if (count == total) {
+      return isFilipino
+          ? 'Pinopondohan ang lahat ng $count baboy sa buong batch.'
+          : 'Funding all $count hogs across this entire batch.';
+    }
+    if (_selectedTargetType == 'FATTENING') {
+      return isFilipino
+          ? 'Pinopondohan ang $count baboy na pang-katay.'
+          : 'Funding $count selected Fattening hogs.';
+    }
+    if (_selectedTargetType == 'SOW') {
+      return isFilipino
+          ? 'Pinopondohan ang $count inahing baboy.'
+          : 'Funding $count selected Sow / Breeding hogs.';
+    }
+    return isFilipino
+        ? 'Pinopondohan ang $count piling baboy: ${_selectedHogTags.join(", ")}'
+        : 'Funding $count selected hogs: ${_selectedHogTags.join(", ")}';
+  }
+
+  Widget _buildTargetTypeChip({
+    required ScreenFit fit,
+    required bool isDark,
+    required String label,
+    required int count,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(fit.dp(10)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: fit.dp(6), vertical: fit.dp(6)),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? Colors.white : _brandColor)
+              : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft),
+          borderRadius: BorderRadius.circular(fit.dp(10)),
+          border: Border.all(
+            color: isSelected
+                ? (isDark ? Colors.white : _brandColor)
+                : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+            width: isSelected ? 1.4 : 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: fit.sp(10.5),
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? (isDark ? _brandColor : Colors.white)
+                      : (isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(width: fit.dp(4)),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: fit.dp(4), vertical: fit.dp(1)),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? (isDark ? _brandColor.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.25))
+                    : (isDark ? Colors.white.withValues(alpha: 0.08) : _brandColor.withValues(alpha: 0.08)),
+                borderRadius: BorderRadius.circular(fit.dp(6)),
+              ),
+              child: Text(
+                '$count',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: fit.sp(9.0),
+                  fontWeight: FontWeight.w800,
+                  color: isSelected
+                      ? (isDark ? _brandColor : Colors.white)
+                      : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHogSelectChip({
+    required ScreenFit fit,
+    required bool isDark,
+    required String tag,
+    required String typeLabel,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(fit.dp(8)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(horizontal: fit.dp(7), vertical: fit.dp(3.5)),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? _brandAccent.withValues(alpha: isDark ? 0.25 : 0.12)
+              : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft),
+          borderRadius: BorderRadius.circular(fit.dp(8)),
+          border: Border.all(
+            color: isSelected
+                ? _brandAccent
+                : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+            width: isSelected ? 1.4 : 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              size: fit.dp(11),
+              color: isSelected
+                  ? _brandAccent
+                  : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
+            ),
+            SizedBox(width: fit.dp(4)),
+            Text(
+              tag,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: fit.sp(10.5),
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected
+                    ? (isDark ? Colors.white : PiggyTrunkTheme.ptText)
+                    : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
+              ),
+            ),
+            SizedBox(width: fit.dp(3)),
+            Text(
+              '($typeLabel)',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: fit.sp(9.0),
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? _brandAccent
+                    : (isDark ? PiggyTrunkTheme.ptMutedDark.withValues(alpha: 0.7) : PiggyTrunkTheme.ptMuted.withValues(alpha: 0.7)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _confirmInvestment() async {
     if (_parsedAmount <= 0) {
+      setState(() {
+        _hasAttemptedSubmit = true;
+      });
       PiggyToast.showWarning(
         context,
-        'Please enter a valid investment amount (e.g. ₱1,000).',
+        'Please enter an investment amount greater than ₱0.00.',
+      );
+      return;
+    }
+
+    if (_selectedHogTags.isEmpty) {
+      PiggyToast.showWarning(
+        context,
+        'Please select at least one hog to allocate your investment.',
       );
       return;
     }
@@ -238,11 +534,26 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
         final batchName = _selectedBatch?['batch_name'] ?? 'Batch #$batchId';
         final formattedAmt = _formatCurrency(_parsedAmount);
 
+        final int count = _selectedHogTags.length;
+        final int total = _currentBatchHogs.length;
+        String targetPigType = 'Entire Batch';
+        if (_selectedTargetType == 'FATTENING') {
+          targetPigType = 'Fattening';
+        } else if (_selectedTargetType == 'SOW') {
+          targetPigType = 'Sow / Breeding';
+        } else if (count < total) {
+          targetPigType = 'Selected Hogs';
+        } else {
+          targetPigType = (_selectedBatch?['hog_type'] ?? _selectedBatch?['pig_type'] ?? 'Fattening').toString();
+        }
+        final List<String> tagsList = _selectedHogTags.toList()..sort();
+        final String tagsStr = tagsList.join(', ');
+
         // A. Notify Admin Portal
         try {
           await Supabase.instance.client.from('admin_notifications').insert({
             'title': 'New Partner Investment',
-            'message': '$partnerName invested ₱$formattedAmt in $batchName.',
+            'message': '$partnerName invested ₱$formattedAmt for $targetPigType ($tagsStr) in $batchName.',
             'type': 'investment',
             'is_read': false,
             'metadata': {
@@ -251,6 +562,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
               'batch_id': batchId,
               'batch_name': batchName,
               'amount': _parsedAmount,
+              'target_pig_type': targetPigType,
+              'target_hog_tags': tagsList,
+              'selected_hogs_count': count,
             },
           });
           debugPrint('Successfully dispatched new investment notification to admin_notifications table!');
@@ -313,8 +627,8 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
           try {
             await Supabase.instance.client.from('raiser_notifications').insert({
               'hog_raiser_id': rId,
-              'title': 'May Bagong Investment sa Iyong Batch! 🐷',
-              'message': '$partnerName nag-invest ng ₱$formattedAmt para sa $batchName.',
+              'title': 'New Investment in Your Batch!',
+              'message': '$partnerName invested ₱$formattedAmt for $targetPigType ($tagsStr) in $batchName.',
               'type': 'investment',
               'is_read': false,
               'metadata': {
@@ -323,6 +637,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                 'amount': _parsedAmount,
                 'partner_name': partnerName,
                 'partner_investor_id': partnerInvestorId,
+                'target_pig_type': targetPigType,
+                'target_hog_tags': tagsList,
+                'selected_hogs_count': count,
               },
             });
             debugPrint('Successfully dispatched raiser notification to raiser ID: $rId');
@@ -337,7 +654,7 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
             await Supabase.instance.client.from('partner_notifications').insert({
               'partner_investor_id': partnerInvestorId,
               'title': 'Investment Confirmed',
-              'message': 'You have successfully funded ₱$formattedAmt for $batchName.',
+              'message': 'You have successfully funded ₱$formattedAmt for $targetPigType ($tagsStr) in $batchName.',
               'type': 'investment',
               'is_read': false,
             });
@@ -349,22 +666,41 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
         debugPrint('Notice dispatching investment notifications: $notifErr');
       }
 
-      // 5. Always persist to local session cache so the UI immediately reflects the investment!
-      try {
-        final localInv = {
-          'investment_id': 'local_${DateTime.now().millisecondsSinceEpoch}',
-          'amount': _parsedAmount,
-          'invested_amount': _parsedAmount,
-          'date_invested': DateTime.now().toIso8601String().split('T').first,
-          'created_at': DateTime.now().toIso8601String(),
-          'status': 'active',
-          'batch_id': batchId,
-          'partner_investor_id': partnerInvestorId,
-          ...(_selectedBatch ?? {}),
-        };
-        await AuthSessionService().saveLocalInvestment(localInv);
-      } catch (localErr) {
-        debugPrint('Notice saving local investment: $localErr');
+      // 6. Only persist to local session cache as offline fallback if DB insert failed!
+      if (!dbInserted) {
+        try {
+          final List<String> tagsList = _selectedHogTags.toList()..sort();
+          final int count = _selectedHogTags.length;
+          final int total = _currentBatchHogs.length;
+          String targetPigType = 'Entire Batch';
+          if (_selectedTargetType == 'FATTENING') {
+            targetPigType = 'Fattening';
+          } else if (_selectedTargetType == 'SOW') {
+            targetPigType = 'Sow / Breeding';
+          } else if (count < total) {
+            targetPigType = 'Selected Hogs';
+          } else {
+            targetPigType = (_selectedBatch?['hog_type'] ?? _selectedBatch?['pig_type'] ?? 'Fattening').toString();
+          }
+
+          final localInv = {
+            'investment_id': 'local_${DateTime.now().millisecondsSinceEpoch}',
+            'amount': _parsedAmount,
+            'invested_amount': _parsedAmount,
+            'date_invested': DateTime.now().toIso8601String().split('T').first,
+            'created_at': DateTime.now().toIso8601String(),
+            'status': 'active',
+            'batch_id': batchId,
+            'partner_investor_id': partnerInvestorId,
+            'target_pig_type': targetPigType,
+            'target_hog_tags': tagsList,
+            'selected_hogs_count': count,
+            ...(_selectedBatch ?? {}),
+          };
+          await AuthSessionService().saveLocalInvestment(localInv);
+        } catch (localErr) {
+          debugPrint('Notice saving local investment: $localErr');
+        }
       }
 
       if (!mounted) return;
@@ -383,6 +719,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
         _selectedBatch = null;
         _amountController.clear();
         _parsedAmount = 0.0;
+        _selectedHogTags.clear();
+        _currentBatchHogs.clear();
+        _selectedTargetType = 'ALL';
       });
     } catch (e) {
       debugPrint('Error confirming investment: $e');
@@ -475,27 +814,27 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                   ),
                 ],
               ),
-              SizedBox(height: fit.dp(18.0)),
+              SizedBox(height: fit.dp(10.0)),
             ],
 
             // View 1: Active Investment Form
             if (_isInvesting) ...[
-              // Selected Batch Summary Card
+              // 1. Compact Batch Header Pill
               if (_selectedBatch != null) ...[
                 Container(
-                  padding: EdgeInsets.all(fit.dp(16)),
+                  padding: EdgeInsets.symmetric(horizontal: fit.dp(14), vertical: fit.dp(10)),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF131F33) : const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(fit.dp(18)),
+                    borderRadius: BorderRadius.circular(fit.dp(14)),
                     border: Border.all(
                       color: isDark ? const Color(0xFF1E3A5F) : const Color(0xFFBBF7D0),
-                      width: 1.2,
+                      width: 1.0,
                     ),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.all(fit.dp(10)),
+                        padding: EdgeInsets.all(fit.dp(8)),
                         decoration: BoxDecoration(
                           color: _brandAccent.withValues(alpha: isDark ? 0.25 : 0.15),
                           shape: BoxShape.circle,
@@ -503,27 +842,54 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                         child: Icon(
                           Icons.inventory_2_rounded,
                           color: _brandAccent,
-                          size: fit.dp(22),
+                          size: fit.dp(18),
                         ),
                       ),
-                      SizedBox(width: fit.dp(12)),
+                      SizedBox(width: fit.dp(10)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              _selectedBatch?['batch_name'] ?? _selectedBatch?['title'] ?? 'Batch Project',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: fit.sp(15.0),
-                                fontWeight: FontWeight.w800,
-                                color: primaryTextColor,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _selectedBatch?['batch_name'] ?? _selectedBatch?['title'] ?? 'Batch Project',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: fit.sp(14.0),
+                                      fontWeight: FontWeight.w800,
+                                      color: primaryTextColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: fit.dp(7), vertical: fit.dp(2.5)),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                                    borderRadius: BorderRadius.circular(fit.dp(6)),
+                                    border: Border.all(
+                                      color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _selectedBatch?['hog_type'] ?? _selectedBatch?['pig_type'] ?? 'Fattening',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: fit.sp(9.5),
+                                      fontWeight: FontWeight.w800,
+                                      color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             SizedBox(height: fit.dp(2)),
                             Text(
-                              'Raiser: ${_selectedBatch?['assigned_raiser'] ?? _selectedBatch?['raiser_name'] ?? "Assigned Raiser"} • ${_selectedBatch?['stage'] ?? "Grower"}',
+                              'Raiser: ${_selectedBatch?['assigned_raiser'] ?? _selectedBatch?['raiser_name'] ?? "Assigned Raiser"}',
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: fit.sp(12.0),
+                                fontSize: fit.sp(11.5),
                                 fontWeight: FontWeight.w600,
                                 color: mutedTextColor,
                               ),
@@ -534,121 +900,349 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                     ],
                   ),
                 ),
-                SizedBox(height: fit.dp(18.0)),
+                SizedBox(height: fit.dp(10.0)),
               ],
 
-              // Amount Input Card
-              Container(
-                padding: EdgeInsets.all(fit.dp(18)),
-                decoration: BoxDecoration(
-                  color: cardBgColor,
-                  borderRadius: BorderRadius.circular(fit.dp(20)),
-                  border: Border.all(color: cardBorderColor, width: 1.2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+              // 2. Unified Investment & Allocation Card
+              Builder(
+                builder: (context) {
+                  final bool isInvalid = _hasAttemptedSubmit || (_amountController.text.isNotEmpty && _parsedAmount <= 0);
+                  final bool hasFattening = _currentBatchHogs.any((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('fatten'));
+                  final bool hasSow = _currentBatchHogs.any((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('sow') ||
+                                                                   (h['pig_type'] ?? '').toString().toLowerCase().contains('breed'));
+
+                  return Container(
+                    margin: EdgeInsets.only(bottom: fit.dp(14)),
+                    padding: EdgeInsets.all(fit.dp(14)),
+                    decoration: BoxDecoration(
+                      color: cardBgColor,
+                      borderRadius: BorderRadius.circular(fit.dp(16)),
+                      border: Border.all(color: cardBorderColor, width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'INVESTMENT AMOUNT (PHP)',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: fit.sp(11.0),
-                        fontWeight: FontWeight.w800,
-                        color: mutedTextColor,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                    SizedBox(height: fit.dp(12)),
-                    TextField(
-                      controller: _amountController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: fit.sp(22.0),
-                        fontWeight: FontWeight.w800,
-                        color: primaryTextColor,
-                      ),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                        prefixIcon: Padding(
-                          padding: EdgeInsets.only(left: fit.dp(16), right: fit.dp(10)),
-                          child: Text(
-                            '₱',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: fit.sp(22.0),
-                              fontWeight: FontWeight.w800,
-                              color: _brandAccent,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Target allocation header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              strings.isFilipino ? 'PILIIN ANG IPUPUHUNAN' : 'ALLOCATION TARGET',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: fit.sp(10.5),
+                                fontWeight: FontWeight.w800,
+                                color: mutedTextColor,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: fit.dp(7), vertical: fit.dp(2.5)),
+                              decoration: BoxDecoration(
+                                color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                                borderRadius: BorderRadius.circular(fit.dp(6)),
+                                border: Border.all(
+                                  color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                '${_selectedHogTags.length}/${_currentBatchHogs.length} Hogs',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: fit.sp(10.0),
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: fit.dp(8)),
+
+                        // Category Chips Row (Single row, responsive)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTargetTypeChip(
+                                fit: fit,
+                                isDark: isDark,
+                                label: strings.isFilipino ? 'Lahat' : 'All Hogs',
+                                count: _currentBatchHogs.length,
+                                isSelected: _selectedTargetType == 'ALL',
+                                onTap: () => _setTargetType('ALL'),
+                              ),
+                            ),
+                            if (hasFattening) ...[
+                              SizedBox(width: fit.dp(6)),
+                              Expanded(
+                                child: _buildTargetTypeChip(
+                                  fit: fit,
+                                  isDark: isDark,
+                                  label: strings.isFilipino ? 'Pang-katay' : 'Fattening',
+                                  count: _currentBatchHogs.where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('fatten')).length,
+                                  isSelected: _selectedTargetType == 'FATTENING',
+                                  onTap: () => _setTargetType('FATTENING'),
+                                ),
+                              ),
+                            ],
+                            if (hasSow) ...[
+                              SizedBox(width: fit.dp(6)),
+                              Expanded(
+                                child: _buildTargetTypeChip(
+                                  fit: fit,
+                                  isDark: isDark,
+                                  label: strings.isFilipino ? 'Inahin' : 'Sow / Breed',
+                                  count: _currentBatchHogs.where((h) => (h['pig_type'] ?? '').toString().toLowerCase().contains('sow') ||
+                                                                       (h['pig_type'] ?? '').toString().toLowerCase().contains('breed')).length,
+                                  isSelected: _selectedTargetType == 'SOW',
+                                  onTap: () => _setTargetType('SOW'),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        SizedBox(height: fit.dp(10)),
+
+                        // Specific Hogs In Allocation label
+                        Text(
+                          strings.isFilipino ? 'MGA TIYAK NA BABOY SA ALLOCATION:' : 'SPECIFIC HOGS IN ALLOCATION:',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: fit.sp(10.0),
+                            fontWeight: FontWeight.w700,
+                            color: mutedTextColor,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        SizedBox(height: fit.dp(6)),
+
+                        // Individual Hog Chips
+                        Wrap(
+                          spacing: fit.dp(5),
+                          runSpacing: fit.dp(5),
+                          children: _currentBatchHogs.map((hog) {
+                            final tag = (hog['tag_number'] ?? 'HOG-${hog['hog_id']}').toString();
+                            final isSelected = _selectedHogTags.contains(tag);
+                            final pType = (hog['pig_type'] ?? 'Fattening').toString();
+                            final isSow = pType.toLowerCase().contains('sow') || pType.toLowerCase().contains('breed');
+                            return _buildHogSelectChip(
+                              fit: fit,
+                              isDark: isDark,
+                              tag: tag,
+                              typeLabel: isSow ? (strings.isFilipino ? 'Inahin' : 'Sow') : (strings.isFilipino ? 'Katay' : 'Fat'),
+                              isSelected: isSelected,
+                              onTap: () => _toggleHogTag(tag),
+                            );
+                          }).toList(),
+                        ),
+                        SizedBox(height: fit.dp(8)),
+                        Text(
+                          _getAllocationSummaryText(strings.isFilipino),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: fit.sp(11.0),
+                            fontWeight: FontWeight.w600,
+                            color: _brandAccent,
+                          ),
+                        ),
+
+                        // Section Divider
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: fit.dp(10)),
+                          child: Divider(color: cardBorderColor, height: 1, thickness: 1),
+                        ),
+
+                        // Investment Amount Label
+                        Text(
+                          strings.isFilipino ? 'HALAGA NG PUHUNAN (PHP)' : 'INVESTMENT AMOUNT (PHP)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: fit.sp(10.5),
+                            fontWeight: FontWeight.w800,
+                            color: mutedTextColor,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        SizedBox(height: fit.dp(8)),
+
+                        // Amount Input TextField with Validation Border
+                        TextField(
+                          controller: _amountController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: fit.sp(20.0),
+                            fontWeight: FontWeight.w800,
+                            color: primaryTextColor,
+                          ),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: isInvalid
+                                ? (isDark ? const Color(0xFF2D181A) : const Color(0xFFFFF1F2))
+                                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                            prefixIcon: Padding(
+                              padding: EdgeInsets.only(left: fit.dp(14), right: fit.dp(8)),
+                              child: Text(
+                                '₱',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: fit.sp(20.0),
+                                  fontWeight: FontWeight.w800,
+                                  color: isInvalid ? PiggyTrunkTheme.ptAccent : _brandAccent,
+                                ),
+                              ),
+                            ),
+                            prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                            hintText: '0.00',
+                            hintStyle: GoogleFonts.plusJakartaSans(
+                              fontSize: fit.sp(20.0),
+                              fontWeight: FontWeight.w600,
+                              color: mutedTextColor.withValues(alpha: 0.4),
+                            ),
+                            contentPadding: EdgeInsets.symmetric(horizontal: fit.dp(14), vertical: fit.dp(12)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(fit.dp(12)),
+                              borderSide: isInvalid
+                                  ? BorderSide(color: PiggyTrunkTheme.ptAccent, width: 1.5)
+                                  : BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(fit.dp(12)),
+                              borderSide: isInvalid
+                                  ? BorderSide(color: PiggyTrunkTheme.ptAccent, width: 1.5)
+                                  : BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(fit.dp(12)),
+                              borderSide: BorderSide(
+                                color: isInvalid ? PiggyTrunkTheme.ptAccent : const Color(0xFF10B981),
+                                width: 1.8,
+                              ),
                             ),
                           ),
                         ),
-                        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-                        hintText: '0.00',
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: fit.sp(22.0),
-                          fontWeight: FontWeight.w600,
-                          color: mutedTextColor.withValues(alpha: 0.4),
+
+                        // Inline validation error or per-hog allocation calculation
+                        if (isInvalid) ...[
+                          Padding(
+                            padding: EdgeInsets.only(top: fit.dp(6)),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline_rounded, size: fit.dp(13), color: PiggyTrunkTheme.ptAccent),
+                                SizedBox(width: fit.dp(4)),
+                                Text(
+                                  strings.isFilipino
+                                      ? 'Kailangang mas mataas sa ₱0.00 ang halaga'
+                                      : 'Investment amount must be greater than ₱0.00',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: fit.sp(11.0),
+                                    fontWeight: FontWeight.w600,
+                                    color: PiggyTrunkTheme.ptAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (_parsedAmount > 0 && _selectedHogTags.isNotEmpty) ...[
+                          Padding(
+                            padding: EdgeInsets.only(top: fit.dp(6)),
+                            child: Text(
+                              '≈ ₱${_formatCurrency(_parsedAmount / _selectedHogTags.length)} per selected hog (${_selectedHogTags.length} hogs)',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: fit.sp(11.0),
+                                fontWeight: FontWeight.w700,
+                                color: _brandAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // Quick Preset Amount Chips
+                        SizedBox(height: fit.dp(10)),
+                        Row(
+                          children: [1000.0, 5000.0, 10000.0, 20000.0].map((preset) {
+                            final isPresetSelected = (_parsedAmount == preset);
+                            return Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(horizontal: fit.dp(2)),
+                                child: InkWell(
+                                  onTap: () => _setPresetAmount(preset),
+                                  borderRadius: BorderRadius.circular(fit.dp(8)),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(vertical: fit.dp(6)),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: isPresetSelected
+                                          ? _brandAccent.withValues(alpha: isDark ? 0.3 : 0.15)
+                                          : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft),
+                                      borderRadius: BorderRadius.circular(fit.dp(8)),
+                                      border: Border.all(
+                                        color: isPresetSelected
+                                            ? _brandAccent
+                                            : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                                        width: isPresetSelected ? 1.2 : 0.8,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '₱${preset >= 1000 ? "${(preset / 1000).toInt()}k" : preset.toInt()}',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: fit.sp(10.5),
+                                        fontWeight: isPresetSelected ? FontWeight.w800 : FontWeight.w600,
+                                        color: isPresetSelected
+                                            ? _brandAccent
+                                            : (isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                        contentPadding: EdgeInsets.symmetric(horizontal: fit.dp(16), vertical: fit.dp(16)),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(fit.dp(14)),
-                          borderSide: BorderSide.none,
+
+                        // Section Divider before total
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: fit.dp(10)),
+                          child: Divider(color: cardBorderColor, height: 1, thickness: 1),
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(fit.dp(14)),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(fit.dp(14)),
-                          borderSide: const BorderSide(
-                            color: Color(0xFF10B981),
-                            width: 1.8,
+
+                        // Integrated Total Invest Amount Row
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: fit.dp(12), vertical: fit.dp(9)),
+                          decoration: BoxDecoration(
+                            color: statsBoxBg,
+                            borderRadius: BorderRadius.circular(fit.dp(10)),
+                            border: Border.all(color: statsBoxBorder, width: 1.0),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                strings.isFilipino ? 'Kabuuang Halaga' : 'Total Investment',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: fit.sp(12.0),
+                                  fontWeight: FontWeight.w700,
+                                  color: mutedTextColor,
+                                ),
+                              ),
+                              Text(
+                                '₱${_formatCurrency(_parsedAmount)}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: fit.sp(16.0),
+                                  fontWeight: FontWeight.w800,
+                                  color: _parsedAmount > 0 ? _brandAccent : primaryTextColor,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
-              SizedBox(height: fit.dp(16.0)),
-
-              // Total Invest Amount Summary Card
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: fit.dp(18), vertical: fit.dp(16)),
-                decoration: BoxDecoration(
-                  color: statsBoxBg,
-                  borderRadius: BorderRadius.circular(fit.dp(16)),
-                  border: Border.all(color: statsBoxBorder, width: 1.2),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Total Invest Amount',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: fit.sp(13.5),
-                        fontWeight: FontWeight.w700,
-                        color: mutedTextColor,
-                      ),
-                    ),
-                    Text(
-                      '₱${_formatCurrency(_parsedAmount)}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: fit.sp(18.0),
-                        fontWeight: FontWeight.w800,
-                        color: _parsedAmount > 0 ? _brandAccent : primaryTextColor,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: fit.dp(22.0)),
 
               // Action Buttons
               Row(
@@ -658,39 +1252,59 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                       onPressed: _cancelInvestmentFlow,
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: cardBorderColor, width: 1.2),
-                        padding: EdgeInsets.symmetric(vertical: fit.dp(14)),
+                        padding: EdgeInsets.symmetric(vertical: fit.dp(12)),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(fit.dp(14)),
+                          borderRadius: BorderRadius.circular(fit.dp(12)),
                         ),
                       ),
                       child: Text(
                         strings.cancel,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: fit.sp(13.5),
+                          fontSize: fit.sp(13.0),
                           fontWeight: FontWeight.w700,
                           color: mutedTextColor,
                         ),
                       ),
                     ),
                   ),
-                  SizedBox(width: fit.dp(12)),
+                  SizedBox(width: fit.dp(10)),
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _confirmInvestment,
+                      onPressed: _isSubmitting
+                          ? null
+                          : () {
+                              if (_parsedAmount <= 0) {
+                                setState(() {
+                                  _hasAttemptedSubmit = true;
+                                });
+                                PiggyToast.showWarning(
+                                  context,
+                                  strings.isFilipino
+                                      ? 'Kailangang mas mataas sa ₱0.00 ang puhunan.'
+                                      : 'Please enter an investment amount greater than ₱0.00.',
+                                );
+                                return;
+                              }
+                              _confirmInvestment();
+                            },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _brandColor,
-                        foregroundColor: Colors.white,
+                        backgroundColor: _parsedAmount > 0
+                            ? _brandColor
+                            : (isDark ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1)),
+                        foregroundColor: _parsedAmount > 0
+                            ? Colors.white
+                            : (isDark ? Colors.white38 : Colors.black38),
                         elevation: 0,
-                        padding: EdgeInsets.symmetric(vertical: fit.dp(14)),
+                        padding: EdgeInsets.symmetric(vertical: fit.dp(12)),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(fit.dp(14)),
+                          borderRadius: BorderRadius.circular(fit.dp(12)),
                         ),
                       ),
                       child: _isSubmitting
                           ? const SizedBox(
-                              width: 20,
-                              height: 20,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                                 strokeWidth: 2.0,
@@ -702,16 +1316,20 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                                 Text(
                                   strings.isFilipino ? 'Kumpirmahin ang Puhunan' : 'Confirm Investment',
                                   style: GoogleFonts.plusJakartaSans(
-                                    fontSize: fit.sp(14.0),
+                                    fontSize: fit.sp(13.5),
                                     fontWeight: FontWeight.w800,
-                                    color: Colors.white,
+                                    color: _parsedAmount > 0
+                                        ? Colors.white
+                                        : (isDark ? Colors.white38 : Colors.black38),
                                   ),
                                 ),
                                 SizedBox(width: fit.dp(6)),
                                 Icon(
                                   Icons.arrow_forward_rounded,
-                                  size: fit.dp(18),
-                                  color: Colors.white,
+                                  size: fit.dp(16),
+                                  color: _parsedAmount > 0
+                                      ? Colors.white
+                                      : (isDark ? Colors.white38 : Colors.black38),
                                 ),
                               ],
                             ),
@@ -720,7 +1338,144 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                 ],
               ),
             ] else ...[
-              // View 2: Browse & Select Active Batches
+              // ==================== SUB-TAB SELECTOR (MY INVESTMENTS vs EXPLORE BATCHES) ====================
+              if (widget.fundedProjectsList.isNotEmpty) ...[
+                Container(
+                  margin: EdgeInsets.only(bottom: fit.dp(16)),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(fit.dp(14)),
+                    border: Border.all(color: cardBorderColor, width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedSubTab = 0),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(vertical: fit.dp(9)),
+                            decoration: BoxDecoration(
+                              color: _selectedSubTab == 0
+                                  ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(fit.dp(10)),
+                              boxShadow: _selectedSubTab == 0
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  size: fit.dp(15),
+                                  color: _selectedSubTab == 0 ? _brandAccent : mutedTextColor,
+                                ),
+                                SizedBox(width: fit.dp(6)),
+                                Text(
+                                  strings.isFilipino
+                                      ? 'Aking Puhunan (${widget.fundedProjectsList.length})'
+                                      : 'My Investments (${widget.fundedProjectsList.length})',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: fit.sp(12.0),
+                                    fontWeight: _selectedSubTab == 0 ? FontWeight.w800 : FontWeight.w600,
+                                    color: _selectedSubTab == 0 ? primaryTextColor : mutedTextColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedSubTab = 1),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(vertical: fit.dp(9)),
+                            decoration: BoxDecoration(
+                              color: _selectedSubTab == 1
+                                  ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(fit.dp(10)),
+                              boxShadow: _selectedSubTab == 1
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.explore_outlined,
+                                  size: fit.dp(15),
+                                  color: _selectedSubTab == 1 ? (isDark ? Colors.white : _brandColor) : mutedTextColor,
+                                ),
+                                SizedBox(width: fit.dp(6)),
+                                Text(
+                                  strings.isFilipino
+                                      ? 'Mag-browse (${batchesList.length})'
+                                      : 'Explore Batches (${batchesList.length})',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: fit.sp(12.0),
+                                    fontWeight: _selectedSubTab == 1 ? FontWeight.w800 : FontWeight.w600,
+                                    color: _selectedSubTab == 1 ? primaryTextColor : mutedTextColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // ==================== SUB-TAB 0: MY FUNDED BATCHES ====================
+              if (widget.fundedProjectsList.isNotEmpty && _selectedSubTab == 0) ...[
+                if (widget.fundedProjectsList.length == 1)
+                  _buildSoloFundedBatchView(
+                    fit,
+                    strings,
+                    widget.fundedProjectsList.first,
+                    isDark,
+                    primaryTextColor,
+                    mutedTextColor,
+                    cardBgColor,
+                    cardBorderColor,
+                    statsBoxBg,
+                    statsBoxBorder,
+                    batchesList,
+                  )
+                else
+                  _buildMultipleFundedBatchesView(
+                    fit,
+                    strings,
+                    widget.fundedProjectsList,
+                    isDark,
+                    primaryTextColor,
+                    mutedTextColor,
+                    cardBgColor,
+                    cardBorderColor,
+                    statsBoxBg,
+                    statsBoxBorder,
+                    batchesList,
+                  ),
+              ] else ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -741,7 +1496,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                       borderRadius: BorderRadius.circular(fit.dp(12)),
                     ),
                     child: Text(
-                      strings.isFilipino ? '$openBatchesCount BUKAS NA BATCH' : '$openBatchesCount BATCHES OPEN',
+                      openBatchesCount == 1
+                          ? (strings.isFilipino ? '1 BUKAS NA BATCH' : '1 BATCH OPEN')
+                          : (strings.isFilipino ? '$openBatchesCount BUKAS NA BATCH' : '$openBatchesCount BATCHES OPEN'),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: fit.sp(11.0),
                         fontWeight: FontWeight.w800,
@@ -835,8 +1592,6 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
               else
                 ...batchesList.map((batch) {
                   final String batchName = batch['batch_name'] ?? batch['title'] ?? 'Batch Project';
-                  final String rawStage = (batch['stage'] ?? batch['lifecycle_stage'] ?? 'Grower').toString().trim();
-                  final String stage = (rawStage.isEmpty || rawStage.toUpperCase() == 'N/A') ? 'Grower' : rawStage;
                   final String rawHogType = (batch['hog_type'] ?? batch['pig_type'] ?? 'Fattening').toString().trim();
                   final String hogType = (rawHogType.isEmpty || rawHogType.toUpperCase() == 'N/A') ? 'Fattening' : rawHogType;
                   final String raiserName = batch['assigned_raiser'] ?? batch['raiser_name'] ?? 'Assigned Hog Raiser';
@@ -860,7 +1615,7 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Batch Card Header: Code, Hog Type & Stage Pill
+                        // Batch Card Header: Pig Type Badge
                         Padding(
                           padding: EdgeInsets.fromLTRB(fit.dp(16), fit.dp(16), fit.dp(16), 0),
                           child: Wrap(
@@ -872,10 +1627,10 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                               Container(
                                 padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(4.5)),
                                 decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                                   borderRadius: BorderRadius.circular(fit.dp(20)),
                                   border: Border.all(
-                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                                     width: 1,
                                   ),
                                 ),
@@ -884,42 +1639,8 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: fit.sp(11.0),
                                     fontWeight: FontWeight.w700,
-                                    color: isDark ? Colors.white : const Color(0xFF18314F),
+                                    color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
                                   ),
-                                ),
-                              ),
-                              // 3. Stage Badge (e.g. Booster Stage)
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(4.5)),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.12),
-                                  borderRadius: BorderRadius.circular(fit.dp(20)),
-                                  border: Border.all(
-                                    color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.4 : 0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: fit.dp(5.5),
-                                      height: fit.dp(5.5),
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF10B981),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    SizedBox(width: fit.dp(4)),
-                                    Text(
-                                      '$stage Stage',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: fit.sp(11.0),
-                                        fontWeight: FontWeight.w700,
-                                        color: const Color(0xFF10B981),
-                                      ),
-                                    ),
-                                  ],
                                 ),
                               ),
                             ],
@@ -1005,6 +1726,8 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                                       context: context,
                                       batch: batch,
                                       onInvestNow: () => _startInvestmentFlow(batch),
+                                      onViewLifecycle: widget.onNavigateToLifecycle,
+                                      onViewActivities: widget.onNavigateToActivities,
                                     ),
                                     style: OutlinedButton.styleFrom(
                                       side: BorderSide(color: cardBorderColor, width: 1.2),
@@ -1076,9 +1799,564 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                     ),
                   );
                 }),
+              ],
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  // ==================== SOLO FUNDED BATCH VIEW ====================
+  Widget _buildSoloFundedBatchView(
+    ScreenFit fit,
+    AppStrings strings,
+    Map<String, dynamic> singleBatch,
+    bool isDark,
+    Color primaryTextColor,
+    Color mutedTextColor,
+    Color cardBgColor,
+    Color cardBorderColor,
+    Color statsBoxBg,
+    Color statsBoxBorder,
+    List<Map<String, dynamic>> batchesList,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              strings.isFilipino ? 'Iyong Pinondohang Batch' : 'Your Funded Batch',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: fit.sp(16.5),
+                fontWeight: FontWeight.w800,
+                color: primaryTextColor,
+                letterSpacing: -0.3,
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(4)),
+              decoration: BoxDecoration(
+                color: _brandAccent.withValues(alpha: isDark ? 0.2 : 0.12),
+                borderRadius: BorderRadius.circular(fit.dp(12)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: fit.dp(6),
+                    height: fit.dp(6),
+                    decoration: const BoxDecoration(
+                      color: _brandAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: fit.dp(5)),
+                  Text(
+                    '1 ACTIVE BATCH',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: fit.sp(10.5),
+                      fontWeight: FontWeight.w800,
+                      color: _brandAccent,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: fit.dp(14)),
+        _buildFundedBatchCard(
+          context: context,
+          fit: fit,
+          strings: strings,
+          batch: singleBatch,
+          isDark: isDark,
+          primaryTextColor: primaryTextColor,
+          mutedTextColor: mutedTextColor,
+          cardBgColor: cardBgColor,
+          cardBorderColor: cardBorderColor,
+          statsBoxBg: statsBoxBg,
+          statsBoxBorder: statsBoxBorder,
+        ),
+        if (batchesList.isNotEmpty)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: fit.dp(16), vertical: fit.dp(14)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF131F33) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(fit.dp(16)),
+              border: Border.all(color: cardBorderColor, width: 1.0),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(fit.dp(8)),
+                  decoration: BoxDecoration(
+                    color: _brandColor.withValues(alpha: isDark ? 0.35 : 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.explore_outlined, size: fit.dp(18), color: isDark ? Colors.white : _brandColor),
+                ),
+                SizedBox(width: fit.dp(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        strings.isFilipino ? 'Gusto pang mag-invest sa ibang batch?' : 'Expand your farm portfolio?',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(12.5),
+                          fontWeight: FontWeight.w800,
+                          color: primaryTextColor,
+                        ),
+                      ),
+                      SizedBox(height: fit.dp(2)),
+                      Text(
+                        strings.isFilipino
+                            ? 'May ${batchesList.length} bukas na batch para sa investment.'
+                            : '${batchesList.length} open batches available to fund.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(11.0),
+                          fontWeight: FontWeight.w500,
+                          color: mutedTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _selectedSubTab = 1),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(6)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        strings.isFilipino ? 'Tingnan' : 'Browse',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(12.5),
+                          fontWeight: FontWeight.w800,
+                          color: _brandAccent,
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: fit.dp(16), color: _brandAccent),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ==================== MULTIPLE FUNDED BATCHES VIEW ====================
+  Widget _buildMultipleFundedBatchesView(
+    ScreenFit fit,
+    AppStrings strings,
+    List<Map<String, dynamic>> fundedBatches,
+    bool isDark,
+    Color primaryTextColor,
+    Color mutedTextColor,
+    Color cardBgColor,
+    Color cardBorderColor,
+    Color statsBoxBg,
+    Color statsBoxBorder,
+    List<Map<String, dynamic>> batchesList,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              strings.isFilipino ? 'Aking mga Pinondohang Batch' : 'Your Funded Batches',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: fit.sp(16.5),
+                fontWeight: FontWeight.w800,
+                color: primaryTextColor,
+                letterSpacing: -0.3,
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(4)),
+              decoration: BoxDecoration(
+                color: _brandAccent.withValues(alpha: isDark ? 0.2 : 0.12),
+                borderRadius: BorderRadius.circular(fit.dp(12)),
+              ),
+              child: Text(
+                '${fundedBatches.length} BATCHES',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: fit.sp(10.5),
+                  fontWeight: FontWeight.w800,
+                  color: _brandAccent,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: fit.dp(14)),
+        ...fundedBatches.map(
+          (batch) => _buildFundedBatchCard(
+            context: context,
+            fit: fit,
+            strings: strings,
+            batch: batch,
+            isDark: isDark,
+            primaryTextColor: primaryTextColor,
+            mutedTextColor: mutedTextColor,
+            cardBgColor: cardBgColor,
+            cardBorderColor: cardBorderColor,
+            statsBoxBg: statsBoxBg,
+            statsBoxBorder: statsBoxBorder,
+          ),
+        ),
+        if (batchesList.isNotEmpty)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: fit.dp(16), vertical: fit.dp(14)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF131F33) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(fit.dp(16)),
+              border: Border.all(color: cardBorderColor, width: 1.0),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(fit.dp(8)),
+                  decoration: BoxDecoration(
+                    color: _brandColor.withValues(alpha: isDark ? 0.35 : 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.explore_outlined, size: fit.dp(18), color: isDark ? Colors.white : _brandColor),
+                ),
+                SizedBox(width: fit.dp(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        strings.isFilipino ? 'Gusto pang mag-invest sa ibang batch?' : 'Expand your farm portfolio?',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(12.5),
+                          fontWeight: FontWeight.w800,
+                          color: primaryTextColor,
+                        ),
+                      ),
+                      SizedBox(height: fit.dp(2)),
+                      Text(
+                        strings.isFilipino
+                            ? 'May ${batchesList.length} bukas na batch para sa investment.'
+                            : '${batchesList.length} open batches available to fund.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(11.0),
+                          fontWeight: FontWeight.w500,
+                          color: mutedTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _selectedSubTab = 1),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: fit.dp(10), vertical: fit.dp(6)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        strings.isFilipino ? 'Tingnan' : 'Browse',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: fit.sp(12.5),
+                          fontWeight: FontWeight.w800,
+                          color: _brandAccent,
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: fit.dp(16), color: _brandAccent),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ==================== FUNDED BATCH CARD COMPONENT ====================
+  Widget _buildFundedBatchCard({
+    required BuildContext context,
+    required ScreenFit fit,
+    required AppStrings strings,
+    required Map<String, dynamic> batch,
+    required bool isDark,
+    required Color primaryTextColor,
+    required Color mutedTextColor,
+    required Color cardBgColor,
+    required Color cardBorderColor,
+    required Color statsBoxBg,
+    required Color statsBoxBorder,
+  }) {
+    final String batchName = batch['batch_name'] ?? batch['title'] ?? 'Batch Project';
+    final String rawHogType = (batch['hog_type'] ?? batch['pig_type'] ?? 'Fattening').toString().trim();
+    final String hogType = (rawHogType.isEmpty || rawHogType.toUpperCase() == 'N/A') ? 'Fattening' : rawHogType;
+    final String raiserName = (batch['assigned_raiser'] ?? batch['raiser_name'] ?? 'Assigned Hog Raiser').toString();
+    final String raiserLocation = (batch['address'] ?? batch['location'] ?? '').toString();
+    final double capital = (batch['amount'] as num?)?.toDouble() ??
+        (batch['invested_amount'] as num?)?.toDouble() ??
+        widget.investedAmount;
+    final List<String> targetTags = (batch['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final String targetPigType = (batch['target_pig_type'] ?? '').toString();
+    final int totalHogs = (batch['total_hogs'] as num?)?.toInt() ?? ((batch['hogs'] as List?)?.length ?? 6);
+    final String stage = (batch['stage'] ?? batch['lifecycle_stage'] ?? 'Finisher').toString();
+
+    return Container(
+      margin: EdgeInsets.only(bottom: fit.dp(16)),
+      padding: EdgeInsets.all(fit.dp(16)),
+      decoration: BoxDecoration(
+        color: cardBgColor,
+        borderRadius: BorderRadius.circular(fit.dp(22)),
+        border: Border.all(color: cardBorderColor, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row 1: Icon + Batch Name & Raiser + Pig Type Badge
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(fit.dp(10)),
+                decoration: BoxDecoration(
+                  color: _brandAccent.withValues(alpha: isDark ? 0.25 : 0.12),
+                  borderRadius: BorderRadius.circular(fit.dp(12)),
+                  border: Border.all(
+                    color: _brandAccent.withValues(alpha: isDark ? 0.4 : 0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.pets_rounded,
+                  size: fit.dp(20),
+                  color: _brandAccent,
+                ),
+              ),
+              SizedBox(width: fit.dp(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      batchName,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: fit.sp(16.0),
+                        fontWeight: FontWeight.w800,
+                        color: primaryTextColor,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: fit.dp(2)),
+                    Text(
+                      'Raiser: $raiserName',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: fit.sp(12.0),
+                        fontWeight: FontWeight.w600,
+                        color: mutedTextColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (raiserLocation.isNotEmpty && raiserLocation != 'null') ...[
+                      SizedBox(height: fit.dp(2)),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: fit.dp(11), color: mutedTextColor),
+                          SizedBox(width: fit.dp(2)),
+                          Expanded(
+                            child: Text(
+                              raiserLocation,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: fit.sp(11.0),
+                                fontWeight: FontWeight.w500,
+                                color: mutedTextColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: fit.dp(9), vertical: fit.dp(4)),
+                decoration: BoxDecoration(
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                  borderRadius: BorderRadius.circular(fit.dp(12)),
+                  border: Border.all(color: cardBorderColor, width: 0.8),
+                ),
+                child: Text(
+                  hogType,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: fit.sp(10.5),
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: fit.dp(14)),
+
+          // Row 2: Metrics Box (Capital, Hogs, Stage)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: fit.dp(12), vertical: fit.dp(12)),
+            decoration: BoxDecoration(
+              color: statsBoxBg,
+              borderRadius: BorderRadius.circular(fit.dp(14)),
+              border: Border.all(color: statsBoxBorder, width: 1),
+            ),
+            child: Row(
+              children: [
+                _buildMetricColumn(
+                  fit,
+                  strings.isFilipino ? 'PUHUNAN' : 'MY CAPITAL',
+                  '₱${_formatCurrency(capital)}',
+                  _brandAccent,
+                  isDark,
+                ),
+                Container(width: 1, height: fit.dp(28), color: cardBorderColor),
+                _buildMetricColumn(
+                  fit,
+                  strings.isFilipino ? 'MGA BABOY' : 'ALLOCATED HOGS',
+                  targetTags.isNotEmpty ? '${targetTags.length} of $totalHogs' : '$totalHogs Total',
+                  isDark ? Colors.white : _brandColor,
+                  isDark,
+                ),
+                Container(width: 1, height: fit.dp(28), color: cardBorderColor),
+                _buildMetricColumn(
+                  fit,
+                  strings.isFilipino ? 'STAGE' : 'STAGE',
+                  stage,
+                  const Color(0xFFFFA566),
+                  isDark,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: fit.dp(12)),
+
+          // Row 3: Target Hogs Tag Badge
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: fit.dp(12), vertical: fit.dp(8)),
+            decoration: BoxDecoration(
+              color: _brandAccent.withValues(alpha: isDark ? 0.16 : 0.08),
+              borderRadius: BorderRadius.circular(fit.dp(10)),
+              border: Border.all(
+                color: _brandAccent.withValues(alpha: isDark ? 0.35 : 0.25),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle_rounded, size: fit.dp(15), color: _brandAccent),
+                SizedBox(width: fit.dp(8)),
+                Expanded(
+                  child: Text(
+                    targetTags.isNotEmpty
+                        ? 'Funded Pigs: ${targetTags.join(', ')} • ${targetPigType.isNotEmpty ? targetPigType : 'Selected Hogs'}'
+                        : 'Entire Batch Funded • $totalHogs Hogs',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: fit.sp(11.5),
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF166534),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: fit.dp(14)),
+
+          // Row 4: Action Buttons (Track Lifecycle + Invest More)
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: ElevatedButton.icon(
+                  onPressed: widget.onNavigateToLifecycle,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDark ? Colors.white : _brandColor,
+                    foregroundColor: isDark ? _brandColor : Colors.white,
+                    elevation: 0,
+                    padding: EdgeInsets.symmetric(vertical: fit.dp(11)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(fit.dp(12)),
+                    ),
+                  ),
+                  icon: Icon(
+                    Icons.insights_rounded,
+                    size: fit.dp(16),
+                    color: isDark ? _brandColor : Colors.white,
+                  ),
+                  label: Text(
+                    strings.isFilipino ? 'Subaybayan ang Lifecycle' : 'Track Lifecycle',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: fit.sp(12.5),
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? _brandColor : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: fit.dp(8)),
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: () => _startInvestmentFlow(batch),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                      width: 1.2,
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: fit.dp(11)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(fit.dp(12)),
+                    ),
+                  ),
+                  icon: Icon(Icons.add_rounded, size: fit.dp(15), color: _brandAccent),
+                  label: Text(
+                    strings.isFilipino ? 'Magdagdag' : 'Add Capital',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: fit.sp(12.0),
+                      fontWeight: FontWeight.w700,
+                      color: _brandAccent,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

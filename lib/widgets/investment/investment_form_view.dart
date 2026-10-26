@@ -842,7 +842,6 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                       'status': 'active',
                       'health_status': 'healthy',
                       'stage_id': 1,
-                      'pig_type': typeName,
                       'last_updated': DateTime.now().toIso8601String(),
                     });
                   }
@@ -855,7 +854,6 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
                     'status': 'active',
                     'health_status': 'healthy',
                     'stage_id': 1,
-                    'pig_type': typeName,
                     'last_updated': DateTime.now().toIso8601String(),
                   });
                 }

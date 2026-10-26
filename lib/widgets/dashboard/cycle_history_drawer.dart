@@ -486,6 +486,10 @@ class CycleHistoryDrawer {
                       h['stage_id'] ?? h['lifecycle_stage'],
                       hIsBreed,
                     );
+                    final isHogTerminal = stageForHog.toLowerCase() == 'selling' ||
+                        stageForHog.toLowerCase() == 'lactation' ||
+                        stageForHog.toLowerCase() == 'completed' ||
+                        (int.tryParse(h['stage_id']?.toString() ?? '') ?? 0) >= 6;
 
                     return Container(
                       margin: EdgeInsets.only(top: idx > 0 ? 12 : 0),
@@ -555,30 +559,36 @@ class CycleHistoryDrawer {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF064E3B)
-                                      : const Color(0xFFDEF7EC),
+                                  color: isHogTerminal
+                                      ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFDEF7EC))
+                                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      Icons.check_circle_rounded,
-                                      size: 10,
-                                      color: isDark
-                                          ? const Color(0xFFA7F3D0)
-                                          : const Color(0xFF03543F),
-                                    ),
-                                    const SizedBox(width: 3.5),
-                                    Text(
-                                      'COMPLETE',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
+                                    if (isHogTerminal) ...[
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 10,
                                         color: isDark
                                             ? const Color(0xFFA7F3D0)
                                             : const Color(0xFF03543F),
+                                      ),
+                                      const SizedBox(width: 3.5),
+                                    ],
+                                    Text(
+                                      isHogTerminal ? 'COMPLETE' : stageForHog.toUpperCase(),
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: isHogTerminal
+                                            ? (isDark
+                                                ? const Color(0xFFA7F3D0)
+                                                : const Color(0xFF03543F))
+                                            : (isDark
+                                                ? PiggyTrunkTheme.ptMutedDark
+                                                : const Color(0xFF475569)),
                                       ),
                                     ),
                                   ],
@@ -657,6 +667,18 @@ class CycleHistoryDrawer {
             'Selling',
           ];
 
+    int currentIdx = stages.indexWhere(
+      (s) => s.toLowerCase() == currentStage.trim().toLowerCase(),
+    );
+    if (currentIdx == -1) {
+      final s = currentStage.toLowerCase();
+      if (s == 'completed' || s == 'sold' || s == 'archived') {
+        currentIdx = stages.length - 1;
+      } else {
+        currentIdx = 0;
+      }
+    }
+
     const circleSize = 22.0;
 
     return LayoutBuilder(
@@ -675,16 +697,59 @@ class CycleHistoryDrawer {
               child: Container(
                 height: 2.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981),
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
+            // Reached connector line
+            if (currentIdx > 0)
+              Positioned(
+                top: (circleSize / 2) - 1.25,
+                left: stepWidth / 2,
+                width: stepWidth * currentIdx,
+                child: Container(
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
             // Uniformly spaced nodes across the available width
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(stages.length, (index) {
                 final stage = stages[index];
+                final bool isCompleted = index < currentIdx || (index == currentIdx && currentIdx == stages.length - 1);
+                final bool isCurrent = index == currentIdx && currentIdx < stages.length - 1;
+
+                Color circleBg;
+                Widget iconChild;
+
+                if (isCompleted) {
+                  circleBg = const Color(0xFF10B981);
+                  iconChild = const Center(
+                    child: Icon(
+                      Icons.check,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  );
+                } else if (isCurrent) {
+                  circleBg = isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A);
+                  iconChild = const Center(
+                    child: Icon(
+                      Icons.priority_high_rounded,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  );
+                } else {
+                  circleBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+                  iconChild = const SizedBox();
+                }
+
                 return SizedBox(
                   width: stepWidth,
                   child: Column(
@@ -695,7 +760,7 @@ class CycleHistoryDrawer {
                         width: circleSize,
                         height: circleSize,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981),
+                          color: circleBg,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: isDark
@@ -703,23 +768,17 @@ class CycleHistoryDrawer {
                                 : Colors.white,
                             width: 2,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF10B981,
-                              ).withValues(alpha: 0.25),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
+                          boxShadow: isCompleted
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ]
+                              : null,
                         ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.check,
-                            size: 11,
-                            color: Colors.white,
-                          ),
-                        ),
+                        child: iconChild,
                       ),
                       const SizedBox(height: 5),
                       Text(
@@ -730,9 +789,13 @@ class CycleHistoryDrawer {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 8.5,
                           fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? const Color(0xFF94A3B8)
-                              : const Color(0xFF64748B),
+                          color: isCompleted
+                              ? const Color(0xFF10B981)
+                              : (isCurrent
+                                  ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                  : (isDark
+                                      ? const Color(0xFF94A3B8)
+                                      : const Color(0xFF64748B))),
                         ),
                       ),
                     ],

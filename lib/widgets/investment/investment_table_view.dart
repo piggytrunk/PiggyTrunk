@@ -1161,10 +1161,17 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Text('STATUS', style: GoogleFonts.plusJakartaSans(fontSize: 11.5, fontWeight: FontWeight.w800, color: hintText)),
+            ),
+          ),
+          SizedBox(
+            width: 100,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text('ACTIONS', textAlign: TextAlign.center, style: GoogleFonts.plusJakartaSans(fontSize: 11.5, fontWeight: FontWeight.w800, color: hintText)),
             ),
           ),
         ],
@@ -1242,16 +1249,12 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                Container(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.12),
@@ -1287,8 +1290,24 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                     ],
                   ),
                 ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildSquareIconButton(
+                  icon: Icons.visibility_rounded,
+                  iconColor: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                  bgColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFEDF4FC),
+                  borderColor: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                  tooltip: 'View Partner Investment Details',
+                  onTap: () => _showPartnerDetailModal(context, p),
+                ),
                 if (isPending && investmentId != null) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildSquareIconButton(
                     icon: Icons.check_rounded,
                     iconColor: PiggyTrunkTheme.ptSuccess,
@@ -1310,11 +1329,508 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
               ],
             ),
           ),
-        ),
-      ),
-      ],
+        ],
       ),
     );
+  }
+
+  void _showPartnerDetailModal(BuildContext context, Map<String, dynamic> p) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF132238) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
+    final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
+    final hintText = isDark ? const Color(0xFF9AB1CB) : const Color(0xFF6F8096);
+    final innerBg = isDark ? const Color(0xFF182942) : const Color(0xFFF6F9FE);
+
+    final partnerName = (p['partner_name'] ?? 'Partner Investor').toString();
+    final batchName = (p['batch_name'] ?? 'Batch Project').toString();
+    final raiserName = (p['assigned_raiser'] ?? 'Assigned Raiser').toString();
+    final double amt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+    final status = (p['status'] ?? 'active').toString().toUpperCase();
+    final isCompleted = status.toLowerCase() == 'completed';
+    final isActive = status.toLowerCase() == 'active' || status.toLowerCase() == 'approved';
+    final Color statusColor = isCompleted
+        ? const Color(0xFF3B82F6)
+        : (isActive ? PiggyTrunkTheme.ptSuccess : const Color(0xFFFFAA00));
+
+    final dateStr = (p['date_invested'] ?? p['created_at'] ?? '').toString();
+    final dt = DateTime.tryParse(dateStr) ?? DateTime.now();
+
+    final targetPigType = (p['target_pig_type'] ?? 'Entire Batch').toString();
+    List<String> targetHogs = [];
+    if (p['target_hog_tags'] is List) {
+      targetHogs = List<String>.from(p['target_hog_tags'].map((e) => e.toString()));
+    }
+
+    final int hogsCount = targetHogs.isNotEmpty
+        ? targetHogs.length
+        : ((p['selected_hogs_count'] as num?)?.toInt() ?? (p['hogs'] is List ? (p['hogs'] as List).length : 6));
+
+    final double perHogAmount = hogsCount > 0 ? (amt / hogsCount) : amt;
+
+    final isMobile = MediaQuery.of(context).size.width < 720;
+
+    Widget buildDrawerContent(BuildContext ctx) {
+      return Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.22),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Partner Investment Details',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: titleColor,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        'Investment #${p['investment_id'] ?? p['id'] ?? "Direct"}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: hintText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: Icon(Icons.close_rounded, color: hintText, size: 22),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Close panel',
+                ),
+              ],
+            ),
+          ),
+          Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
+
+          // Content Body
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Partner & Status Banner
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: innerBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cardBorder, width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+                          child: Text(
+                            partnerName.isNotEmpty ? partnerName[0].toUpperCase() : 'P',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w800,
+                              color: titleColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                partnerName,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: titleColor,
+                                ),
+                              ),
+                              Text(
+                                'Invested on ${_formatDate(dt)}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: hintText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                          ),
+                          child: Text(
+                            status,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: statusColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Investment Value Row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: innerBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cardBorder, width: 1),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'TOTAL CAPITAL',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: hintText,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatCurrency(amt),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF43CB89),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: innerBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cardBorder, width: 1),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ALLOCATION RATIO',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: hintText,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '≈ ${_formatCurrency(perHogAmount)} / hog',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: titleColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Batch & Raiser Information
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: innerBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cardBorder, width: 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.inventory_2_rounded, size: 16, color: hintText),
+                            const SizedBox(width: 6),
+                            Text(
+                              'BATCH & RAISER DESTINATION',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: hintText,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Funded Batch:',
+                              style: GoogleFonts.plusJakartaSans(fontSize: 13, color: hintText, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              batchName,
+                              style: GoogleFonts.plusJakartaSans(fontSize: 13.5, color: titleColor, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Assigned Raiser:',
+                              style: GoogleFonts.plusJakartaSans(fontSize: 13, color: hintText, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              raiserName,
+                              style: GoogleFonts.plusJakartaSans(fontSize: 13, color: titleColor, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Allocation Target Details
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: innerBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cardBorder, width: 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.tune_rounded, size: 16, color: hintText),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'TARGET ALLOCATION',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: hintText,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: cardBorder, width: 0.8),
+                              ),
+                              child: Text(
+                                targetPigType,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: titleColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          targetHogs.isNotEmpty
+                              ? 'Allocated Hogs ($hogsCount):'
+                              : 'All $hogsCount hogs in batch covered by investment.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: titleColor,
+                          ),
+                        ),
+                        if (targetHogs.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: targetHogs.map((tag) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF28405D) : const Color(0xFFE2E8F0),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.pets_rounded, size: 11, color: titleColor),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      tag,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: titleColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom Close Button
+          Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                  foregroundColor: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                child: Text(
+                  'Close',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (isMobile) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.90,
+          ),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: cardBorder, width: 1.2)),
+          ),
+          child: SafeArea(
+            child: buildDrawerContent(sheetContext),
+          ),
+        ),
+      );
+    } else {
+      showGeneralDialog(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Partner Investment Details',
+        barrierColor: Colors.black.withValues(alpha: 0.55),
+        transitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (dialogContext, anim1, anim2) => const SizedBox.shrink(),
+        transitionBuilder: (dialogContext, anim, secondaryAnim, child) {
+          final curvedAnimation = CurvedAnimation(
+            parent: anim,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1.0, 0.0),
+              end: Offset.zero,
+            ).animate(curvedAnimation),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: 480,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    border: Border(left: BorderSide(color: cardBorder, width: 1.2)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 24,
+                        offset: const Offset(-4, 0),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: buildDrawerContent(dialogContext),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
   }
 
   ButtonStyle _primaryButtonStyle({double minWidth = 140, required bool isDark}) {

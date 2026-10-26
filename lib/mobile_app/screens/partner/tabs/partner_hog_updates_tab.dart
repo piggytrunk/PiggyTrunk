@@ -7,7 +7,8 @@ class PartnerHogUpdatesTab extends StatelessWidget {
   final String raiserName;
   final int totalHog;
   final int totalMortality;
-  final String currentStage; // Booster, Pre-starter, Starter, Grower, Finisher
+  final String currentStage; // Booster, Pre-starter, Starter, Grower, Finisher / Breeder, Selling / Lactation
+  final String hogType;
   final List<Map<String, dynamic>> reportsList;
   final Future<void> Function() onRefresh;
   final VoidCallback? onBack;
@@ -20,21 +21,48 @@ class PartnerHogUpdatesTab extends StatelessWidget {
     this.totalHog = 0,
     this.totalMortality = 0,
     this.currentStage = "Grower",
+    this.hogType = "Fattening",
     this.reportsList = const [],
     required this.onRefresh,
     this.onBack,
   });
 
-  static const List<String> _stages = [
+  static const List<String> _fatteningStages = [
     'Booster',
     'Pre-starter',
     'Starter',
     'Grower',
     'Finisher',
+    'Selling',
   ];
 
-  int _getStageIndex(String stage) {
-    final idx = _stages.indexWhere((s) => s.toLowerCase() == stage.toLowerCase());
+  static const List<String> _sowStages = [
+    'Booster',
+    'Pre-starter',
+    'Starter',
+    'Grower',
+    'Breeder',
+    'Lactation',
+  ];
+
+  List<String> get _stages {
+    final t = hogType.toLowerCase();
+    if (t.contains('sow') || t.contains('breed')) {
+      return _sowStages;
+    }
+    return _fatteningStages;
+  }
+
+  int _getStageIndex(String stage, List<String> stageList) {
+    final sLower = stage.toLowerCase().trim();
+    if (sLower.contains('sell') ||
+        sLower.contains('sold') ||
+        sLower.contains('lactat') ||
+        sLower.contains('complete') ||
+        sLower.contains('harvest')) {
+      return stageList.length - 1;
+    }
+    final idx = stageList.indexWhere((s) => s.toLowerCase() == sLower || sLower.contains(s.toLowerCase()));
     return idx != -1 ? idx : 0;
   }
 
@@ -51,7 +79,15 @@ class PartnerHogUpdatesTab extends StatelessWidget {
     final cardBgColor = isDark ? const Color(0xff151f2e) : Colors.white;
     final cardBorderColor = isDark ? const Color(0xff28354a) : const Color(0xffe6ebf2);
 
-    final int currentStageIdx = _getStageIndex(currentStage);
+    final stageList = _stages;
+    final int currentStageIdx = _getStageIndex(currentStage, stageList);
+    final sLower = currentStage.toLowerCase().trim();
+    final bool isTerminalStage = currentStageIdx == stageList.length - 1 &&
+        (sLower.contains('sell') ||
+         sLower.contains('sold') ||
+         sLower.contains('lactat') ||
+         sLower.contains('complete') ||
+         sLower.contains('harvest'));
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -276,10 +312,10 @@ class PartnerHogUpdatesTab extends StatelessWidget {
                   // Timeline Row with connecting lines
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(_stages.length, (index) {
-                      final stageName = _stages[index];
-                      final bool isCompleted = index < currentStageIdx;
-                      final bool isCurrent = index == currentStageIdx;
+                    children: List.generate(stageList.length, (index) {
+                      final stageName = stageList[index];
+                      final bool isCompleted = index < currentStageIdx || (isTerminalStage && index == currentStageIdx);
+                      final bool isCurrent = index == currentStageIdx && !isTerminalStage;
 
                       return Expanded(
                         child: Column(
@@ -292,7 +328,7 @@ class PartnerHogUpdatesTab extends StatelessWidget {
                                     height: 2,
                                     color: index == 0
                                         ? Colors.transparent
-                                        : (index <= currentStageIdx ? _brandColor : const Color(0xFFCBD5E1)),
+                                        : ((index <= currentStageIdx || isTerminalStage) ? _brandColor : const Color(0xFFCBD5E1)),
                                   ),
                                 ),
                                 // Node Circle Icon
@@ -319,9 +355,9 @@ class PartnerHogUpdatesTab extends StatelessWidget {
                                 Expanded(
                                   child: Container(
                                     height: 2,
-                                    color: index == _stages.length - 1
+                                    color: index == stageList.length - 1
                                         ? Colors.transparent
-                                        : (index < currentStageIdx ? _brandColor : const Color(0xFFCBD5E1)),
+                                        : ((index < currentStageIdx || isTerminalStage) ? _brandColor : const Color(0xFFCBD5E1)),
                                   ),
                                 ),
                               ],

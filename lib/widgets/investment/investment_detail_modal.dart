@@ -899,12 +899,88 @@ class _AssignedHogsSectionState extends State<_AssignedHogsSection> {
         }
       }
 
+      final List<Map<String, dynamic>> loadedHogs = List<Map<String, dynamic>>.from(res)
+          .where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
+          .toList();
+
+      // If database has no individual hogs in `hogs` table, synthesize them from investment metadata
+      if (loadedHogs.isEmpty && widget.investment.totalHog > 0) {
+        final totalCount = widget.investment.totalHog;
+        final rawType = widget.investment.hogType.toLowerCase();
+        final bool hasSow = rawType.contains('sow') || rawType.contains('breed');
+        final bool hasFat = rawType.contains('fatten');
+        final int fatCount;
+        final int sowCount;
+        if (hasSow && hasFat) {
+          fatCount = (totalCount / 2).ceil();
+          sowCount = totalCount - fatCount;
+        } else if (hasSow) {
+          sowCount = totalCount;
+          fatCount = 0;
+        } else {
+          fatCount = totalCount;
+          sowCount = 0;
+        }
+
+        final invStage = widget.investment.stage.trim();
+        final bool isConcluded = invStage.toLowerCase() == 'completed' ||
+            invStage.toLowerCase() == 'finished' ||
+            invStage.toLowerCase() == 'sold';
+
+        int hogNumber = 1;
+        // 1. Fattening first of all the time
+        for (int i = 0; i < fatCount; i++) {
+          loadedHogs.add({
+            'hog_id': hogNumber,
+            'tag_number': '#$hogNumber',
+            'pig_type': 'Fattening',
+            'stage_id': isConcluded ? 6 : 1,
+            'lifecycle_stage': isConcluded ? 'Selling' : 'Booster',
+            'health_status': 'Healthy',
+          });
+          hogNumber++;
+        }
+        // 2. Sow / Breeding second
+        for (int i = 0; i < sowCount; i++) {
+          loadedHogs.add({
+            'hog_id': hogNumber,
+            'tag_number': '#$hogNumber',
+            'pig_type': 'Sow',
+            'stage_id': isConcluded ? 6 : 1,
+            'lifecycle_stage': isConcluded ? 'Lactation' : 'Booster',
+            'health_status': 'Healthy',
+          });
+          hogNumber++;
+        }
+      }
+
+      // Strictly sort all hogs so Fattening is ALWAYS first, Sow/Breeding second
+      loadedHogs.sort((a, b) {
+        final aAssignId = (a['assignment_id'] ?? '').toString();
+        final bAssignId = (b['assignment_id'] ?? '').toString();
+        String typeA = (a['pig_type'] ?? '').toString().trim();
+        String typeB = (b['pig_type'] ?? '').toString().trim();
+        if (typeA.isEmpty && assignTypeMap.containsKey(aAssignId)) {
+          typeA = assignTypeMap[aAssignId]!;
+        }
+        if (typeB.isEmpty && assignTypeMap.containsKey(bAssignId)) {
+          typeB = assignTypeMap[bAssignId]!;
+        }
+
+        final bool isSowA = typeA.toLowerCase().contains('sow') || typeA.toLowerCase().contains('breed');
+        final bool isSowB = typeB.toLowerCase().contains('sow') || typeB.toLowerCase().contains('breed');
+        if (!isSowA && isSowB) return -1;
+        if (isSowA && !isSowB) return 1;
+
+        final idA = (a['hog_id'] as num?)?.toInt() ?? 0;
+        final idB = (b['hog_id'] as num?)?.toInt() ?? 0;
+        return idA.compareTo(idB);
+      });
+
       if (mounted) {
         setState(() {
           _assignTypeMap = assignTypeMap;
-          _hogs = List<Map<String, dynamic>>.from(res)
-              .where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
-              .toList();
+          _hogs = loadedHogs;
           _isLoading = false;
         });
       }
@@ -924,6 +1000,16 @@ class _AssignedHogsSectionState extends State<_AssignedHogsSection> {
       return list[id - 1];
     }
     final s = stageVal?.toString().trim() ?? '';
+    final sLower = s.toLowerCase();
+    if (sLower == 'active' || sLower == 'pending' || sLower == 'approved' || sLower == 'submitted') {
+      return 'Booster';
+    }
+    if (sLower == 'completed' || sLower == 'finished' || sLower == 'sold') {
+      return isBreeding ? 'Lactation' : 'Selling';
+    }
+    for (final st in list) {
+      if (st.toLowerCase() == sLower) return st;
+    }
     if (s.isNotEmpty && s != 'null' && s != 'N/A' && int.tryParse(s) == null) {
       return s;
     }

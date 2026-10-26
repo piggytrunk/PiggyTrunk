@@ -46,9 +46,9 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
 
   Color _getStageColor(String stage) {
     final s = stage.toLowerCase();
-    if (s.contains('finisher') || s.contains('harvest')) {
+    if (s.contains('finisher') || s.contains('harvest') || s.contains('sell') || s.contains('lactat')) {
       return const Color(0xFF10B981);
-    } else if (s.contains('grower')) {
+    } else if (s.contains('grower') || s.contains('breed')) {
       return const Color(0xFF3B82F6);
     } else if (s.contains('starter')) {
       return const Color(0xFFF59E0B);
@@ -64,7 +64,8 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
     if (s.contains('pre-starter') || s.contains('pre starter')) return 1;
     if (s.contains('starter')) return 2;
     if (s.contains('grower')) return 3;
-    if (s.contains('finisher')) return 4;
+    if (s.contains('finisher') || s.contains('breed')) return 4;
+    if (s.contains('selling') || s.contains('sold') || s.contains('lactat') || s.contains('harvest') || s.contains('complete')) return 5;
     return 2;
   }
 
@@ -85,11 +86,13 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
             (curRaiser.contains(rName) || rName.contains(curRaiser));
       }).toList();
 
+      final String hogType = (proj['hog_type'] ?? proj['pig_type'] ?? 'Fattening').toString();
       return PartnerHogUpdatesTab(
         raiserName: raiserName,
         totalHog: hogs,
         totalMortality: mortality,
         currentStage: stage,
+        hogType: hogType,
         reportsList: matchingReports.isNotEmpty ? matchingReports : widget.activitiesList,
         onRefresh: widget.onRefresh,
         onBack: () => setState(() => _selectedProjectForUpdates = null),
@@ -413,7 +416,8 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                   final String title = project['title'] ?? project['batch_name'] ?? 'Batch Project';
                   final String status = project['status'] ?? 'Active';
                   final String stage = project['stage'] ?? 'Grower';
-                  final String hogType = project['hog_type'] ?? 'Fattening';
+                  final String rawHogType = (project['target_pig_type'] ?? project['hog_type'] ?? project['pig_type'] ?? 'Fattening').toString();
+                  final String hogType = (rawHogType.isEmpty || rawHogType.toUpperCase() == 'N/A') ? 'Fattening' : rawHogType;
                   final String raiserName = project['raiser_name'] ?? project['assigned_raiser'] ?? 'Assigned Hog Raiser';
                   final double amount = (project['invested_amount'] ?? project['amount'] as num?)?.toDouble() ??
                       (widget.investedAmount > 0 ? widget.investedAmount : 10000.0);
@@ -441,7 +445,7 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Card Header: Code, Hog Type & Stage Pill
+                        // Card Header: Pig Type Badge & Status Pill
                         Padding(
                           padding: EdgeInsets.fromLTRB(fit.dp(16), fit.dp(16), fit.dp(16), 0),
                           child: Wrap(
@@ -452,15 +456,15 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // Hog Type Badge (e.g. Fattening)
+                                  // Hog Type Badge (e.g. Fattening or Sow/Breeding)
                                   Container(
                                     padding: EdgeInsets.symmetric(horizontal: fit.dp(9), vertical: fit.dp(4.5)),
                                     margin: EdgeInsets.only(right: fit.dp(6)),
                                     decoration: BoxDecoration(
-                                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                      color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
                                       borderRadius: BorderRadius.circular(fit.dp(20)),
                                       border: Border.all(
-                                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                        color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
                                         width: 1,
                                       ),
                                     ),
@@ -470,7 +474,7 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                         Icon(
                                           Icons.pets_rounded,
                                           size: fit.dp(11),
-                                          color: isDark ? Colors.white : _brandColor,
+                                          color: isDark ? PiggyTrunkTheme.ptTextDark : _brandColor,
                                         ),
                                         SizedBox(width: fit.dp(4)),
                                         Text(
@@ -478,13 +482,13 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: fit.sp(10.5),
                                             fontWeight: FontWeight.w800,
-                                            color: isDark ? Colors.white : _brandColor,
+                                            color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  // Stage Badge (e.g. Grower Stage)
+                                  // Status Badge (e.g. Active Batch or Pending Approval)
                                   Container(
                                     padding: EdgeInsets.symmetric(horizontal: fit.dp(9), vertical: fit.dp(4.5)),
                                     decoration: BoxDecoration(
@@ -508,7 +512,7 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                         ),
                                         SizedBox(width: fit.dp(5)),
                                         Text(
-                                          status.toLowerCase() == 'pending' ? 'Pending Approval' : '$stage Stage',
+                                          status.toLowerCase() == 'pending' ? 'Pending Approval' : 'Active Batch',
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: fit.sp(10.5),
                                             fontWeight: FontWeight.w800,
@@ -567,7 +571,9 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                   ),
                                   SizedBox(width: fit.dp(8)),
                                   Text(
-                                    hogType,
+                                    project['target_hog_tags'] is List && (project['target_hog_tags'] as List).isNotEmpty
+                                        ? '$hogType (${(project['target_hog_tags'] as List).join(", ")})'
+                                        : hogType,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: fit.sp(12.0),
                                       fontWeight: FontWeight.w600,
@@ -599,7 +605,7 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                     ),
                                   ),
                                   Text(
-                                    'Step ${progressStep + 1} of 5',
+                                    'Step ${progressStep + 1} of 6',
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: fit.sp(10.5),
                                       fontWeight: FontWeight.w700,
@@ -612,7 +618,7 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(fit.dp(6)),
                                 child: LinearProgressIndicator(
-                                  value: (progressStep + 1) / 5.0,
+                                  value: (progressStep + 1) / 6.0,
                                   backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
                                   valueColor: AlwaysStoppedAnimation<Color>(stageColor),
                                   minHeight: fit.dp(6),

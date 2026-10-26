@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import '../../../utils/app_strings.dart';
 import '../../../widgets/piggy_toast.dart';
@@ -119,6 +120,10 @@ class RaiserHomeTab extends StatelessWidget {
 
     final hasActiveBatch = activeBatches.isNotEmpty;
     final hasCompletedBatch = completedBatches.isNotEmpty;
+    final double totalPartnerCapital = (hasActiveBatch ? activeBatches : activeAssignments).fold<double>(
+      0.0,
+      (sum, a) => sum + ((a['partner_capital'] as num?)?.toDouble() ?? 0.0),
+    );
 
     final List<String> allBatchNames = [];
     final targetBatches = hasActiveBatch ? activeBatches : <Map<String, dynamic>>[];
@@ -178,19 +183,35 @@ class RaiserHomeTab extends StatelessWidget {
 
     String? fatteningStage;
     String? sowStage;
+    int fatteningCount = 0;
+    int sowCount = 0;
+    final targetHogsForStage = activeHogsList.isNotEmpty ? activeHogsList : hogsList;
     if (hasActiveBatch) {
-      for (var h in activeHogsList) {
+      for (var h in targetHogsForStage) {
         final hType = _getHogPigType(h, pigType);
         final isBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
         final st = _getHogCurrentStage(h, isBreed, activeStage);
         if (isBreed) {
+          sowCount++;
           sowStage ??= st;
         } else {
+          fatteningCount++;
           fatteningStage ??= st;
         }
       }
+      if (fatteningCount == 0 && sowCount == 0 && activeAssignments.isNotEmpty) {
+        for (var a in activeAssignments) {
+          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+          final heads = (a['assigned_heads'] as num?)?.toInt() ?? 0;
+          if (t.contains('sow') || t.contains('breed')) {
+            sowCount += heads;
+          } else {
+            fatteningCount += heads;
+          }
+        }
+      }
     }
-    final bool hasBothTypes = hasActiveBatch && fatteningStage != null && sowStage != null;
+    final bool hasBothTypes = hasActiveBatch && ((fatteningCount > 0 && sowCount > 0) || (fatteningStage != null && sowStage != null));
 
     final String displayStage = hasActiveBatch ? activeStage : (strings.isFilipino ? 'Walang Aktibong Siklo' : 'No Active Cycle');
     final String displayPigType = hasActiveBatch ? pigType : (strings.isFilipino ? 'Walang Naka-assign' : 'Unassigned');
@@ -199,7 +220,9 @@ class RaiserHomeTab extends StatelessWidget {
     final int totalHogs = hasActiveBatch
         ? (activeHogsList.isNotEmpty
             ? activeHogsList.length
-            : (activeAssignments[0]['assigned_heads'] as num? ?? 0).toInt())
+            : (hogsList.isNotEmpty
+                ? hogsList.length
+                : (activeAssignments[0]['assigned_heads'] as num? ?? 0).toInt()))
         : 0;
 
     final int sickHogsCount = hogsList.where((h) {
@@ -458,6 +481,22 @@ class RaiserHomeTab extends StatelessWidget {
                                             color: Colors.white,
                                           ),
                                         ),
+                                        if (totalPartnerCapital > 0) ...[
+                                          Text(
+                                            '  •  ',
+                                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                                          ),
+                                          const Icon(Icons.handshake_rounded, size: 12, color: Color(0xFF6EE7B7)),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            '+${_formatCurrency(totalPartnerCapital)} Partner',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: const Color(0xFF6EE7B7),
+                                            ),
+                                          ),
+                                        ],
                                         Text(
                                           '  •  ',
                                           style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
@@ -570,7 +609,11 @@ class RaiserHomeTab extends StatelessWidget {
                       context: context,
                       title: strings.totalHogs,
                       value: '$totalHogs ${strings.hogs}',
-                      subtitle: hasActiveBatch ? activeBatchName : strings.noActiveBatchNotice,
+                      subtitle: hasBothTypes
+                          ? (strings.isFilipino
+                              ? '$fatteningCount Pangkaraniwan • $sowCount Inahin'
+                              : '$fatteningCount Fattening • $sowCount Sow')
+                          : (hasActiveBatch ? activeBatchName : strings.noActiveBatchNotice),
                       icon: Icons.pets_rounded,
                       accentColor: const Color(0xFFEF5B6C),
                       bgColor: const Color(0xFFFEF2F2),
@@ -638,7 +681,9 @@ class RaiserHomeTab extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      'Fattening - $fatteningStage',
+                                      strings.isFilipino
+                                          ? '$fatteningCount Pangkaraniwan - ${fatteningStage ?? "Booster"}'
+                                          : '$fatteningCount Fattening - ${fatteningStage ?? "Booster"}',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w800,
@@ -649,7 +694,9 @@ class RaiserHomeTab extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Sow / Breeding - $sowStage',
+                                      strings.isFilipino
+                                          ? '$sowCount Inahing Baboy - ${sowStage ?? "Booster"}'
+                                          : '$sowCount Sow / Breeding - ${sowStage ?? "Booster"}',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w800,
@@ -662,8 +709,8 @@ class RaiserHomeTab extends StatelessWidget {
                                 )
                               : Text(
                                   pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed')
-                                      ? 'Sow / Breeding - $displayStage'
-                                      : 'Fattening - $displayStage',
+                                      ? (strings.isFilipino ? '$sowCount Inahing Baboy - $displayStage' : '$sowCount Sow / Breeding - $displayStage')
+                                      : (strings.isFilipino ? '$fatteningCount Pangkaraniwan - $displayStage' : '$fatteningCount Fattening - $displayStage'),
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w800,
@@ -745,53 +792,16 @@ class RaiserHomeTab extends StatelessWidget {
             ),
             const SizedBox(height: 28),
 
-            // ==================== FEEDS STAGES (CONDITIONAL ON ACTIVE BATCH) ====================
+            // ==================== HOGS LIFECYCLE PROGRESS (EACH ASSIGNED HOG) ====================
             if (hasActiveBatch) ...[
-              Builder(
-                builder: (context) {
-                  if (hasBothTypes) {
-                    return Column(
-                      children: [
-                        _buildFeedsCard(
-                          context: context,
-                          title: strings.isFilipino ? 'Mga Stage ng Pakain (Inahing Baboy)' : 'Feeds Stages (Sow / Breeding)',
-                          badgeText: strings.isFilipino ? 'Inahing Baboy' : 'Sow / Breeding',
-                          stages: const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation'],
-                          activeStage: sowStage ?? 'Booster',
-                          hasInvestment: hasInvestment,
-                          isBatchCycleCompleted: false,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildFeedsCard(
-                          context: context,
-                          title: strings.isFilipino ? 'Mga Stage ng Pakain (Pangkaraniwan / Fattening)' : 'Feeds Stages (Fattening)',
-                          badgeText: strings.isFilipino ? 'Pangkaraniwan' : 'Fattening',
-                          stages: const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'],
-                          activeStage: fatteningStage ?? 'Booster',
-                          hasInvestment: hasInvestment,
-                          isBatchCycleCompleted: false,
-                        ),
-                      ],
-                    );
-                  }
-                  final primaryAssign = activeBatches.isNotEmpty ? activeBatches[0] : null;
-                  final rawType = (primaryAssign?['hog_types']?['type_name'] ?? primaryAssign?['pig_type'] ?? pigType).toString();
-                  final isSow = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
-                  final stages = isSow
-                      ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-                      : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
-                  return _buildFeedsCard(
-                    context: context,
-                    title: strings.isFilipino ? 'Mga Stage ng Pakain' : 'Feeds Stages',
-                    badgeText: hasInvestment
-                        ? (isSow ? (strings.isFilipino ? 'Inahing Baboy' : 'Sow') : (strings.isFilipino ? 'Pangkaraniwan' : 'Fattening'))
-                        : strings.unassigned,
-                    stages: stages,
-                    activeStage: displayStage,
-                    hasInvestment: hasInvestment,
-                    isBatchCycleCompleted: false,
-                  );
-                },
+              _buildHogsLifecycleProgressSection(
+                context: context,
+                strings: strings,
+                isDark: isDark,
+                hasInvestment: hasInvestment,
+                targetHogsForStage: targetHogsForStage,
+                pigType: pigType,
+                activeStage: activeStage,
               ),
               const SizedBox(height: 24),
             ] else ...[
@@ -1221,6 +1231,296 @@ class RaiserHomeTab extends StatelessWidget {
     }
   }
 
+  String _localizeStageName(String stage, bool isFilipino) {
+    if (!isFilipino) return stage;
+    final s = stage.trim().toLowerCase();
+    if (s == 'selling') return 'Pangbenta';
+    if (s == 'breeder') return 'Palahi';
+    if (s == 'lactation') return 'Pagpapasuso';
+    return stage;
+  }
+
+  Widget _buildHogsLifecycleProgressSection({
+    required BuildContext context,
+    required AppStrings strings,
+    required bool isDark,
+    required bool hasInvestment,
+    required List<Map<String, dynamic>> targetHogsForStage,
+    required String pigType,
+    required String activeStage,
+  }) {
+    final textColor = isDark ? Colors.white : _brandColor;
+    final mutedColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
+    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+
+    if (targetHogsForStage.isEmpty) {
+      final isSow = pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed');
+      final stages = isSow
+          ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
+          : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+      return _buildFeedsCard(
+        context: context,
+        title: strings.isFilipino ? 'Mga Stage ng Pakain' : 'Feeds Stages',
+        badgeText: hasInvestment
+            ? (isSow
+                ? (strings.isFilipino ? 'Inahin' : 'Sow')
+                : (strings.isFilipino ? 'Pangkaraniwan' : 'Fattening'))
+            : strings.unassigned,
+        stages: stages,
+        activeStage: activeStage,
+        hasInvestment: hasInvestment,
+        isBatchCycleCompleted: false,
+      );
+    }
+
+    // Sort hogs: Fattening first, Sow second, then by tag number / hog_id
+    final sortedHogs = List<Map<String, dynamic>>.from(targetHogsForStage);
+    sortedHogs.sort((a, b) {
+      final aType = _getHogPigType(a, pigType).toLowerCase();
+      final bType = _getHogPigType(b, pigType).toLowerCase();
+      final aIsFat = aType.contains('fatten');
+      final bIsFat = bType.contains('fatten');
+      if (aIsFat && !bIsFat) return -1;
+      if (!aIsFat && bIsFat) return 1;
+
+      final aTagStr = (a['tag_number'] ?? '').toString().replaceAll('#', '').trim();
+      final bTagStr = (b['tag_number'] ?? '').toString().replaceAll('#', '').trim();
+      final aTagNum = int.tryParse(aTagStr);
+      final bTagNum = int.tryParse(bTagStr);
+      if (aTagNum != null && bTagNum != null) {
+        return aTagNum.compareTo(bTagNum);
+      }
+
+      final aId = (a['hog_id'] as num?)?.toInt() ?? 0;
+      final bId = (b['hog_id'] as num?)?.toInt() ?? 0;
+      return aId.compareTo(bId);
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Header Row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.isFilipino ? 'Siklo ng mga Alagang Baboy' : 'Hogs Lifecycle Progress',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  strings.isFilipino ? 'Yugto ng bawat alaga sa kasalukuyang batch' : 'Growth stage per assigned hog in active batch',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: mutedColor,
+                  ),
+                ),
+              ],
+            ),
+            GestureDetector(
+              onTap: () => onNavigateToTab(2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      strings.isFilipino ? '${sortedHogs.length} na Baboy' : '${sortedHogs.length} Hogs',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 14,
+                      color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // List of Individual Hog Cards
+        ...sortedHogs.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final h = entry.value;
+
+          final rawTag = (h['tag_number'] ?? '').toString().trim();
+          final tag = rawTag.isNotEmpty ? (rawTag.startsWith('#') ? rawTag : '#$rawTag') : '#${idx + 1}';
+
+          final hType = _getHogPigType(h, pigType);
+          final isBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
+          final typeLabel = strings.isFilipino
+              ? (isBreed ? strings.sowBreedTag.toUpperCase() : strings.fatteningTag.toUpperCase())
+              : (isBreed ? 'SOW / BREEDING' : 'FATTENING');
+
+          final currentHogStage = _getHogCurrentStage(h, isBreed, activeStage);
+          final stageNum = _stageNameToId(currentHogStage, isBreed);
+          final isTerminal = stageNum >= 6 ||
+              currentHogStage.trim().toLowerCase() == 'selling' ||
+              currentHogStage.trim().toLowerCase() == 'lactation';
+
+          final stages = isBreed
+              ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
+              : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+
+          final hogTitle = strings.isFilipino ? 'Baboy $tag' : 'Hog $tag';
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Header Row (Clean, no icon, strict theme tokens)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          hogTitle,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: textColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            typeLabel,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (isTerminal)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
+                              .withValues(alpha: isDark ? 0.2 : 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
+                                .withValues(alpha: isDark ? 0.5 : 0.35),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_circle_rounded,
+                              size: 11,
+                              color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              strings.isFilipino ? 'TAPOS NA' : 'COMPLETE',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          _localizeStageName(currentHogStage, strings.isFilipino),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Stepper Timeline
+                _buildTimeline(
+                  context,
+                  stages,
+                  currentHogStage,
+                  hasInvestment,
+                  hog: h,
+                  hogName: hogTitle,
+                  isCycleCompleted: isTerminal,
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   Widget _buildFeedsCard({
     required BuildContext context,
     required String title,
@@ -1229,11 +1529,18 @@ class RaiserHomeTab extends StatelessWidget {
     required String activeStage,
     required bool hasInvestment,
     bool isBatchCycleCompleted = false,
+    Color? badgeTextColor,
+    Color? badgeBgColor,
+    Color? badgeBorderColor,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
     final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
     final textColor = isDark ? Colors.white : _brandColor;
+
+    final defaultBadgeBg = isDark ? const Color(0xFF1E2D42) : const Color(0xFFEFF6FF);
+    final defaultBadgeBorder = isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFFDBEAFE);
+    final defaultBadgeText = isDark ? const Color(0xFF38BDF8) : const Color(0xFF2563EB);
 
     return Container(
       width: double.infinity,
@@ -1267,16 +1574,16 @@ class RaiserHomeTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E2D42) : const Color(0xFFEFF6FF),
+                  color: badgeBgColor ?? defaultBadgeBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFFDBEAFE)),
+                  border: Border.all(color: badgeBorderColor ?? defaultBadgeBorder),
                 ),
                 child: Text(
                   badgeText,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF2563EB),
+                    color: badgeTextColor ?? defaultBadgeText,
                   ),
                 ),
               ),
@@ -1466,7 +1773,9 @@ class RaiserHomeTab extends StatelessWidget {
                     child: Container(
                       height: 3,
                       decoration: BoxDecoration(
-                        color: isPassed ? _successGreen : (isDark ? const Color(0xFF334A66) : const Color(0xFFE2E8F0)),
+                        color: isPassed
+                            ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
+                            : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1479,39 +1788,46 @@ class RaiserHomeTab extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(stages.length, (index) {
-                final bool isLastNodeAndCompleted = isCompletedAll && index == stages.length - 1;
-                final isPassed = hasInvestment && (index < activeIndex || isLastNodeAndCompleted);
-                final isActive = hasInvestment && index == activeIndex && !isCompletedAll;
-                final isFuture = index > activeIndex;
+                final bool isPassed = hasInvestment && (isCompletedAll || index < activeIndex);
+                final isActive = hasInvestment && !isCompletedAll && index == activeIndex;
+                final isFuture = !isCompletedAll && index > activeIndex;
 
                 Color circleColor;
                 Widget iconWidget;
                 BoxBorder? nodeBorder;
 
+                final successColor = isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess;
+                final activeColor = isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
+
                 if (isPassed) {
-                  circleColor = _successGreen;
+                  circleColor = successColor;
                   iconWidget = const Icon(Icons.check_rounded, size: 16, color: Colors.white);
                 } else if (isActive) {
-                  circleColor = isDark ? Colors.white : _brandColor;
+                  circleColor = activeColor;
                   iconWidget = Center(
                     child: Container(
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                        color: isDark ? PiggyTrunkTheme.ptBgDark : Colors.white,
                         shape: BoxShape.circle,
                       ),
                     ),
                   );
                 } else {
-                  circleColor = isDark ? const Color(0xFF1E2D42) : const Color(0xFFF1F5F9);
-                  nodeBorder = isDark ? Border.all(color: const Color(0xFF3B506D), width: 1.2) : null;
+                  circleColor = isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft;
+                  nodeBorder = Border.all(
+                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                    width: 1.2,
+                  );
                   iconWidget = Icon(
                     Icons.lock_outline_rounded,
                     size: 13,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFFA0AEC0),
+                    color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
                   );
                 }
+
+                final strings = AppStrings.of(context);
 
                 return GestureDetector(
                   onTap: () {
@@ -1550,13 +1866,13 @@ class RaiserHomeTab extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          stages[index],
+                          _localizeStageName(stages[index], strings.isFilipino),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 10.5,
                             fontWeight: isActive ? FontWeight.w800 : (isPassed ? FontWeight.w700 : FontWeight.w600),
                             color: isActive
-                                ? (isDark ? Colors.white : _brandColor)
-                                : (isPassed ? _successGreen : (isDark ? const Color(0xFF94A3B8) : const Color(0xFFA0AEC0))),
+                                ? (isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary)
+                                : (isPassed ? successColor : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted)),
                           ),
                           textAlign: TextAlign.center,
                           maxLines: 1,
@@ -1666,6 +1982,41 @@ class RaiserHomeTab extends StatelessWidget {
         final double histSpend = completedBatches.isNotEmpty
             ? completedBatches.fold(0.0, (sum, a) => sum + ((a['stocks_spend'] as num?)?.toDouble() ?? 0.0))
             : stocksSpendAmount;
+
+        final double totalAdminCapital = activeAssignments.fold<double>(
+          0.0,
+          (sum, a) => sum + ((a['admin_capital'] as num?)?.toDouble() ?? (a['initial_capital'] as num?)?.toDouble() ?? 0.0),
+        );
+        final double totalPartnerCapital = activeAssignments.fold<double>(
+          0.0,
+          (sum, a) => sum + ((a['partner_capital'] as num?)?.toDouble() ?? 0.0),
+        );
+
+        final List<Map<String, dynamic>> allPartnerInvs = [];
+        for (var a in activeAssignments) {
+          if (a['partner_investments'] is List) {
+            for (var pi in (a['partner_investments'] as List)) {
+              if (pi is! Map) continue;
+              final invId = (pi['investment_id'] ?? '').toString();
+              final existingIdx = allPartnerInvs.indexWhere(
+                (x) => (x['investment_id'] ?? '').toString() == invId,
+              );
+              if (existingIdx != -1) {
+                final curAmt = (allPartnerInvs[existingIdx]['amount'] as num?)?.toDouble() ?? 0.0;
+                final addAmt = (pi['amount'] as num?)?.toDouble() ?? 0.0;
+                allPartnerInvs[existingIdx]['amount'] = curAmt + addAmt;
+                final curTags = List<String>.from(allPartnerInvs[existingIdx]['target_hog_tags'] ?? []);
+                final addTags = List<String>.from(pi['target_hog_tags'] ?? []);
+                for (var t in addTags) {
+                  if (!curTags.contains(t)) curTags.add(t);
+                }
+                allPartnerInvs[existingIdx]['target_hog_tags'] = curTags;
+              } else {
+                allPartnerInvs.add(Map<String, dynamic>.from(pi));
+              }
+            }
+          }
+        }
         return Container(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -1890,7 +2241,9 @@ class RaiserHomeTab extends StatelessWidget {
                                   Text(
                                       isConcludedCycle
                                           ? (strings.isFilipino ? 'Alokasyon ng batch' : 'Batch allocation')
-                                          : (strings.isFilipino ? 'Alokasyon ng admin' : 'Admin allocation'),
+                                          : (totalPartnerCapital > 0
+                                              ? (strings.isFilipino ? 'Alokasyon (Admin + Partner)' : 'Admin + Partner allocation')
+                                              : (strings.isFilipino ? 'Alokasyon ng admin' : 'Admin allocation')),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       color: mutedTextColor,
@@ -1994,6 +2347,144 @@ class RaiserHomeTab extends StatelessWidget {
                           ],
                         ),
                       ),
+
+                      // Funding Sources breakdown (Admin Capital & Partner Investor attribution)
+                      if (totalPartnerCapital > 0 || allPartnerInvs.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Icon(Icons.pie_chart_outline_rounded, size: 16, color: primaryTextColor),
+                            const SizedBox(width: 8),
+                            Text(
+                              strings.isFilipino ? 'Pinagmulan ng Pondo (Funding Sources)' : 'Funding Sources Breakdown',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: primaryTextColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: cardBorder, width: 1.2),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Admin Allocation Row
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.business_rounded, size: 16, color: Color(0xFF3B82F6)),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          strings.isFilipino ? 'Farm Admin Pondo' : 'Farm Admin Initial Capital',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: primaryTextColor,
+                                          ),
+                                        ),
+                                        Text(
+                                          strings.isFilipino ? 'Panimulang badyet ng batch' : 'Base operating budget',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11,
+                                            color: mutedTextColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatCurrency(totalAdminCapital),
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: primaryTextColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // Partner Investors Rows
+                              for (var pi in allPartnerInvs) ...[
+                                const SizedBox(height: 10),
+                                Divider(height: 1, color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(Icons.handshake_rounded, size: 16, color: Color(0xFF10B981)),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${strings.isFilipino ? 'Partner Investor' : 'Partner Investor'}: ${pi['partner_name'] ?? 'Investor'}',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: primaryTextColor,
+                                            ),
+                                          ),
+                                          if (pi['target_hog_tags'] != null && (pi['target_hog_tags'] as List).isNotEmpty)
+                                            Text(
+                                              'Funded ${(pi['target_hog_tags'] as List).join(', ')} • ${pi['target_pig_type'] ?? 'Hogs'}',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 11,
+                                                color: mutedTextColor,
+                                              ),
+                                            )
+                                          else
+                                            Text(
+                                              (pi['target_pig_type'] != null && pi['target_pig_type'].toString().isNotEmpty)
+                                                  ? pi['target_pig_type'].toString()
+                                                  : (strings.isFilipino ? 'Batch Pondo' : 'Batch Funding'),
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 11,
+                                                color: mutedTextColor,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatCurrency((pi['amount'] as num?)?.toDouble() ?? 0.0),
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF10B981),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
 
                       if (activeAssignments.length > 1 || isConcludedCycle) ...[
                         const SizedBox(height: 16),
@@ -2368,14 +2859,57 @@ class RaiserHomeTab extends StatelessWidget {
                         final stageNum = _stageNameToId(targetStage, isBreeding);
 
                         try {
-                          await Supabase.instance.client
-                              .from('hogs')
-                              .update({
-                                'stage_id': stageNum,
-                                'last_updated': DateTime.now().toIso8601String(),
-                              })
-                              .eq('hog_id', hogId);
+                          final hogAssignId = hog['assignment_id']?.toString() ?? '';
+                          final hogTag = (hog['tag_number'] ?? hogId.toString()).toString();
+                          try {
+                            final prefs = await SharedPreferences.getInstance();
+                            final cacheKey = 'hog_stage_${hogAssignId}_$hogTag';
+                            await prefs.setString(cacheKey, targetStage);
+                            await prefs.setInt('${cacheKey}_id', stageNum);
+                          } catch (_) {}
 
+                          bool dbUpdated = false;
+                          try {
+                            final updateRes = await Supabase.instance.client
+                                .from('hogs')
+                                .update({
+                                  'stage_id': stageNum,
+                                  'last_updated': DateTime.now().toIso8601String(),
+                                })
+                                .eq('hog_id', hogId)
+                                .select('hog_id');
+                            if ((updateRes as List).isNotEmpty) {
+                              dbUpdated = true;
+                            }
+                          } catch (e) {
+                            debugPrint('Notice updating hog stage_id: $e');
+                          }
+
+                          if (!dbUpdated && hogAssignId.isNotEmpty) {
+                            try {
+                              final parsedAssignId = int.tryParse(hogAssignId);
+                              if (parsedAssignId != null && parsedAssignId < 900000) {
+                                final insertRes = await Supabase.instance.client
+                                    .from('hogs')
+                                    .insert({
+                                      'assignment_id': parsedAssignId,
+                                      'stage_id': stageNum,
+                                      'status': 'active',
+                                      'health_status': hog['health_status'] ?? 'Healthy',
+                                      'last_updated': DateTime.now().toIso8601String(),
+                                    })
+                                    .select('hog_id')
+                                    .maybeSingle();
+                                if (insertRes != null && insertRes['hog_id'] != null) {
+                                  hog['hog_id'] = insertRes['hog_id'];
+                                }
+                              }
+                            } catch (e) {
+                              debugPrint('Notice inserting real hog row into public.hogs: $e');
+                            }
+                          }
+
+                          onUpdateLifecycleStage(targetStage, hogId);
                           await onRefresh();
 
                           if (stageNum >= 6 || targetStage.trim().toLowerCase() == 'selling' || targetStage.trim().toLowerCase() == 'lactation') {

@@ -502,6 +502,36 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           appUsersRaw = await _supabase.from('app_users').select('user_id, name, email');
         } catch (_) {}
 
+        List<dynamic> hogRaisersRaw = [];
+        try {
+          hogRaisersRaw = await _supabase.from('hog_raisers').select('hog_raiser_id, name');
+        } catch (_) {}
+
+        final Map<String, String> raisersMap = {
+          for (var r in hogRaisersRaw)
+            (r['hog_raiser_id'] ?? '').toString(): (r['name'] ?? '').toString()
+        };
+
+        final Map<String, String> batchRaiserMap = {};
+        for (var a in assignmentsRaw) {
+          if (a is Map) {
+            final aBatchId = (a['batch_id'] ?? '').toString();
+            final aRaiserId = (a['hog_raiser_id'] ?? '').toString();
+            if (aBatchId.isNotEmpty && aRaiserId.isNotEmpty && raisersMap.containsKey(aRaiserId)) {
+              batchRaiserMap[aBatchId] = raisersMap[aRaiserId]!;
+            }
+          }
+        }
+
+        List<dynamic> notifsRes = [];
+        try {
+          notifsRes = await _supabase
+              .from('admin_notifications')
+              .select('*')
+              .eq('type', 'investment')
+              .order('created_at', ascending: false);
+        } catch (_) {}
+
         final Map<String, Map<String, dynamic>> usersMap = {
           for (var u in appUsersRaw)
             (u['user_id'] ?? '').toString(): Map<String, dynamic>.from(u)
@@ -559,19 +589,35 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
             pMap['status'] = 'completed';
           }
 
+          // Match notification metadata for enriched allocation tags
+          Map<String, dynamic> notifMeta = {};
+          for (var n in notifsRes) {
+            if (n is Map && n['metadata'] is Map) {
+              final m = n['metadata'] as Map<String, dynamic>;
+              if (m['batch_id']?.toString() == bId && m['partner_investor_id']?.toString() == pInvId) {
+                notifMeta = m;
+                break;
+              }
+            }
+          }
+
+          final assignedRaiser = notifMeta['assigned_raiser'] ??
+              batchRaiserMap[resolvedBatchId] ??
+              batchRaiserMap[bId] ??
+              'Assigned Raiser';
+
           pMap['partner_name'] = partnerName;
           pMap['batch_name'] = batchName;
+          pMap['assigned_raiser'] = assignedRaiser;
+          pMap['target_pig_type'] = notifMeta['target_pig_type'] ?? 'Entire Batch';
+          pMap['target_hog_tags'] = notifMeta['target_hog_tags'] ?? [];
+          pMap['selected_hogs_count'] = notifMeta['selected_hogs_count'] ?? pLinkedHogs.length;
+          pMap['hogs'] = pLinkedHogs;
           loadedPartnerInv.add(pMap);
         }
 
         // Fetch supplemental / fallback partner investments from admin_notifications
         try {
-          final notifsRes = await _supabase
-              .from('admin_notifications')
-              .select('*')
-              .eq('type', 'investment')
-              .order('created_at', ascending: false);
-
           for (var notif in (notifsRes as List? ?? [])) {
             if (notif is! Map) continue;
             final meta = notif['metadata'] as Map<String, dynamic>? ?? {};
@@ -608,6 +654,10 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                 'created_at': nCreatedAt,
                 'partner_name': nPartnerName,
                 'batch_name': nBatchName,
+                'assigned_raiser': meta['assigned_raiser'] ?? batchRaiserMap[nBatchId] ?? 'Assigned Raiser',
+                'target_pig_type': meta['target_pig_type'] ?? 'Entire Batch',
+                'target_hog_tags': meta['target_hog_tags'] ?? [],
+                'selected_hogs_count': meta['selected_hogs_count'] ?? 0,
               });
 
               // Attempt background reconciliation into investments table (succeeds once trigger is dropped)
