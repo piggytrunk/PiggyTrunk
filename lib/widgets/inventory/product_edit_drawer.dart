@@ -66,38 +66,44 @@ class ProductEditDrawer {
         final fieldBg = isDark ? const Color(0xFF1A2B44) : const Color(0xFFF5F8FE);
         final fieldBorder = isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC);
 
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: isMobile ? const Offset(0.0, 1.0) : const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curvedAnimation),
-          child: Align(
-            alignment: isMobile ? Alignment.bottomCenter : Alignment.centerRight,
-            child: Material(
-              color: Colors.transparent,
-              child: StatefulBuilder(
-                builder: (stfCtx, setDrawerState) {
-                  return Container(
-                    width: isMobile ? double.infinity : 440,
-                    height: isMobile ? screenHeight * 0.88 : double.infinity,
-                    decoration: BoxDecoration(
-                      color: drawerBg,
-                      borderRadius: isMobile
-                          ? const BorderRadius.vertical(top: Radius.circular(24))
-                          : const BorderRadius.horizontal(left: Radius.circular(20)),
-                      border: isMobile
-                          ? Border(top: BorderSide(color: borderColor, width: 1.2))
-                          : Border(left: BorderSide(color: borderColor, width: 1.2)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.6 : 0.2),
-                          blurRadius: 24,
-                          offset: isMobile ? const Offset(0, -4) : const Offset(-4, 0),
-                        ),
-                      ],
+        final dialogBody = Center(
+          child: Material(
+            color: Colors.transparent,
+            child: StatefulBuilder(
+              builder: (stfCtx, setDrawerState) {
+                return Container(
+                  width: isMobile ? double.infinity : (MediaQuery.of(dialogCtx).size.width > 900 ? 760.0 : MediaQuery.of(dialogCtx).size.width * 0.92),
+                  height: isMobile ? screenHeight * 0.88 : screenHeight * 0.86,
+                  margin: isMobile ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: isDark
+                          ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
+                          : [Colors.white, const Color(0xFFF8FAFC)],
                     ),
+                    borderRadius: isMobile
+                        ? const BorderRadius.vertical(top: Radius.circular(24))
+                        : BorderRadius.circular(28),
+                    border: isMobile
+                        ? Border(top: BorderSide(color: borderColor, width: 1.2))
+                        : Border.all(color: borderColor, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.6 : 0.2),
+                        blurRadius: 32,
+                        offset: isMobile ? const Offset(0, -4) : const Offset(0, 16),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: isMobile
+                        ? const BorderRadius.vertical(top: Radius.circular(24))
+                        : BorderRadius.circular(28),
                     child: SafeArea(
                       top: !isMobile,
+                      bottom: !isMobile,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -175,7 +181,7 @@ class ProductEditDrawer {
                                   tooltip: 'View Product History',
                                   splashRadius: 20,
                                   onPressed: () {
-                                    ProductLogsDrawer.showBottomSheet(
+                                    ProductLogsDrawer.showModal(
                                       context: dialogCtx,
                                       filterProductId: existing.id,
                                       filterProductName: existing.name,
@@ -642,10 +648,31 @@ class ProductEditDrawer {
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
+          ),
+        );
+
+        if (isMobile) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 1.0),
+              end: Offset.zero,
+            ).animate(curvedAnimation),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: dialogBody,
+            ),
+          );
+        }
+
+        return FadeTransition(
+          opacity: curvedAnimation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curvedAnimation),
+            child: dialogBody,
           ),
         );
       },

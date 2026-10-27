@@ -1280,29 +1280,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 /// MAIN DASHBOARD CONTENT
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.all(isMobile ? 14 : 16),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final contentWidth = constraints.maxWidth > 1400
-                            ? 1400.0
-                            : constraints.maxWidth;
-                        return Align(
-                          alignment: Alignment.topCenter,
-                          child: Container(
-                            width: contentWidth,
-                            decoration: isMobile
-                                ? null
-                                : BoxDecoration(
-                                    color: _surfaceDark.withValues(alpha: 0.5),
-                                    border: Border.all(
-                                      color: _borderDark,
-                                      width: 1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                            padding: EdgeInsets.all(isMobile ? 0 : 32),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.all(isMobile ? 12 : 20),
+                    child: Container(
+                      width: double.infinity,
+                      decoration: isMobile
+                          ? null
+                          : BoxDecoration(
+                              color: _surfaceDark.withValues(alpha: 0.5),
+                              border: Border.all(
+                                color: _borderDark,
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                      padding: EdgeInsets.all(isMobile ? 0 : 28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 /// Dashboard Title + Refresh (Steady Header)
                                 Row(
@@ -1360,9 +1354,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ],
                             ),
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ),
               ],

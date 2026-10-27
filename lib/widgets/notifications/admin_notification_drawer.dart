@@ -12,35 +12,12 @@ import 'notification_filter_bar.dart';
 class AdminNotificationDrawer extends ConsumerStatefulWidget {
   const AdminNotificationDrawer({super.key});
 
-  /// Static helper to open the Slide-Over Drawer with smooth slide animation
+  /// Static helper to navigate to the Full In-Page Admin Notifications screen
   static void show(BuildContext context) {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Notifications Drawer',
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      transitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (ctx, anim1, anim2) {
-        return const Align(
-          alignment: Alignment.centerRight,
-          child: AdminNotificationDrawer(),
-        );
-      },
-      transitionBuilder: (ctx, anim, secondaryAnim, child) {
-        final curvedAnim = CurvedAnimation(
-          parent: anim,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curvedAnim),
-          child: child,
-        );
-      },
-    );
+    final currentRoute = ModalRoute.of(context)?.settings.name;
+    if (currentRoute != '/notifications') {
+      Navigator.of(context).pushNamed('/notifications');
+    }
   }
 
   @override

@@ -13,7 +13,6 @@ class ActiveRaisersTab extends StatelessWidget {
   final bool isRefreshing;
   final void Function(String value) onSearch;
   final void Function(Map<String, dynamic> row) onShowDetails;
-  final void Function(Map<String, dynamic> row)? onEditRaiser;
   final void Function(Map<String, dynamic> row) onArchiveRaiser;
   final void Function(Map<String, dynamic> row) onRestoreRaiser;
   final void Function(Map<String, dynamic> row) onDeleteRaiser;
@@ -28,7 +27,6 @@ class ActiveRaisersTab extends StatelessWidget {
     this.isRefreshing = false,
     required this.onSearch,
     required this.onShowDetails,
-    this.onEditRaiser,
     required this.onArchiveRaiser,
     required this.onRestoreRaiser,
     required this.onDeleteRaiser,

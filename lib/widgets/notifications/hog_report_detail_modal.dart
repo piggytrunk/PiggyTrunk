@@ -32,11 +32,10 @@ class HogReportDetailModal extends StatefulWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Hog Health Report Details',
-      barrierColor: Colors.black.withValues(alpha: 0.55),
-      transitionDuration: const Duration(milliseconds: 280),
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      transitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (ctx, anim1, anim2) {
-        return Align(
-          alignment: Alignment.centerRight,
+        return Center(
           child: HogReportDetailModal(
             notif: notif,
             isBottomSheet: false,
@@ -49,12 +48,12 @@ class HogReportDetailModal extends StatefulWidget {
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            child: child,
+          ),
         );
       },
     );
@@ -670,24 +669,38 @@ class _HogReportDetailModalState extends State<HogReportDetailModal> {
       );
     }
 
+    final size = MediaQuery.of(context).size;
+    final modalWidth = (size.width > 1200) ? 760.0 : (size.width > 800 ? 680.0 : size.width * 0.95);
+    final modalHeight = size.height * 0.86;
+
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 480,
-        height: double.infinity,
+        width: modalWidth,
+        height: modalHeight,
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         decoration: BoxDecoration(
-          color: surfaceBg,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
+                : [Colors.white, const Color(0xFFF8FAFC)],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: cardBorder, width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.16),
-              blurRadius: 28,
-              spreadRadius: 2,
-              offset: const Offset(-4, 0),
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+              blurRadius: 36,
+              offset: const Offset(0, 16),
             ),
           ],
-          border: Border(left: BorderSide(color: cardBorder, width: 1.2)),
         ),
-        child: SafeArea(child: contentWidget),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: SafeArea(child: contentWidget),
+        ),
       ),
     );
   }

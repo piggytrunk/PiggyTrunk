@@ -41,6 +41,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
   final TextEditingController _categoryCtrl = TextEditingController(text: 'Feeds');
   final TextEditingController _descriptionCtrl = TextEditingController();
   final TextEditingController _priceCtrl = TextEditingController();
+  final TextEditingController _kiloPriceCtrl = TextEditingController();
   final TextEditingController _unitsCtrl = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -78,6 +79,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
     _categoryCtrl.dispose();
     _descriptionCtrl.dispose();
     _priceCtrl.dispose();
+    _kiloPriceCtrl.dispose();
     _unitsCtrl.dispose();
     super.dispose();
   }
@@ -159,6 +161,8 @@ class _ProductAddFormState extends State<ProductAddForm> {
         imageUrl = await widget.onUploadImage(_selectedImageBytes!, _selectedImageName!);
       }
 
+      final kiloPriceVal = double.tryParse(_kiloPriceCtrl.text.trim());
+
       final payload = {
         'name': name,
         'category_id': category.toLowerCase().replaceAll(' ', '_'),
@@ -169,9 +173,21 @@ class _ProductAddFormState extends State<ProductAddForm> {
         'image': imageUrl,
         'sold': 0,
         'is_archived': false,
+        if (category.toLowerCase() == 'feeds' && kiloPriceVal != null && kiloPriceVal > 0)
+          'kilo_price': kiloPriceVal,
       };
 
-      final inserted = await _supabase.from('inventory_products').insert(payload).select().single();
+      Map<String, dynamic> inserted;
+      try {
+        inserted = await _supabase.from('inventory_products').insert(payload).select().single();
+      } catch (e) {
+        if (e.toString().contains('kilo_price')) {
+          final fallbackPayload = Map<String, dynamic>.from(payload)..remove('kilo_price');
+          inserted = await _supabase.from('inventory_products').insert(fallbackPayload).select().single();
+        } else {
+          rethrow;
+        }
+      }
       final insertedId = inserted['id']?.toString();
 
       await widget.onInsertLog(
@@ -191,8 +207,15 @@ class _ProductAddFormState extends State<ProductAddForm> {
       widget.onProductAdded();
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString().toLowerCase();
+      String cleanMsg = 'Unable to create product. Please check your connection and try again.';
+      if (raw.contains('kilo_price')) {
+        cleanMsg = 'Note: Per-kilo price column is not configured in database yet.';
+      } else if (raw.contains('unique') || raw.contains('duplicate')) {
+        cleanMsg = 'A product with this name already exists.';
+      }
       widget.onShowSnackBar(
-        'Create failed: $e',
+        cleanMsg,
         backgroundColor: Colors.red,
       );
     } finally {
@@ -303,55 +326,52 @@ class _ProductAddFormState extends State<ProductAddForm> {
     final isMobile = Responsive.isMobile(context);
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.all(isMobile ? 12 : 20),
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 1350),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [_panelStart, _panelEnd],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            border: Border.all(color: _panelBorder, width: 1),
-            borderRadius: BorderRadius.circular(isMobile ? 16 : 34),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_panelStart, _panelEnd],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
           ),
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 14 : 34,
-            vertical: isMobile ? 16 : 32,
-          ),
-          child: Column(
+          border: Border.all(color: _panelBorder, width: 1),
+          borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 14 : 24,
+          vertical: isMobile ? 16 : 26,
+        ),
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add New Product',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: _titleColor,
-                          fontSize: isMobile ? 22 : 28,
-                          fontWeight: FontWeight.w800,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add New Product',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: _titleColor,
+                            fontSize: isMobile ? 22 : 28,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Fill in the product details to add it to your inventory.',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: _mutedColor,
-                          fontSize: isMobile ? 12 : 14,
+                        const SizedBox(height: 4),
+                        Text(
+                          'Fill in the product details to add it to your inventory.',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: _mutedColor,
+                            fontSize: isMobile ? 12 : 14,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    onPressed: widget.onCancel,
-                    icon: Icon(Icons.close_rounded, color: _titleColor, size: 28),
-                    tooltip: 'Close form',
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -572,6 +592,24 @@ class _ProductAddFormState extends State<ProductAddForm> {
                     if (_productPriceError != null) _buildInlineError(_productPriceError!),
                     const SizedBox(height: 12),
 
+                    // Price per Kilo (Feeds only, optional)
+                    if (_categoryCtrl.text.trim().toLowerCase() == 'feeds') ...[
+                      _formLabel('PRICE PER KILO (PHP) - OPTIONAL'),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Leave blank if this feed is exclusively sold as whole sacks.',
+                        style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildInput(
+                        _kiloPriceCtrl,
+                        'e.g., 38.00',
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     // Description
                     _formLabel('DESCRIPTION'),
                     const SizedBox(height: 8),
@@ -656,7 +694,6 @@ class _ProductAddFormState extends State<ProductAddForm> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }

@@ -92,7 +92,7 @@ class InvestmentDetailModal {
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: _buildModalContent(inv, isDark, cardBorder, titleColor, hintText),
+                  child: buildContent(inv, isDark, cardBorder, titleColor, hintText),
                 ),
               ),
               Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
@@ -129,126 +129,156 @@ class InvestmentDetailModal {
 
   static void _showSideDrawer(BuildContext context, Investment inv) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF132238) : Colors.white;
     final cardBorder = isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
     final hintText = isDark ? const Color(0xFF9AB1CB) : const Color(0xFF6F8096);
+    final size = MediaQuery.of(context).size;
+    final modalWidth = (size.width > 1200) ? 960.0 : (size.width > 800 ? 800.0 : size.width * 0.95);
+    final modalHeight = size.height * 0.88;
 
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Investment Details',
-      barrierColor: Colors.black.withValues(alpha: 0.55),
-      transitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (dialogContext, anim1, anim2) {
-        return const SizedBox.shrink();
-      },
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (dialogContext, anim1, anim2) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, anim, secondaryAnim, child) {
-        final curvedAnimation = CurvedAnimation(
+        final curved = CurvedAnimation(
           parent: anim,
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
-
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curvedAnimation),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 480,
-                height: double.infinity,
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  border: Border(left: BorderSide(color: cardBorder, width: 1.2)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 24,
-                      offset: const Offset(-4, 0),
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: modalWidth,
+                  height: modalHeight,
+                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: isDark
+                          ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
+                          : [Colors.white, const Color(0xFFF8FAFC)],
                     ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(9),
-                              decoration: BoxDecoration(
-                                color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.22),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.monetization_on_outlined,
-                                size: 18,
-                                color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Investment Details',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: titleColor,
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              icon: Icon(Icons.close_rounded, color: hintText, size: 22),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'Close panel',
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: _buildModalContent(inv, isDark, cardBorder, titleColor, hintText),
-                        ),
-                      ),
-                      Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              foregroundColor: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              elevation: 0,
-                            ),
-                            child: Text(
-                              'Close',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                        blurRadius: 36,
+                        offset: const Offset(0, 16),
                       ),
                     ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Column(
+                      children: [
+                        // Header
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.22),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.monetization_on_outlined,
+                                  size: 20,
+                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Investment Details',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                        color: titleColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Complete breakdown of capital, batch allocation, and returns',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: hintText,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                icon: Icon(Icons.close_rounded, color: hintText, size: 22),
+                                padding: const EdgeInsets.all(8),
+                                constraints: const BoxConstraints(),
+                                tooltip: 'Close',
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(28),
+                            child: buildContent(inv, isDark, cardBorder, titleColor, hintText),
+                          ),
+                        ),
+                        Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                  foregroundColor: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  elevation: 0,
+                                ),
+                                child: Text(
+                                  'Close',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -259,7 +289,7 @@ class InvestmentDetailModal {
     );
   }
 
-  static Widget _buildModalContent(
+  static Widget buildContent(
     Investment inv,
     bool isDark,
     Color cardBorder,

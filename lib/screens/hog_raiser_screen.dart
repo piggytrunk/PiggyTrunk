@@ -8,11 +8,10 @@ import '../main.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
-import '../widgets/slide_over_confirmation_drawer.dart';
 import '../utils/responsive.dart';
-import '../widgets/hog_raiser/raiser_profile_drawer.dart';
-import '../widgets/hog_raiser/edit_raiser_drawer.dart';
+import '../widgets/hog_raiser/raiser_profile_view.dart';
 import '../widgets/hog_raiser/active_raisers_tab.dart';
+import '../widgets/common/in_page_confirmation_view.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../services/email_service.dart';
 
@@ -32,6 +31,8 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
   bool _isTableRefreshing = false;
   int _currentTab = 0; // 0 = Active, 1 = Pending, 2 = Archived
   String? _loadErrorMessage;
+  Map<String, dynamic>? _selectedRaiserForProfile;
+  Widget? _inPageConfirmation;
 
   RealtimeChannel? _raisersSubscription;
   bool _hasCheckedRouteArgs = false;
@@ -105,12 +106,7 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
               }
             }
             if (match != null) {
-              RaiserProfileDrawer.show(
-                context: context,
-                row: match,
-                onApprove: _approveRaiserDirectly,
-                onDelete: _deleteRaiser,
-              );
+              setState(() => _selectedRaiserForProfile = match);
             }
           }
         });
@@ -500,29 +496,20 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
                   ),
                 Expanded(
                   child: SingleChildScrollView(
-                          padding: EdgeInsets.all(isMobile ? 12 : 18),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final contentWidth = constraints.maxWidth > 1340
-                                  ? 1340.0
-                                  : constraints.maxWidth;
-                              return Align(
-                                alignment: Alignment.topCenter,
-                                child: Container(
-                                  width: contentWidth,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(colors: [_panelStart, _panelEnd]),
-                                    border: Border.all(color: _panelBorder, width: 1),
-                                    borderRadius: BorderRadius.circular(isMobile ? 16 : 30),
-                                  ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile ? 14 : 26,
-                                    vertical: isMobile ? 16 : 26,
-                                  ),
-                                  child: _buildMainContent(),
-                                ),
-                              );
-                            },
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.all(isMobile ? 12 : 20),
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [_panelStart, _panelEnd]),
+                              border: Border.all(color: _panelBorder, width: 1),
+                              borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 14 : 26,
+                              vertical: isMobile ? 16 : 26,
+                            ),
+                            child: _buildMainContent(),
                           ),
                         ),
                 ),
@@ -569,6 +556,33 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
       return isArchived;
     }).toList();
 
+    if (_inPageConfirmation != null) {
+      return _inPageConfirmation!;
+    }
+
+    if (_selectedRaiserForProfile != null) {
+      return RaiserProfileView(
+        row: _selectedRaiserForProfile!,
+        onCancel: () => setState(() => _selectedRaiserForProfile = null),
+        onApprove: (row) async {
+          await _approveRaiserDirectly(row);
+          if (mounted) setState(() => _selectedRaiserForProfile = null);
+        },
+        onDelete: (row) async {
+          await _deleteRaiser(row);
+          if (mounted) setState(() => _selectedRaiserForProfile = null);
+        },
+        onArchive: (row) async {
+          await _archiveRaiser(row);
+          if (mounted) setState(() => _selectedRaiserForProfile = null);
+        },
+        onRestore: (row) async {
+          await _restoreRaiser(row);
+          if (mounted) setState(() => _selectedRaiserForProfile = null);
+        },
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -611,18 +625,7 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
           onRefresh: () => _loadRaisers(keyword: _searchCtrl.text, isRefresh: true),
           isRefreshing: _isLoading || _isTableRefreshing,
           onSearch: (keyword) => _loadRaisers(keyword: keyword),
-          onShowDetails: (row) => RaiserProfileDrawer.show(
-            context: context,
-            row: row,
-            onApprove: _approveRaiserDirectly,
-            onDelete: _deleteRaiser,
-          ),
-          onEditRaiser: (row) => EditRaiserDrawer.show(
-            context: context,
-            row: row,
-            onUpdated: () => _loadRaisers(keyword: _searchCtrl.text),
-            onShowSnackBar: _showThemedSnackBar,
-          ),
+          onShowDetails: (row) => setState(() => _selectedRaiserForProfile = row),
           onArchiveRaiser: _archiveRaiser,
           onRestoreRaiser: _restoreRaiser,
           onDeleteRaiser: _deleteRaiser,
@@ -717,68 +720,66 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
 
     final name = (row['name'] ?? '').toString();
     final email = (row['email'] ?? '').toString();
+    final avatarUrl = (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString();
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Approve Hog Raiser',
-      message: 'Are you sure you want to approve and activate the hog raiser account for "$name"?',
-      actionType: SlideOverActionType.success,
-      userName: name,
-      userEmail: email.isNotEmpty ? email : null,
-      userRole: 'Hog Raiser',
-      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
-      confirmButtonText: 'Yes, Approve',
-      cancelButtonText: 'Cancel',
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Approve Hog Raiser',
+        subtitle: 'Activate and approve the raiser account.',
+        message: 'Are you sure you want to approve and activate the hog raiser account for "$name"?',
+        actionType: InPageActionType.success,
+        userName: name,
+        userEmail: email.isNotEmpty ? email : null,
+        userRole: 'Hog Raiser',
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Approve',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedRaiserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
+            final List<Future> updates = [
+              _supabase.from('hog_raisers').update({
+                'status': 'Active',
+                'account_status': 'active',
+              }).eq(pkCol, id),
+            ];
 
-    if (confirm != true) return;
+            if (userId != null) {
+              updates.add(
+                _supabase.from('app_users').update({
+                  'status': 'active',
+                }).eq('user_id', userId),
+              );
+            }
 
-    setState(() => _isLoading = true);
-    try {
-      final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
-      final List<Future> updates = [
-        _supabase.from('hog_raisers').update({
-          'status': 'Active',
-          'account_status': 'active',
-        }).eq(pkCol, id),
-      ];
+            await Future.wait(updates);
 
-      if (userId != null) {
-        updates.add(
-          _supabase.from('app_users').update({
-            'status': 'active',
-          }).eq('user_id', userId),
-        );
-      }
+            if (email.isNotEmpty) {
+              try {
+                await EmailService().sendAccountApprovalEmail(
+                  recipientEmail: email,
+                  recipientName: name,
+                  role: 'hog_raiser',
+                );
+              } catch (_) {}
+            }
 
-      await Future.wait(updates);
-
-      // Send approval email via Resend / Bridge
-      if (email.isNotEmpty) {
-        try {
-          debugPrint('[HogRaiserScreen] Sending approval email to $email...');
-          final sent = await EmailService().sendAccountApprovalEmail(
-            recipientEmail: email,
-            recipientName: name,
-            role: 'hog_raiser',
-          );
-          if (sent) {
-            debugPrint('[HogRaiserScreen] Approval email delivered successfully to $email');
-          } else {
-            debugPrint('[HogRaiserScreen] Warning: Approval email could not be delivered to $email');
+            await _loadRaisers(keyword: _searchCtrl.text);
+            _showThemedSnackBar('Raiser "$name" approved successfully.');
+          } catch (e) {
+            _showThemedSnackBar('Approval failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
           }
-        } catch (mailErr) {
-          debugPrint('[HogRaiserScreen] Error sending approval email: $mailErr');
-        }
-      }
-
-      await _loadRaisers(keyword: _searchCtrl.text);
-      _showThemedSnackBar('Raiser "$name" approved successfully.');
-    } catch (e) {
-      _showThemedSnackBar('Approval failed: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+        },
+      );
+    });
   }
 
   Future<void> _deleteRaiser(Map<String, dynamic> row) async {
@@ -787,37 +788,45 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     if (id == null) return;
     final name = (row['name'] ?? '').toString();
     final email = (row['email'] ?? '').toString();
+    final avatarUrl = (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString();
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Reject Hog Raiser',
-      message: 'Are you sure you want to reject the registration for "$name"? This will permanently delete their registration record.',
-      actionType: SlideOverActionType.danger,
-      userName: name,
-      userEmail: email.isNotEmpty ? email : null,
-      userRole: 'Hog Raiser',
-      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
-      confirmButtonText: 'Yes, Reject',
-      cancelButtonText: 'Cancel',
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isLoading = true);
-    try {
-      if (userId != null) {
-        await _supabase.from('app_users').delete().eq('user_id', userId);
-      } else {
-        final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
-        await _supabase.from('hog_raisers').delete().eq(pkCol, id);
-      }
-      await _loadRaisers(keyword: _searchCtrl.text);
-      _showThemedSnackBar('Raiser registration rejected successfully.');
-    } catch (e) {
-      _showThemedSnackBar('Rejection failed: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Reject Hog Raiser',
+        subtitle: 'Permanently remove this pending registration.',
+        message: 'Are you sure you want to reject the registration for "$name"? This will permanently delete their registration record.',
+        actionType: InPageActionType.danger,
+        userName: name,
+        userEmail: email.isNotEmpty ? email : null,
+        userRole: 'Hog Raiser',
+        avatarUrl: avatarUrl,
+        warningText: 'This action is irreversible. The user registration will be deleted immediately.',
+        confirmButtonText: 'Yes, Reject',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedRaiserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            if (userId != null) {
+              await _supabase.from('app_users').delete().eq('user_id', userId);
+            } else {
+              final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
+              await _supabase.from('hog_raisers').delete().eq(pkCol, id);
+            }
+            await _loadRaisers(keyword: _searchCtrl.text);
+            _showThemedSnackBar('Raiser registration rejected successfully.');
+          } catch (e) {
+            _showThemedSnackBar('Rejection failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 
   Future<void> _archiveRaiser(Map<String, dynamic> row) async {
@@ -826,49 +835,56 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     if (id == null) return;
     final name = (row['name'] ?? '').toString();
     final email = (row['email'] ?? '').toString();
+    final avatarUrl = (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString();
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Archive Hog Raiser',
-      message: 'Are you sure you want to archive the record for "$name"?',
-      actionType: SlideOverActionType.danger,
-      customIcon: Icons.archive_outlined,
-      userName: name,
-      userEmail: email.isNotEmpty ? email : null,
-      userRole: 'Hog Raiser',
-      avatarUrl: (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString(),
-      confirmButtonText: 'Yes, Archive',
-      cancelButtonText: 'Cancel',
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Archive Hog Raiser',
+        subtitle: 'Move this hog raiser account to archived records.',
+        message: 'Are you sure you want to archive the record for "$name"?',
+        actionType: InPageActionType.danger,
+        customIcon: Icons.archive_outlined,
+        userName: name,
+        userEmail: email.isNotEmpty ? email : null,
+        userRole: 'Hog Raiser',
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Archive',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedRaiserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
+            final List<Future> updates = [
+              _supabase.from('hog_raisers').update({
+                'status': 'Archived',
+                'account_status': 'Archived',
+              }).eq(pkCol, id),
+            ];
 
-    if (confirm != true) return;
+            if (userId != null) {
+              updates.add(
+                _supabase.from('app_users').update({
+                  'status': 'archived',
+                }).eq('user_id', userId),
+              );
+            }
 
-    setState(() => _isLoading = true);
-    try {
-      final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
-      final List<Future> updates = [
-        _supabase.from('hog_raisers').update({
-          'status': 'Archived',
-          'account_status': 'Archived',
-        }).eq(pkCol, id),
-      ];
-
-      if (userId != null) {
-        updates.add(
-          _supabase.from('app_users').update({
-            'status': 'archived',
-          }).eq('user_id', userId),
-        );
-      }
-
-      await Future.wait(updates);
-      await _loadRaisers(keyword: _searchCtrl.text);
-      _showThemedSnackBar('Raiser "$name" archived successfully.');
-    } catch (e) {
-      _showThemedSnackBar('Archive failed: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+            await Future.wait(updates);
+            await _loadRaisers(keyword: _searchCtrl.text);
+            _showThemedSnackBar('Raiser "$name" archived successfully.');
+          } catch (e) {
+            _showThemedSnackBar('Archive failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 
   Future<void> _restoreRaiser(Map<String, dynamic> row) async {
@@ -876,32 +892,56 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     final userId = _parseId(row['user_id']);
     if (id == null) return;
     final name = (row['name'] ?? '').toString();
+    final email = (row['email'] ?? '').toString();
+    final avatarUrl = (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString();
 
-    setState(() => _isLoading = true);
-    try {
-      final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
-      final List<Future> updates = [
-        _supabase.from('hog_raisers').update({
-          'status': 'Active',
-          'account_status': 'Approved',
-        }).eq(pkCol, id),
-      ];
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Restore Hog Raiser',
+        subtitle: 'Restore this archived hog raiser account back to active.',
+        message: 'Are you sure you want to restore the account for "$name" back to active?',
+        actionType: InPageActionType.success,
+        customIcon: Icons.unarchive_outlined,
+        userName: name,
+        userEmail: email.isNotEmpty ? email : null,
+        userRole: 'Hog Raiser',
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Restore',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedRaiserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
+            final List<Future> updates = [
+              _supabase.from('hog_raisers').update({
+                'status': 'Active',
+                'account_status': 'Approved',
+              }).eq(pkCol, id),
+            ];
 
-      if (userId != null) {
-        updates.add(
-          _supabase.from('app_users').update({
-            'status': 'approved',
-          }).eq('user_id', userId),
-        );
-      }
+            if (userId != null) {
+              updates.add(
+                _supabase.from('app_users').update({
+                  'status': 'approved',
+                }).eq('user_id', userId),
+              );
+            }
 
-      await Future.wait(updates);
-      await _loadRaisers(keyword: _searchCtrl.text);
-      _showThemedSnackBar('Raiser "$name" restored successfully.');
-    } catch (e) {
-      _showThemedSnackBar('Restore failed: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+            await Future.wait(updates);
+            await _loadRaisers(keyword: _searchCtrl.text);
+            _showThemedSnackBar('Raiser "$name" restored successfully.');
+          } catch (e) {
+            _showThemedSnackBar('Restore failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 }

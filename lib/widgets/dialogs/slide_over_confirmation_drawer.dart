@@ -80,10 +80,10 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: 'Action Confirmation',
       barrierColor: Colors.black.withValues(alpha: 0.55),
-      transitionDuration: const Duration(milliseconds: 280),
+      transitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (ctx, anim1, anim2) {
         return Align(
-          alignment: Alignment.centerRight,
+          alignment: Alignment.center,
           child: SlideOverConfirmationDrawer(
             title: title,
             message: message,
@@ -105,12 +105,12 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curvedAnim),
-          child: child,
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1.0).animate(curvedAnim),
+          child: FadeTransition(
+            opacity: curvedAnim,
+            child: child,
+          ),
         );
       },
     );
@@ -164,7 +164,7 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    final drawerWidth = isMobile ? screenWidth : 420.0;
+    final dialogWidth = isMobile ? (screenWidth - 32).clamp(320.0, 560.0) : 560.0;
 
     if (isBottomSheet) {
       return Container(
@@ -397,32 +397,36 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
       );
     }
 
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: drawerWidth,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          color: surfaceColor,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.16),
-              blurRadius: 32,
-              spreadRadius: 2,
-              offset: const Offset(-6, 0),
-            ),
-          ],
-          border: Border(
-            left: BorderSide(color: borderColor, width: 1.2),
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: dialogWidth,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.88,
           ),
-        ),
-        child: SafeArea(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: borderColor, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.55 : 0.18),
+                blurRadius: 36,
+                spreadRadius: 2,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ==================== DRAWER HEADER ====================
+              // ==================== DIALOG HEADER ====================
               Container(
-                padding: EdgeInsets.fromLTRB(isMobile ? 16 : 20, 18, isMobile ? 12 : 16, 16),
+                padding: EdgeInsets.fromLTRB(isMobile ? 18 : 24, 20, isMobile ? 14 : 18, 18),
                 decoration: BoxDecoration(
                   color: surfaceColor,
                   border: Border(bottom: BorderSide(color: borderColor, width: 1)),
@@ -431,34 +435,40 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(9),
-                          decoration: BoxDecoration(
-                            color: actionLightBg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: actionAccent.withValues(alpha: 0.35),
-                              width: 1,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(9),
+                            decoration: BoxDecoration(
+                              color: actionLightBg,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: actionAccent.withValues(alpha: 0.35),
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              customIcon ?? defaultIcon,
+                              color: actionAccent,
+                              size: 22,
                             ),
                           ),
-                          child: Icon(
-                            customIcon ?? defaultIcon,
-                            color: actionAccent,
-                            size: 22,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: AppTextStyles.jakarta(
+                                size: 18,
+                                weight: FontWeight.w800,
+                                color: titleTextColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          title,
-                          style: AppTextStyles.jakarta(
-                            size: 17,
-                            weight: FontWeight.w800,
-                            color: titleTextColor,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                     IconButton(
                       icon: Icon(Icons.close_rounded, color: mutedTextColor, size: 20),
@@ -471,10 +481,10 @@ class SlideOverConfirmationDrawer extends StatelessWidget {
                 ),
               ),
 
-              // ==================== DRAWER BODY ====================
-              Expanded(
+              // ==================== DIALOG BODY ====================
+              Flexible(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.all(isMobile ? 16 : 24),
+                  padding: EdgeInsets.all(isMobile ? 18 : 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

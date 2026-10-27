@@ -7,12 +7,12 @@ import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
-import '../widgets/slide_over_confirmation_drawer.dart';
 import '../utils/responsive.dart';
 import '../widgets/common/shimmer_loading.dart';
+import '../widgets/common/in_page_confirmation_view.dart';
 import '../widgets/investment/investment_form_view.dart';
 import '../widgets/investment/investment_table_view.dart';
-import '../widgets/investment/investment_detail_modal.dart';
+import '../widgets/investment/investment_detail_view.dart';
 import '../widgets/investment/investment_add_allocation_dialog.dart';
 import '../main.dart';
 
@@ -31,6 +31,8 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
   bool _isTableRefreshing = false;
   bool _showInvestmentForm = false;
   Investment? _editingInvestment;
+  Investment? _selectedInvestmentForDetails;
+  Widget? _inPageConfirmation;
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _bgDark => _isDark ? PiggyTrunkTheme.ptBgDark : PiggyTrunkTheme.ptBg;
@@ -79,7 +81,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
               }
             }
             if (match != null) {
-              InvestmentDetailModal.show(context: context, investment: match);
+              setState(() => _selectedInvestmentForDetails = match);
             }
           }
         });
@@ -828,58 +830,78 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                               onShowSnackBar: _showThemedSnackBar,
                             )
                           : SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: EdgeInsets.all(isMobile ? 12 : 20),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final contentWidth = constraints.maxWidth > 1350
-                                      ? 1350.0
-                                      : constraints.maxWidth;
-                                  return Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Container(
-                                      width: contentWidth,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [_panelStart, _panelEnd],
-                                          begin: Alignment.centerLeft,
-                                          end: Alignment.centerRight,
-                                        ),
-                                        border: Border.all(color: _panelBorder, width: 1),
-                                        borderRadius: BorderRadius.circular(isMobile ? 16 : 34),
-                                      ),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isMobile ? 14 : 26,
-                                        vertical: isMobile ? 16 : 28,
-                                      ),
-                                      child: _isLoading
-                                          ? _buildFullSkeletonLoader(isMobile)
-                                          : InvestmentTableView(
-                                              investments: investments,
-                                              partnerInvestments: partnerInvestments,
-                                              initialViewMode: _initialViewMode,
-                                              onRefresh: () => _loadInvestments(isRefresh: true),
-                                              isRefreshing: _isTableRefreshing,
-                                              onAddInvestment: () => setState(() {
-                                                _showInvestmentForm = true;
-                                                _editingInvestment = null;
-                                              }),
-                                              onEditInvestment: (item) => setState(() {
-                                                _showInvestmentForm = true;
-                                                _editingInvestment = item;
-                                              }),
-                                              onCompleteInvestment: _completeInvestment,
-                                              onAddAllocation: _addAllocation,
-                                              onArchiveInvestment: _archiveInvestment,
-                                              onRestoreInvestment: _restoreInvestment,
-                                              onDeleteInvestment: _deleteInvestment,
-                                              onApprovePartnerInvestment: _approvePartnerInvestment,
-                                              onRejectPartnerInvestment: _rejectPartnerInvestment,
-                                            ),
-                                    ),
-                                  );
-                                },
+                              child: Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [_panelStart, _panelEnd],
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                  border: Border.all(color: _panelBorder, width: 1),
+                                  borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isMobile ? 14 : 26,
+                                  vertical: isMobile ? 16 : 28,
+                                ),
+                                child: _inPageConfirmation != null
+                                          ? _inPageConfirmation!
+                                          : (_selectedInvestmentForDetails != null
+                                              ? InvestmentDetailView(
+                                                  investment: _selectedInvestmentForDetails!,
+                                                  onBack: () => setState(() => _selectedInvestmentForDetails = null),
+                                                  onEdit: (item) => setState(() {
+                                                    _selectedInvestmentForDetails = null;
+                                                    _showInvestmentForm = true;
+                                                    _editingInvestment = item;
+                                                  }),
+                                                  onComplete: (item) {
+                                                    setState(() => _selectedInvestmentForDetails = null);
+                                                    _completeInvestment(item);
+                                                  },
+                                                  onArchive: (item) {
+                                                    setState(() => _selectedInvestmentForDetails = null);
+                                                    _archiveInvestment(item);
+                                                  },
+                                                  onRestore: (item) {
+                                                    setState(() => _selectedInvestmentForDetails = null);
+                                                    _restoreInvestment(item);
+                                                  },
+                                                  onDelete: (item) {
+                                                    setState(() => _selectedInvestmentForDetails = null);
+                                                    _deleteInvestment(item);
+                                                  },
+                                                )
+                                              : (_isLoading
+                                                  ? _buildFullSkeletonLoader(isMobile)
+                                                  : InvestmentTableView(
+                                                      investments: investments,
+                                                      partnerInvestments: partnerInvestments,
+                                                      initialViewMode: _initialViewMode,
+                                                      onRefresh: () => _loadInvestments(isRefresh: true),
+                                                      isRefreshing: _isTableRefreshing,
+                                                      onShowDetails: (inv) => setState(() => _selectedInvestmentForDetails = inv),
+                                                      onAddInvestment: () => setState(() {
+                                                        _showInvestmentForm = true;
+                                                        _editingInvestment = null;
+                                                      }),
+                                                      onEditInvestment: (item) => setState(() {
+                                                        _showInvestmentForm = true;
+                                                        _editingInvestment = item;
+                                                      }),
+                                                      onCompleteInvestment: _completeInvestment,
+                                                      onAddAllocation: _addAllocation,
+                                                      onArchiveInvestment: _archiveInvestment,
+                                                      onRestoreInvestment: _restoreInvestment,
+                                                      onDeleteInvestment: _deleteInvestment,
+                                                      onApprovePartnerInvestment: _approvePartnerInvestment,
+                                                      onRejectPartnerInvestment: _rejectPartnerInvestment,
+                                                    ))),
+                                ),
                               ),
-                            ),
                 ),
               ],
             ),
@@ -1219,25 +1241,33 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
     );
   }
 
-  void _completeInvestment(Investment item) async {
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Complete Investment',
-      message: 'Are you sure you want to mark the investment lifecycle for "${item.raiserName}" as completed?',
-      confirmButtonText: 'Complete Investment',
-      actionType: SlideOverActionType.success,
-      customIcon: Icons.check_circle_outline_rounded,
-    );
-
-    if (confirmed == true) {
-      try {
-        await _supabase.from('investment_records').update({'stage': 'completed'}).eq('id', item.id);
-        _showThemedSnackBar('Investment marked as completed.');
-        _loadInvestments();
-      } catch (e) {
-        _showThemedSnackBar('Completion failed: $e', isError: true);
-      }
-    }
+  void _completeInvestment(Investment item) {
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Complete Investment',
+        subtitle: 'Finalize lifecycle for this investment record.',
+        message: 'Are you sure you want to mark the investment lifecycle for "${item.raiserName}" as completed?',
+        actionType: InPageActionType.success,
+        customIcon: Icons.check_circle_outline_rounded,
+        itemTitle: item.raiserName,
+        itemSubtitle: 'Batch: ${item.batchName ?? 'Unassigned'} • Total: ₱${item.totalInvestment.toStringAsFixed(0)}',
+        confirmButtonText: 'Complete Investment',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          try {
+            await _supabase.from('investment_records').update({'stage': 'completed'}).eq('id', item.id);
+            if (mounted) {
+              setState(() => _inPageConfirmation = null);
+              _showThemedSnackBar('Investment marked as completed.');
+              _loadInvestments();
+            }
+          } catch (e) {
+            _showThemedSnackBar('Completion failed: $e', isError: true);
+          }
+        },
+      );
+    });
   }
 
   void _addAllocation(Investment item) {
@@ -1248,67 +1278,92 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
     );
   }
 
-  void _archiveInvestment(Investment item) async {
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Archive Investment',
-      message: 'Are you sure you want to archive the investment record for "${item.raiserName}"?',
-      confirmButtonText: 'Archive',
-      actionType: SlideOverActionType.warning,
-      customIcon: Icons.archive_outlined,
-    );
-
-    if (confirmed == true) {
-      try {
-        await _supabase.from('investment_records').update({'stage': 'archived'}).eq('id', item.id);
-        _showThemedSnackBar('Investment archived successfully.');
-        _loadInvestments();
-      } catch (e) {
-        _showThemedSnackBar('Archive failed: $e', isError: true);
-      }
-    }
+  void _archiveInvestment(Investment item) {
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Archive Investment',
+        subtitle: 'Move this investment to the archived records.',
+        message: 'Are you sure you want to archive the investment record for "${item.raiserName}"?',
+        actionType: InPageActionType.danger,
+        customIcon: Icons.archive_outlined,
+        itemTitle: item.raiserName,
+        itemSubtitle: 'Batch: ${item.batchName ?? 'Unassigned'} • Total: ₱${item.totalInvestment.toStringAsFixed(0)}',
+        confirmButtonText: 'Archive',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          try {
+            await _supabase.from('investment_records').update({'stage': 'archived'}).eq('id', item.id);
+            if (mounted) {
+              setState(() => _inPageConfirmation = null);
+              _showThemedSnackBar('Investment archived successfully.');
+              _loadInvestments();
+            }
+          } catch (e) {
+            _showThemedSnackBar('Archive failed: $e', isError: true);
+          }
+        },
+      );
+    });
   }
 
-  void _restoreInvestment(Investment item) async {
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Restore Investment',
-      message: 'Are you sure you want to restore the investment record for "${item.raiserName}" back to active?',
-      confirmButtonText: 'Restore',
-      actionType: SlideOverActionType.success,
-      customIcon: Icons.unarchive_outlined,
-    );
-
-    if (confirmed == true) {
-      try {
-        await _supabase.from('investment_records').update({'stage': 'active'}).eq('id', item.id);
-        _showThemedSnackBar('Investment restored to active.');
-        _loadInvestments();
-      } catch (e) {
-        _showThemedSnackBar('Restore failed: $e', isError: true);
-      }
-    }
+  void _restoreInvestment(Investment item) {
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Restore Investment',
+        subtitle: 'Restore this investment record back to active.',
+        message: 'Are you sure you want to restore the investment record for "${item.raiserName}" back to active?',
+        actionType: InPageActionType.success,
+        customIcon: Icons.unarchive_outlined,
+        itemTitle: item.raiserName,
+        itemSubtitle: 'Batch: ${item.batchName ?? 'Unassigned'} • Total: ₱${item.totalInvestment.toStringAsFixed(0)}',
+        confirmButtonText: 'Restore',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          try {
+            await _supabase.from('investment_records').update({'stage': 'active'}).eq('id', item.id);
+            if (mounted) {
+              setState(() => _inPageConfirmation = null);
+              _showThemedSnackBar('Investment restored to active.');
+              _loadInvestments();
+            }
+          } catch (e) {
+            _showThemedSnackBar('Restore failed: $e', isError: true);
+          }
+        },
+      );
+    });
   }
 
-  void _deleteInvestment(Investment item) async {
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Delete Investment',
-      message: 'Are you sure you want to permanently delete this investment record for "${item.raiserName}"?',
-      confirmButtonText: 'Delete Permanently',
-      actionType: SlideOverActionType.danger,
-      customIcon: Icons.delete_outline_rounded,
-    );
-
-    if (confirmed == true) {
-      try {
-        await _supabase.from('investment_records').delete().eq('id', item.id);
-        _showThemedSnackBar('Investment deleted.');
-        _loadInvestments();
-      } catch (e) {
-        _showThemedSnackBar('Delete failed: $e', isError: true);
-      }
-    }
+  void _deleteInvestment(Investment item) {
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Delete Investment',
+        subtitle: 'Permanently remove this investment record.',
+        message: 'Are you sure you want to permanently delete this investment record for "${item.raiserName}"?',
+        actionType: InPageActionType.danger,
+        customIcon: Icons.delete_outline_rounded,
+        itemTitle: item.raiserName,
+        itemSubtitle: 'Batch: ${item.batchName ?? 'Unassigned'} • Total: ₱${item.totalInvestment.toStringAsFixed(0)}',
+        warningText: 'This action is permanent and cannot be undone. All related investment tracking will be permanently deleted.',
+        confirmButtonText: 'Delete Permanently',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          try {
+            await _supabase.from('investment_records').delete().eq('id', item.id);
+            if (mounted) {
+              setState(() => _inPageConfirmation = null);
+              _showThemedSnackBar('Investment deleted.');
+              _loadInvestments();
+            }
+          } catch (e) {
+            _showThemedSnackBar('Delete failed: $e', isError: true);
+          }
+        },
+      );
+    });
   }
 
   static String _resolveStageName(dynamic stageVal, bool isBreeding) {

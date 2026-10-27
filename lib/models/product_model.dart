@@ -36,6 +36,7 @@ class Product {
   final String? image;
   final String description;
   final double price;
+  final double? kiloPrice;
   final int units;
   final int sold;
   final DateTime createdAt;
@@ -49,16 +50,27 @@ class Product {
     this.image,
     required this.description,
     required this.price,
+    this.kiloPrice,
     required this.units,
     required this.sold,
     required this.createdAt,
     this.isArchived = false,
   });
 
+  bool get isFeed {
+    final c = category.trim().toLowerCase();
+    return c == 'feeds' || c == 'feed';
+  }
+
+  bool get hasKiloPrice => kiloPrice != null && kiloPrice! > 0;
+
+  double get effectiveKiloPrice => kiloPrice ?? 0.0;
+
   factory Product.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
     final rawUnits = json['units'];
     final rawSold = json['sold'];
+    final rawKiloPrice = json['kilo_price'] ?? json['retail_kilo_price'] ?? json['price_per_kilo'];
 
     return Product(
       id: (json['id'] ?? '').toString(),
@@ -68,6 +80,9 @@ class Product {
       image: (json['image'] ?? json['image_url'])?.toString(),
       description: (json['description'] ?? '').toString(),
       price: rawPrice is num ? rawPrice.toDouble() : double.tryParse(rawPrice?.toString() ?? '0') ?? 0,
+      kiloPrice: rawKiloPrice is num
+          ? rawKiloPrice.toDouble()
+          : (rawKiloPrice != null ? double.tryParse(rawKiloPrice.toString()) : null),
       units: rawUnits is num ? rawUnits.toInt() : int.tryParse(rawUnits?.toString() ?? '0') ?? 0,
       sold: rawSold is num ? rawSold.toInt() : int.tryParse(rawSold?.toString() ?? '0') ?? 0,
       createdAt: json['created_at'] != null
@@ -86,6 +101,7 @@ class Product {
       'image': image,
       'description': description,
       'price': price,
+      'kilo_price': kiloPrice,
       'units': units,
       'sold': sold,
       'created_at': createdAt.toIso8601String(),

@@ -195,6 +195,7 @@ class BatchTableView extends StatelessWidget {
                           if (filteredBatches.isEmpty)
                             Container(
                               width: tableWidth,
+                              constraints: const BoxConstraints(minHeight: 450),
                               padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
                               decoration: BoxDecoration(
                                 border: Border(bottom: BorderSide(color: cardBorder.withValues(alpha: 0.7))),

@@ -68,6 +68,10 @@ dependencies:
   geolocator: ^14.0.2
   geocoding: ^5.0.0
   connectivity_plus: ^7.3.1
+  csv: ^6.0.0
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -19,6 +19,7 @@ class InvestmentTableView extends StatefulWidget {
   final void Function(Investment item) onDeleteInvestment;
   final void Function(Investment item)? onCompleteInvestment;
   final void Function(Investment item)? onAddAllocation;
+  final void Function(Investment item)? onShowDetails;
   final void Function(int investmentId)? onApprovePartnerInvestment;
   final void Function(int investmentId)? onRejectPartnerInvestment;
 
@@ -36,6 +37,7 @@ class InvestmentTableView extends StatefulWidget {
     required this.onDeleteInvestment,
     this.onCompleteInvestment,
     this.onAddAllocation,
+    this.onShowDetails,
     this.onApprovePartnerInvestment,
     this.onRejectPartnerInvestment,
   });
@@ -391,6 +393,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
   Widget _buildEmptyPlaceholder(double tableWidth, Color cardBorder, Color titleColor, String message) {
     return Container(
       width: tableWidth,
+      constraints: const BoxConstraints(minHeight: 450),
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: cardBorder.withValues(alpha: 0.7))),
@@ -896,7 +899,13 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
               child: InkWell(
-                onTap: () => InvestmentDetailModal.show(context: context, investment: inv),
+                onTap: () {
+                  if (widget.onShowDetails != null) {
+                    widget.onShowDetails!(inv);
+                  } else {
+                    InvestmentDetailModal.show(context: context, investment: inv);
+                  }
+                },
                 borderRadius: BorderRadius.circular(4),
                 child: Text(
                   inv.raiserName,
@@ -1018,7 +1027,13 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                       bgColor: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.08 : 0.1),
                       borderColor: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.22 : 0.3),
                       tooltip: 'View Details',
-                      onTap: () => InvestmentDetailModal.show(context: context, investment: inv),
+                      onTap: () {
+                        if (widget.onShowDetails != null) {
+                          widget.onShowDetails!(inv);
+                        } else {
+                          InvestmentDetailModal.show(context: context, investment: inv);
+                        }
+                      },
                     ),
                     const SizedBox(width: 6),
 
@@ -1033,6 +1048,16 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                         onTap: () => widget.onRestoreInvestment?.call(inv),
                       ),
                       const SizedBox(width: 6),
+
+                      // 3. Delete Icon Button (🗑) - Only for archived records
+                      _buildSquareIconButton(
+                        icon: Icons.delete_outline_rounded,
+                        iconColor: const Color(0xFFEF4444),
+                        bgColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                        borderColor: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                        tooltip: 'Delete Permanently',
+                        onTap: () => widget.onDeleteInvestment(inv),
+                      ),
                     ] else ...[
                       // 2. Complete Icon Button (✓)
                       if (isCompleted)
@@ -1064,18 +1089,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                         tooltip: 'Archive Investment',
                         onTap: () => widget.onArchiveInvestment(inv),
                       ),
-                      const SizedBox(width: 6),
                     ],
-
-                    // 4. Delete Icon Button (🗑)
-                    _buildSquareIconButton(
-                      icon: Icons.delete_outline_rounded,
-                      iconColor: const Color(0xFFEF4444),
-                      bgColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
-                      borderColor: const Color(0xFFEF4444).withValues(alpha: 0.3),
-                      tooltip: 'Delete Investment',
-                      onTap: () => widget.onDeleteInvestment(inv),
-                    ),
                   ],
                 ),
               ),
@@ -1784,12 +1798,16 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
         ),
       );
     } else {
+      final size = MediaQuery.of(context).size;
+      final modalWidth = (size.width > 1200) ? 960.0 : (size.width > 800 ? 800.0 : size.width * 0.95);
+      final modalHeight = size.height * 0.88;
+
       showGeneralDialog(
         context: context,
         barrierDismissible: true,
         barrierLabel: 'Partner Investment Details',
-        barrierColor: Colors.black.withValues(alpha: 0.55),
-        transitionDuration: const Duration(milliseconds: 280),
+        barrierColor: Colors.black.withValues(alpha: 0.65),
+        transitionDuration: const Duration(milliseconds: 260),
         pageBuilder: (dialogContext, anim1, anim2) => const SizedBox.shrink(),
         transitionBuilder: (dialogContext, anim, secondaryAnim, child) {
           final curvedAnimation = CurvedAnimation(
@@ -1798,31 +1816,41 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             reverseCurve: Curves.easeInCubic,
           );
 
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1.0, 0.0),
-              end: Offset.zero,
-            ).animate(curvedAnimation),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  width: 480,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    border: Border(left: BorderSide(color: cardBorder, width: 1.2)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 24,
-                        offset: const Offset(-4, 0),
+          return FadeTransition(
+            opacity: curvedAnimation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.94, end: 1.0).animate(curvedAnimation),
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: modalWidth,
+                    height: modalHeight,
+                    margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: isDark
+                            ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
+                            : [Colors.white, const Color(0xFFF8FAFC)],
                       ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: buildDrawerContent(dialogContext),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: cardBorder, width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                          blurRadius: 36,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: SafeArea(
+                        child: buildDrawerContent(dialogContext),
+                      ),
+                    ),
                   ),
                 ),
               ),

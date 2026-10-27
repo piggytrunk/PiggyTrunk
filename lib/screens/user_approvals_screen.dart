@@ -7,7 +7,8 @@ import '../theme/app_text_styles.dart';
 import '../utils/app_toast.dart';
 import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
-import '../widgets/slide_over_confirmation_drawer.dart';
+import '../widgets/users/user_profile_view.dart';
+import '../widgets/common/in_page_confirmation_view.dart';
 import '../services/email_service.dart';
 import '../utils/responsive.dart';
 import '../widgets/common/shimmer_loading.dart';
@@ -25,6 +26,8 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   List<Map<String, dynamic>> _users = [];
+  Map<String, dynamic>? _selectedUserForProfile;
+  Widget? _inPageConfirmation;
   bool _isLoading = true;
   bool _isTableRefreshing = false;
   int _currentTab = 0; // 0 = Active Partners, 1 = Pending Partners, 2 = Active Cashiers, 3 = Pending Cashiers
@@ -314,204 +317,277 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     }
   }
 
-  Future<void> _approveUser(int userId, String name, {String? email, String? role}) async {
+  void _approveUser(int userId, String name, {String? email, String? role}) {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = _getAvatarUrl(targetUser) ??
-        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser);
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Confirm Approval',
-      message: 'Are you sure you want to approve the account for "$name"? They will receive an activation email immediately.',
-      actionType: SlideOverActionType.success,
-      userName: name,
-      userEmail: userEmail,
-      userRole: userRole,
-      avatarUrl: avatarUrl,
-      confirmButtonText: 'Yes, Approve',
-      cancelButtonText: 'Cancel',
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Confirm Approval',
+        subtitle: 'Approve $name as $userRole',
+        message: 'Are you sure you want to approve the account for "$name"? They will receive an activation email immediately and will be granted system access.',
+        actionType: InPageActionType.success,
+        userName: name,
+        userEmail: userEmail,
+        userRole: userRole,
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Approve',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedUserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            await _supabase
+                .from('app_users')
+                .update({'status': 'active'})
+                .eq('user_id', userId);
 
-    if (confirm != true) return;
+            try {
+              await _supabase
+                  .from('cashiers')
+                  .update({'status': 'active'})
+                  .eq('user_id', userId);
+            } catch (_) {}
 
-    setState(() => _isLoading = true);
-    try {
-      await _supabase
-          .from('app_users')
-          .update({'status': 'active'})
-          .eq('user_id', userId);
+            try {
+              await _supabase
+                  .from('partner_investors')
+                  .update({'status': 'active'})
+                  .eq('user_id', userId);
+            } catch (_) {}
 
-      try {
-        await _supabase
-            .from('cashiers')
-            .update({'status': 'active'})
-            .eq('user_id', userId);
-      } catch (_) {}
+            try {
+              await _supabase
+                  .from('hog_raisers')
+                  .update({'account_status': 'active', 'status': 'Active'})
+                  .eq('user_id', userId);
+            } catch (_) {}
 
-      try {
-        await _supabase
-            .from('partner_investors')
-            .update({'status': 'active'})
-            .eq('user_id', userId);
-      } catch (_) {}
+            // Trigger Account Approval Email
+            try {
+              if (userEmail.isNotEmpty) {
+                debugPrint("[UserApprovals] Sending approval email to $userEmail ($userRole)...");
+                final sent = await EmailService().sendAccountApprovalEmail(
+                  recipientEmail: userEmail,
+                  recipientName: name,
+                  role: userRole,
+                );
+                if (sent) {
+                  debugPrint("[UserApprovals] Approval email delivered successfully to $userEmail");
+                } else {
+                  debugPrint("[UserApprovals] Warning: Approval email could not be delivered to $userEmail");
+                }
+              }
+            } catch (e) {
+              debugPrint("[UserApprovals] Notice: Failed to send approval email: $e");
+            }
 
-      try {
-        await _supabase
-            .from('hog_raisers')
-            .update({'account_status': 'active', 'status': 'Active'})
-            .eq('user_id', userId);
-      } catch (_) {}
+            // Transition registration notification to Approved state
+            try {
+              if (userEmail.isNotEmpty) {
+                final roleDisplay = userRole.toLowerCase().contains('raiser')
+                    ? 'Hog Raiser'
+                    : (userRole.toLowerCase().contains('partner')
+                        ? 'Partner Investor'
+                        : (userRole.toLowerCase().contains('cashier') ? 'Cashier' : 'User'));
 
-      // Trigger Account Approval Email
-      try {
-        if (userEmail.isNotEmpty) {
-          debugPrint("[UserApprovals] Sending approval email to $userEmail ($userRole)...");
-          final sent = await EmailService().sendAccountApprovalEmail(
-            recipientEmail: userEmail,
-            recipientName: name,
-            role: userRole,
-          );
-          if (sent) {
-            debugPrint("[UserApprovals] Approval email delivered successfully to $userEmail");
-          } else {
-            debugPrint("[UserApprovals] Warning: Approval email could not be delivered to $userEmail");
+                await _supabase
+                    .from('admin_notifications')
+                    .update({
+                      'is_read': true,
+                      'title': 'Account Approved for $roleDisplay',
+                      'message': 'User $name ($userEmail) was approved as $roleDisplay.',
+                    })
+                    .eq('metadata->>email', userEmail)
+                    .inFilter('type', ['user_registration', 'approval_email']);
+              }
+            } catch (_) {}
+
+            await _loadUsers(keyword: _searchCtrl.text);
+
+            if (!mounted) return;
+            AppToast.success(context, 'User "$name" approved successfully.');
+          } catch (e) {
+            if (!mounted) return;
+            AppToast.error(context, 'Approval failed: $e');
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
           }
-        }
-      } catch (e) {
-        debugPrint("[UserApprovals] Notice: Failed to send approval email: $e");
-      }
-
-      // Transition registration notification to Approved state instead of hard-deleting it
-      try {
-        if (userEmail.isNotEmpty) {
-          final role = targetUser['role']?.toString() ?? 'User';
-          final roleDisplay = role.toLowerCase().contains('raiser')
-              ? 'Hog Raiser'
-              : (role.toLowerCase().contains('partner')
-                  ? 'Partner Investor'
-                  : (role.toLowerCase().contains('cashier') ? 'Cashier' : 'User'));
-
-          await _supabase
-              .from('admin_notifications')
-              .update({
-                'is_read': true,
-                'title': 'Account Approved for $roleDisplay',
-                'message': 'User $name ($userEmail) was approved as $roleDisplay.',
-              })
-              .eq('metadata->>email', userEmail)
-              .inFilter('type', ['user_registration', 'approval_email']);
-        }
-      } catch (_) {}
-
-      await _loadUsers(keyword: _searchCtrl.text);
-
-      if (!mounted) return;
-      AppToast.success(context, 'User "$name" approved successfully.');
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.error(context, 'Approval failed: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+        },
+      );
+    });
   }
 
-  Future<void> _rejectUser(int userId, String name, {String? email, String? role}) async {
+  void _rejectUser(int userId, String name, {String? email, String? role}) {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = _getAvatarUrl(targetUser) ??
-        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser);
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Confirm Rejection',
-      message: 'Are you sure you want to reject the registration for "$name"? This user will not be able to log in.',
-      actionType: SlideOverActionType.danger,
-      userName: name,
-      userEmail: userEmail,
-      userRole: userRole,
-      avatarUrl: avatarUrl,
-      confirmButtonText: 'Yes, Reject',
-      cancelButtonText: 'Cancel',
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Confirm Rejection',
+        subtitle: 'Reject registration for $name',
+        message: 'Are you sure you want to reject the registration for "$name"? This user will not be able to log in.',
+        actionType: InPageActionType.danger,
+        userName: name,
+        userEmail: userEmail,
+        userRole: userRole,
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Reject',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedUserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            await _supabase
+                .from('app_users')
+                .update({'status': 'rejected'})
+                .eq('user_id', userId);
 
-    if (confirm != true) return;
+            try {
+              if (userEmail.isNotEmpty) {
+                await _supabase
+                    .from('admin_notifications')
+                    .update({
+                      'is_read': true,
+                      'title': 'Registration Rejected',
+                      'message': 'Registration for "$name" ($userEmail) was rejected.',
+                    })
+                    .eq('metadata->>email', userEmail)
+                    .eq('type', 'user_registration');
+              }
+            } catch (_) {}
 
-    setState(() => _isLoading = true);
-    try {
-      await _supabase
-          .from('app_users')
-          .update({'status': 'rejected'})
-          .eq('user_id', userId);
+            await _loadUsers(keyword: _searchCtrl.text);
 
-      // Transition registration notification to Rejected state instead of hard-deleting it
-      try {
-        if (userEmail.isNotEmpty) {
-          await _supabase
-              .from('admin_notifications')
-              .update({
-                'is_read': true,
-                'title': 'Registration Rejected',
-                'message': 'Registration for "$name" ($userEmail) was rejected.',
-              })
-              .eq('metadata->>email', userEmail)
-              .eq('type', 'user_registration');
-        }
-      } catch (_) {}
-
-      await _loadUsers(keyword: _searchCtrl.text);
-
-      if (!mounted) return;
-      AppToast.success(context, 'Registration for "$name" rejected successfully.');
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.error(context, 'Rejection failed: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+            if (!mounted) return;
+            AppToast.success(context, 'Registration for "$name" rejected successfully.');
+          } catch (e) {
+            if (!mounted) return;
+            AppToast.error(context, 'Rejection failed: $e');
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 
-  Future<void> _suspendUser(int userId, String name, {String? email, String? role}) async {
+  void _suspendUser(int userId, String name, {String? email, String? role}) {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
     final userRole = role ?? targetUser['role']?.toString() ?? 'User';
-    final avatarUrl = _getAvatarUrl(targetUser) ??
-        (targetUser['avatar_url'] ?? targetUser['profile_picture'] ?? targetUser['photo_url'])?.toString();
+    final avatarUrl = _getAvatarUrl(targetUser);
 
-    final confirm = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Confirm Suspend',
-      message: 'Are you sure you want to suspend the account for "$name"? They will be blocked from logging in.',
-      actionType: SlideOverActionType.danger,
-      userName: name,
-      userEmail: userEmail,
-      userRole: userRole,
-      avatarUrl: avatarUrl,
-      confirmButtonText: 'Yes, Suspend',
-      cancelButtonText: 'Cancel',
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Confirm Suspension',
+        subtitle: 'Suspend account for $name',
+        message: 'Are you sure you want to suspend the account for "$name"? They will be blocked from logging in.',
+        actionType: InPageActionType.danger,
+        userName: name,
+        userEmail: userEmail,
+        userRole: userRole,
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Suspend',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedUserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            await _supabase
+                .from('app_users')
+                .update({'status': 'suspended'})
+                .eq('user_id', userId);
 
-    if (confirm != true) return;
+            await _loadUsers(keyword: _searchCtrl.text);
 
-    setState(() => _isLoading = true);
-    try {
-      await _supabase
-          .from('app_users')
-          .update({'status': 'suspended'})
-          .eq('user_id', userId);
+            if (!mounted) return;
+            AppToast.success(context, 'User "$name" suspended successfully.');
+          } catch (e) {
+            if (!mounted) return;
+            AppToast.error(context, 'Suspend failed: $e');
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
+  }
 
-      await _loadUsers(keyword: _searchCtrl.text);
+  void _activateUser(int userId, String name, {String? email, String? role}) {
+    final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
+    final userEmail = email ?? targetUser['email']?.toString() ?? '';
+    final userRole = role ?? targetUser['role']?.toString() ?? 'User';
+    final avatarUrl = _getAvatarUrl(targetUser);
 
-      if (!mounted) return;
-      AppToast.success(context, 'User "$name" suspended successfully.');
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.error(context, 'Suspend failed: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Confirm Activation',
+        subtitle: 'Reactivate account for $name',
+        message: 'Are you sure you want to reactivate the account for "$name"? Their login privileges and system access will be restored.',
+        actionType: InPageActionType.success,
+        userName: name,
+        userEmail: userEmail,
+        userRole: userRole,
+        avatarUrl: avatarUrl,
+        confirmButtonText: 'Yes, Activate',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedUserForProfile = null;
+            _isLoading = true;
+          });
+          try {
+            await _supabase
+                .from('app_users')
+                .update({'status': 'active'})
+                .eq('user_id', userId);
+
+            try {
+              await _supabase
+                  .from('cashiers')
+                  .update({'status': 'active'})
+                  .eq('user_id', userId);
+            } catch (_) {}
+
+            try {
+              await _supabase
+                  .from('partner_investors')
+                  .update({'status': 'active'})
+                  .eq('user_id', userId);
+            } catch (_) {}
+
+            await _loadUsers(keyword: _searchCtrl.text);
+
+            if (!mounted) return;
+            AppToast.success(context, 'User "$name" activated successfully.');
+          } catch (e) {
+            if (!mounted) return;
+            AppToast.error(context, 'Activation failed: $e');
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 
   @override
@@ -545,29 +621,20 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                   ),
                 Expanded(
                   child: SingleChildScrollView(
-                          padding: EdgeInsets.all(isMobile ? 12 : 18),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final contentWidth = constraints.maxWidth > 1340
-                                  ? 1340.0
-                                  : constraints.maxWidth;
-                              return Align(
-                                alignment: Alignment.topCenter,
-                                child: Container(
-                                  width: contentWidth,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(colors: [_panelStart, _panelEnd]),
-                                    border: Border.all(color: _panelBorder, width: 1),
-                                    borderRadius: BorderRadius.circular(isMobile ? 16 : 30),
-                                  ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile ? 14 : 26,
-                                    vertical: isMobile ? 16 : 26,
-                                  ),
-                                  child: _buildListView(),
-                                ),
-                              );
-                            },
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.all(isMobile ? 12 : 20),
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [_panelStart, _panelEnd]),
+                              border: Border.all(color: _panelBorder, width: 1),
+                              borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 14 : 26,
+                              vertical: isMobile ? 16 : 26,
+                            ),
+                            child: _buildListView(),
                           ),
                         ),
                 ),
@@ -580,6 +647,45 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
   }
 
   Widget _buildListView() {
+    if (_inPageConfirmation != null) {
+      return _inPageConfirmation!;
+    }
+
+    if (_selectedUserForProfile != null) {
+      return UserProfileView(
+        row: _selectedUserForProfile!,
+        onCancel: () => setState(() => _selectedUserForProfile = null),
+        onApprove: (row) {
+          final userId = int.tryParse(row['user_id'].toString()) ?? 0;
+          final name = (row['name'] ?? 'User').toString();
+          final email = (row['email'] ?? '').toString();
+          final role = (row['role'] ?? '').toString();
+          _approveUser(userId, name, email: email, role: role);
+        },
+        onReject: (row) {
+          final userId = int.tryParse(row['user_id'].toString()) ?? 0;
+          final name = (row['name'] ?? 'User').toString();
+          final email = (row['email'] ?? '').toString();
+          final role = (row['role'] ?? '').toString();
+          _rejectUser(userId, name, email: email, role: role);
+        },
+        onSuspend: (row) {
+          final userId = int.tryParse(row['user_id'].toString()) ?? 0;
+          final name = (row['name'] ?? 'User').toString();
+          final email = (row['email'] ?? '').toString();
+          final role = (row['role'] ?? '').toString();
+          _suspendUser(userId, name, email: email, role: role);
+        },
+        onActivate: (row) {
+          final userId = int.tryParse(row['user_id'].toString()) ?? 0;
+          final name = (row['name'] ?? 'User').toString();
+          final email = (row['email'] ?? '').toString();
+          final role = (row['role'] ?? '').toString();
+          _activateUser(userId, name, email: email, role: role);
+        },
+      );
+    }
+
     final isMobile = Responsive.isMobile(context);
 
     // Counts for tabs
@@ -784,7 +890,11 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
           : _hintText,
     );
     return ElevatedButton(
-      onPressed: () => setState(() => _currentTab = index),
+      onPressed: () => setState(() {
+        _currentTab = index;
+        _selectedUserForProfile = null;
+        _inPageConfirmation = null;
+      }),
       style: ElevatedButton.styleFrom(
         backgroundColor: isSelected 
             ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary) 
@@ -1042,7 +1152,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                         bgColor: PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.1),
                         borderColor: PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.35),
                         tooltip: 'Activate User',
-                        onTap: () => _approveUser(userId, name, email: email, role: role),
+                        onTap: () => _activateUser(userId, name, email: email, role: role),
                       ),
                     ],
                 ],
@@ -1092,13 +1202,11 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     );
   }
 
-  Future<void> _showUserDetails(Map<String, dynamic> row) async {
-    final isMobile = MediaQuery.of(context).size.width < 720;
-    if (isMobile) {
-      await _showUserBottomSheet(row);
-    } else {
-      await _showUserSideDrawer(row);
-    }
+  void _showUserDetails(Map<String, dynamic> row) {
+    setState(() {
+      _inPageConfirmation = null;
+      _selectedUserForProfile = row;
+    });
   }
 
   String? _getAvatarUrl(Map<String, dynamic> row) {
@@ -1127,878 +1235,6 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
       }
     }
     return null;
-  }
-
-  Widget _buildAvatarWidget({
-    required String initials,
-    String? avatarUrl,
-    double size = 68,
-    double fontSize = 20,
-  }) {
-    final hasUrl = avatarUrl != null && avatarUrl.isNotEmpty;
-    final isDark = _isDark;
-    const bgColor = Colors.white;
-    final borderColor = isDark ? Colors.white : const Color(0xFF18314F);
-    final textColor = isDark ? const Color(0xFF0F172A) : const Color(0xFF18314F);
-
-    return Container(
-      width: size,
-      height: size,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: bgColor,
-        shape: BoxShape.circle,
-        border: Border.all(color: borderColor, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.white : const Color(0xFF18314F)).withValues(alpha: isDark ? 0.25 : 0.12),
-            blurRadius: 8,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: hasUrl
-          ? Image.network(
-              avatarUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Padding(
-                padding: EdgeInsets.all(size * 0.14),
-                child: Image.asset(
-                  'assets/piggytrunk_logo.png',
-                  width: size,
-                  height: size,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => Center(
-                    child: Text(
-                      initials,
-                      style: AppTextStyles.jakarta(
-                        size: fontSize,
-                        weight: FontWeight.w800,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : Padding(
-              padding: EdgeInsets.all(size * 0.14),
-              child: Image.asset(
-                'assets/piggytrunk_logo.png',
-                width: size,
-                height: size,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Center(
-                  child: Text(
-                    initials,
-                    style: AppTextStyles.jakarta(
-                      size: fontSize,
-                      weight: FontWeight.w800,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-    );
-  }
-
-  Future<void> _showUserBottomSheet(Map<String, dynamic> row) async {
-    final userId = int.tryParse(row['user_id'].toString()) ?? 0;
-    final name = (row['name'] ?? 'User').toString();
-    final email = (row['email'] ?? 'N/A').toString();
-    final roleRaw = (row['role'] ?? 'User').toString();
-    final status = (row['status'] ?? 'Active').toString().toUpperCase();
-    final createdAt = (row['created_at'] ?? 'N/A').toString().split('T').first;
-    final isPending = status == 'PENDING';
-    final avatarUrl = _getAvatarUrl(row);
-
-    final roleDisplay = roleRaw.toLowerCase() == 'partner'
-        ? 'Partner Investor'
-        : (roleRaw.toLowerCase() == 'cashier'
-            ? 'Cashier'
-            : (roleRaw.toLowerCase().contains('raiser') ? 'Hog Raiser' : roleRaw));
-
-    final statusColor = status == 'ACTIVE' || status == 'APPROVED'
-        ? PiggyTrunkTheme.ptSuccess
-        : (status == 'PENDING' ? const Color(0xFFFFAA00) : Colors.redAccent);
-
-    final initials = name.trim().isNotEmpty
-        ? name.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase()
-        : 'US';
-
-    String phone = (row['phone'] ?? row['contact_number'] ?? row['phone_number'] ?? '').toString().trim();
-    String address = (row['address'] ?? row['farm_location'] ?? row['store_address'] ?? row['branch_address'] ?? '').toString().trim();
-
-    final partnerList = row['partner_investors'];
-    if (partnerList is List && partnerList.isNotEmpty) {
-      final p = partnerList.first;
-      if (p['contact_number'] != null && p['contact_number'].toString().trim().isNotEmpty) {
-        phone = p['contact_number'].toString().trim();
-      }
-      if (p['address'] != null && p['address'].toString().trim().isNotEmpty) {
-        address = p['address'].toString().trim();
-      }
-    } else if (partnerList is Map) {
-      if (partnerList['contact_number'] != null && partnerList['contact_number'].toString().trim().isNotEmpty) {
-        phone = partnerList['contact_number'].toString().trim();
-      }
-      if (partnerList['address'] != null && partnerList['address'].toString().trim().isNotEmpty) {
-        address = partnerList['address'].toString().trim();
-      }
-    }
-
-    final raiserList = row['hog_raisers'];
-    if (raiserList is List && raiserList.isNotEmpty) {
-      final r = raiserList.first;
-      if (r['phone'] != null && r['phone'].toString().trim().isNotEmpty) {
-        phone = r['phone'].toString().trim();
-      }
-      if (r['address'] != null && r['address'].toString().trim().isNotEmpty) {
-        address = r['address'].toString().trim();
-      }
-    } else if (raiserList is Map) {
-      if (raiserList['phone'] != null && raiserList['phone'].toString().trim().isNotEmpty) {
-        phone = raiserList['phone'].toString().trim();
-      }
-      if (raiserList['address'] != null && raiserList['address'].toString().trim().isNotEmpty) {
-        address = raiserList['address'].toString().trim();
-      }
-    }
-
-    final cashierList = row['cashiers'];
-    if (cashierList is List && cashierList.isNotEmpty) {
-      final c = cashierList.first;
-      if ((phone.isEmpty || phone == 'null') && c['phone'] != null && c['phone'].toString().trim().isNotEmpty) {
-        phone = c['phone'].toString().trim();
-      }
-      if ((address.isEmpty || address == 'null') && (c['address'] ?? c['store_address']) != null && (c['address'] ?? c['store_address']).toString().trim().isNotEmpty) {
-        address = (c['address'] ?? c['store_address']).toString().trim();
-      }
-    } else if (cashierList is Map) {
-      if ((phone.isEmpty || phone == 'null') && cashierList['phone'] != null && cashierList['phone'].toString().trim().isNotEmpty) {
-        phone = cashierList['phone'].toString().trim();
-      }
-      if ((address.isEmpty || address == 'null') && (cashierList['address'] ?? cashierList['store_address']) != null && (cashierList['address'] ?? cashierList['store_address']).toString().trim().isNotEmpty) {
-        address = (cashierList['address'] ?? cashierList['store_address']).toString().trim();
-      }
-    }
-
-    // On-demand live query for Cashier if phone or address are still not set
-    if ((roleDisplay == 'Cashier' || roleRaw.toLowerCase().contains('cashier')) &&
-        (phone == 'Not set' || phone.isEmpty || address == 'Not set' || address.isEmpty)) {
-      try {
-        final notif = await _supabase
-            .from('admin_notifications')
-            .select('metadata')
-            .inFilter('type', ['cashier_profile', 'user_registration'])
-            .order('created_at', ascending: false)
-            .limit(15);
-        for (final n in notif) {
-          final m = n['metadata'];
-          if (m is Map) {
-            final mEmail = m['email']?.toString().toLowerCase().trim();
-            final mUid = (m['user_id'] as num?)?.toInt();
-            if ((userId > 0 && mUid == userId) || (email.isNotEmpty && mEmail == email.toLowerCase().trim())) {
-              final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
-              if ((phone == 'Not set' || phone.isEmpty) && nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
-                phone = nPhone;
-                row['phone'] = nPhone;
-                row['contact_number'] = nPhone;
-              }
-              final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
-              if ((address == 'Not set' || address.isEmpty) && nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
-                address = nAddr;
-                row['address'] = nAddr;
-              }
-              break;
-            }
-          }
-        }
-      } catch (err) {
-        debugPrint('Notice on-demand bottom sheet cashier enrichment: $err');
-      }
-    }
-
-    if (phone.isEmpty || phone == 'null') phone = 'Not set';
-    if (address.isEmpty || address == 'null') address = 'Not set';
-
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
-        ),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: _cardBorder, width: 1.2)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _hintText.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  children: [
-                    Text(
-                      'User Profile',
-                      style: AppTextStyles.jakarta(
-                        size: 17,
-                        weight: FontWeight.w800,
-                        color: _titleColor,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      icon: Icon(Icons.close_rounded, color: _hintText, size: 22),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(color: _cardBorder.withValues(alpha: 0.5), height: 1),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      _buildAvatarWidget(initials: initials, avatarUrl: avatarUrl, size: 64, fontSize: 20),
-                      const SizedBox(height: 10),
-                      Text(
-                        name,
-                        style: AppTextStyles.jakarta(size: 17, weight: FontWeight.w800, color: _titleColor),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        email,
-                        style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w500, color: _hintText),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: statusColor.withValues(alpha: 0.35),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: statusColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              status,
-                              maxLines: 1,
-                              softWrap: false,
-                              style: AppTextStyles.jakarta(
-                                color: statusColor,
-                                size: 11,
-                                weight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: _isDark ? const Color(0xFF1B2E48) : const Color(0xFFF6F9FD),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _cardBorder.withValues(alpha: 0.5)),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        child: Column(
-                          children: [
-                            _drawerDetailRow('Name', name),
-                            _drawerDivider(),
-                            _drawerDetailRow('Email', email),
-                            _drawerDivider(),
-                            _drawerDetailRow('Phone', phone),
-                            _drawerDivider(),
-                            _drawerDetailRow('Address', address),
-                            _drawerDivider(),
-                            _drawerDetailRow('Role', roleDisplay),
-                            _drawerDivider(),
-                            _drawerDetailRow('Registered', createdAt),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Divider(color: _cardBorder.withValues(alpha: 0.5), height: 1),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    if (isPending) ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.pop(sheetContext);
-                            _rejectUser(userId, name);
-                          },
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
-                            side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: Text(
-                            'Reject',
-                            style: AppTextStyles.jakarta(
-                              size: 13,
-                              weight: FontWeight.w800,
-                              color: const Color(0xFFDC2626),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(sheetContext);
-                            _approveUser(userId, name, email: email, role: roleRaw);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF16A34A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            elevation: 0,
-                          ),
-                          child: Text(
-                            'Approve',
-                            style: AppTextStyles.jakarta(
-                              size: 13,
-                              weight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.pop(sheetContext);
-                            _suspendUser(userId, name);
-                          },
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
-                            side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: Text(
-                            'Suspend Account',
-                            style: AppTextStyles.jakarta(
-                              size: 13,
-                              weight: FontWeight.w800,
-                              color: const Color(0xFFDC2626),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pop(sheetContext),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: PiggyTrunkTheme.ptPrimary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            elevation: 0,
-                          ),
-                          child: Text(
-                            'Close',
-                            style: AppTextStyles.jakarta(
-                              size: 13,
-                              weight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showUserSideDrawer(Map<String, dynamic> row) async {
-    final userId = int.tryParse(row['user_id'].toString()) ?? 0;
-    final name = (row['name'] ?? 'User').toString();
-    final email = (row['email'] ?? 'N/A').toString();
-    final roleRaw = (row['role'] ?? 'User').toString();
-    final status = (row['status'] ?? 'Active').toString().toUpperCase();
-    final createdAt = (row['created_at'] ?? 'N/A').toString().split('T').first;
-    final isPending = status == 'PENDING';
-    final avatarUrl = _getAvatarUrl(row);
-
-    final roleDisplay = roleRaw.toLowerCase() == 'partner'
-        ? 'Partner Investor'
-        : (roleRaw.toLowerCase() == 'cashier'
-            ? 'Cashier'
-            : (roleRaw.toLowerCase().contains('raiser') ? 'Hog Raiser' : roleRaw));
-
-    final statusColor = status == 'ACTIVE' || status == 'APPROVED'
-        ? PiggyTrunkTheme.ptSuccess
-        : (status == 'PENDING' ? const Color(0xFFFFAA00) : Colors.redAccent);
-
-    final initials = name.trim().isNotEmpty
-        ? name.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase()
-        : 'US';
-
-    String phone = (row['phone'] ?? row['contact_number'] ?? row['phone_number'] ?? '').toString().trim();
-    String address = (row['address'] ?? row['farm_location'] ?? row['store_address'] ?? row['branch_address'] ?? '').toString().trim();
-
-    final partnerList = row['partner_investors'];
-    if (partnerList is List && partnerList.isNotEmpty) {
-      final p = partnerList.first;
-      if (p['contact_number'] != null && p['contact_number'].toString().trim().isNotEmpty) {
-        phone = p['contact_number'].toString().trim();
-      }
-      if (p['address'] != null && p['address'].toString().trim().isNotEmpty) {
-        address = p['address'].toString().trim();
-      }
-    } else if (partnerList is Map) {
-      if (partnerList['contact_number'] != null && partnerList['contact_number'].toString().trim().isNotEmpty) {
-        phone = partnerList['contact_number'].toString().trim();
-      }
-      if (partnerList['address'] != null && partnerList['address'].toString().trim().isNotEmpty) {
-        address = partnerList['address'].toString().trim();
-      }
-    }
-
-    final raiserList = row['hog_raisers'];
-    if (raiserList is List && raiserList.isNotEmpty) {
-      final r = raiserList.first;
-      if (r['phone'] != null && r['phone'].toString().trim().isNotEmpty) {
-        phone = r['phone'].toString().trim();
-      }
-      if (r['address'] != null && r['address'].toString().trim().isNotEmpty) {
-        address = r['address'].toString().trim();
-      }
-    } else if (raiserList is Map) {
-      if (raiserList['phone'] != null && raiserList['phone'].toString().trim().isNotEmpty) {
-        phone = raiserList['phone'].toString().trim();
-      }
-      if (raiserList['address'] != null && raiserList['address'].toString().trim().isNotEmpty) {
-        address = raiserList['address'].toString().trim();
-      }
-    }
-
-    final cashierList = row['cashiers'];
-    if (cashierList is List && cashierList.isNotEmpty) {
-      final c = cashierList.first;
-      if ((phone.isEmpty || phone == 'null') && c['phone'] != null && c['phone'].toString().trim().isNotEmpty) {
-        phone = c['phone'].toString().trim();
-      }
-      if ((address.isEmpty || address == 'null') && (c['address'] ?? c['store_address']) != null && (c['address'] ?? c['store_address']).toString().trim().isNotEmpty) {
-        address = (c['address'] ?? c['store_address']).toString().trim();
-      }
-    } else if (cashierList is Map) {
-      if ((phone.isEmpty || phone == 'null') && cashierList['phone'] != null && cashierList['phone'].toString().trim().isNotEmpty) {
-        phone = cashierList['phone'].toString().trim();
-      }
-      if ((address.isEmpty || address == 'null') && (cashierList['address'] ?? cashierList['store_address']) != null && (cashierList['address'] ?? cashierList['store_address']).toString().trim().isNotEmpty) {
-        address = (cashierList['address'] ?? cashierList['store_address']).toString().trim();
-      }
-    }
-
-    // On-demand live query for Cashier if phone or address are still not set
-    if ((roleDisplay == 'Cashier' || roleRaw.toLowerCase().contains('cashier')) &&
-        (phone == 'Not set' || phone.isEmpty || address == 'Not set' || address.isEmpty)) {
-      try {
-        final notif = await _supabase
-            .from('admin_notifications')
-            .select('metadata')
-            .inFilter('type', ['cashier_profile', 'user_registration'])
-            .order('created_at', ascending: false)
-            .limit(15);
-        for (final n in notif) {
-          final m = n['metadata'];
-          if (m is Map) {
-            final mEmail = m['email']?.toString().toLowerCase().trim();
-            final mUid = (m['user_id'] as num?)?.toInt();
-            if ((userId > 0 && mUid == userId) || (email.isNotEmpty && mEmail == email.toLowerCase().trim())) {
-              final nPhone = (m['phone'] ?? m['contact_number'] ?? m['phone_number'])?.toString().trim();
-              if ((phone == 'Not set' || phone.isEmpty) && nPhone != null && nPhone.isNotEmpty && nPhone != 'null') {
-                phone = nPhone;
-                row['phone'] = nPhone;
-                row['contact_number'] = nPhone;
-              }
-              final nAddr = (m['address'] ?? m['store_address'] ?? m['branch_address'])?.toString().trim();
-              if ((address == 'Not set' || address.isEmpty) && nAddr != null && nAddr.isNotEmpty && nAddr != 'null') {
-                address = nAddr;
-                row['address'] = nAddr;
-              }
-              break;
-            }
-          }
-        }
-      } catch (err) {
-        debugPrint('Notice on-demand side drawer cashier enrichment: $err');
-      }
-    }
-
-    if (phone.isEmpty || phone == 'null') phone = 'Not set';
-    if (address.isEmpty || address == 'null') address = 'Not set';
-
-    if (!mounted) return;
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'User Details',
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      transitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (dialogContext, animation, secondaryAnimation) => const SizedBox.shrink(),
-      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
-        final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(curvedAnimation),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 420,
-                height: double.infinity,
-                decoration: BoxDecoration(
-                  color: _cardBg,
-                  border: Border(left: BorderSide(color: _cardBorder, width: 1.2)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 24,
-                      offset: const Offset(-4, 0),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        child: Row(
-                          children: [
-                            Text(
-                              'User Profile',
-                              style: AppTextStyles.jakarta(
-                                size: 17,
-                                weight: FontWeight.w800,
-                                color: _titleColor,
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              icon: Icon(Icons.close_rounded, color: _hintText, size: 22),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'Close panel',
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(color: _cardBorder.withValues(alpha: 0.5), height: 1),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Center(
-                                child: Column(
-                                  children: [
-                                    _buildAvatarWidget(initials: initials, avatarUrl: avatarUrl, size: 68, fontSize: 22),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      name,
-                                      style: AppTextStyles.jakarta(
-                                        size: 18,
-                                        weight: FontWeight.w800,
-                                        color: _titleColor,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      email,
-                                      style: AppTextStyles.jakarta(
-                                        size: 13,
-                                        weight: FontWeight.w500,
-                                        color: _hintText,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: statusColor.withValues(alpha: 0.35),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 6,
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              color: statusColor,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            status,
-                                            maxLines: 1,
-                                            softWrap: false,
-                                            style: AppTextStyles.jakarta(
-                                              color: statusColor,
-                                              size: 11,
-                                              weight: FontWeight.w700,
-                                              letterSpacing: 0.5,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 28),
-                              Text(
-                                'PROFILE DETAILS',
-                                style: AppTextStyles.jakarta(
-                                  size: 11,
-                                  weight: FontWeight.w800,
-                                  color: _hintText,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: _isDark ? const Color(0xFF1B2E48) : const Color(0xFFF6F9FD),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: _cardBorder.withValues(alpha: 0.5)),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                child: Column(
-                                  children: [
-                                    _drawerDetailRow('Name', name),
-                                    _drawerDivider(),
-                                    _drawerDetailRow('Email', email),
-                                    _drawerDivider(),
-                                    _drawerDetailRow('Phone', phone),
-                                    _drawerDivider(),
-                                    _drawerDetailRow('Address', address),
-                                    _drawerDivider(),
-                                    _drawerDetailRow('Role', roleDisplay),
-                                    _drawerDivider(),
-                                    _drawerDetailRow('Registered', createdAt),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Divider(color: _cardBorder.withValues(alpha: 0.5), height: 1),
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            if (isPending) ...[
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext);
-                                    _rejectUser(userId, name);
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
-                                    side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  child: Text(
-                                    'Reject',
-                                    style: AppTextStyles.jakarta(
-                                      size: 13,
-                                      weight: FontWeight.w800,
-                                      color: const Color(0xFFDC2626),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext);
-                                    _approveUser(userId, name, email: email, role: roleRaw);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF16A34A),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    'Approve',
-                                    style: AppTextStyles.jakarta(
-                                      size: 13,
-                                      weight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ] else ...[
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext);
-                                    _suspendUser(userId, name);
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
-                                    side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  child: Text(
-                                    'Suspend Account',
-                                    style: AppTextStyles.jakarta(
-                                      size: 13,
-                                      weight: FontWeight.w800,
-                                      color: const Color(0xFFDC2626),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () => Navigator.pop(dialogContext),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: PiggyTrunkTheme.ptPrimary,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    'Close',
-                                    style: AppTextStyles.jakarta(
-                                      size: 13,
-                                      weight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _drawerDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w600, color: _hintText),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w700, color: _titleColor),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _drawerDivider() {
-    return Divider(color: _cardBorder.withValues(alpha: 0.35), height: 1);
   }
 
   Widget _buildErrorBanner(String message) {

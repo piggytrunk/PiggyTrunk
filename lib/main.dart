@@ -20,6 +20,7 @@ import 'screens/mobile_app_distribution_screen.dart';
 import 'screens/best_sellers_screen.dart';
 import 'screens/demand_forecasting_screen.dart';
 import 'screens/landing_screen.dart';
+import 'screens/admin_notifications_screen.dart';
 
 // Mobile Web App screens and wrappers
 import 'mobile_app/screens/login_screen.dart';
@@ -138,6 +139,7 @@ class MyApp extends ConsumerWidget {
         uri.path.startsWith('/investments') ||
         uri.path.startsWith('/pos') ||
         uri.path.startsWith('/batches') ||
+        uri.path.startsWith('/notifications') ||
         uri.path.startsWith('/settings');
 
     final isAdminDomain = subdomain.contains('admin') || (isLocalhost && (hasAdminQuery || hasAdminPath));
@@ -188,6 +190,7 @@ class MyApp extends ConsumerWidget {
         '/settings': (context) => const SettingsScreen(),
         '/users': (context) => const UserApprovalsScreen(),
         '/batches': (context) => const BatchManagementScreen(),
+        '/notifications': (context) => const AdminNotificationsScreen(),
         '/mobile-app': (context) => const MobileAppDistributionScreen(),
         '/best-sellers': (context) => const BestSellersScreen(),
         '/forecasting': (context) => const DemandForecastingScreen(),

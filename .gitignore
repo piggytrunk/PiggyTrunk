@@ -52,6 +52,3 @@ app.*.map.json
 # Release binaries
 *-Universal.apk
 *-universal.apk
-
-# Graphify knowledge graph outputs
-graphify-out/

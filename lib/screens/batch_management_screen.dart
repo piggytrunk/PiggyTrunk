@@ -5,11 +5,11 @@ import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
-import '../widgets/slide_over_confirmation_drawer.dart';
 import '../utils/responsive.dart';
-import '../widgets/batch/batch_detail_drawer.dart';
+import '../widgets/batch/batch_detail_view.dart';
 import '../widgets/batch/batch_form_view.dart';
 import '../widgets/batch/batch_table_view.dart';
+import '../widgets/common/in_page_confirmation_view.dart';
 import '../main.dart';
 
 class BatchManagementScreen extends StatefulWidget {
@@ -28,6 +28,8 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
   bool _isTableRefreshing = false;
   bool _showBatchForm = false;
   Map<String, dynamic>? _editingBatch;
+  Map<String, dynamic>? _selectedBatchForDetails;
+  Widget? _inPageConfirmation;
   String _searchQuery = '';
   String _selectedStatusFilter = 'ALL';
   String? _loadError;
@@ -402,75 +404,79 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
                   ),
                 Expanded(
                   child: _showBatchForm
-                          ? BatchFormView(
-                              onCancel: () => setState(() {
-                                _showBatchForm = false;
-                                _editingBatch = null;
-                              }),
-                              onBatchSaved: () {
-                                setState(() {
-                                  _showBatchForm = false;
-                                  _editingBatch = null;
-                                });
-                                _loadData();
-                              },
-                              existingBatch: _editingBatch,
-                              activeRaisers: _activeRaisers,
-                              onShowSnackBar: _showThemedSnackBar,
-                            )
-                          : SingleChildScrollView(
-                              padding: EdgeInsets.all(isMobile ? 12 : 20),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final contentWidth = constraints.maxWidth > 1350
-                                      ? 1350.0
-                                      : constraints.maxWidth;
-                                  return Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Container(
-                                      width: contentWidth,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [_panelStart, _panelEnd],
-                                          begin: Alignment.centerLeft,
-                                          end: Alignment.centerRight,
-                                        ),
-                                        border: Border.all(color: _panelBorder, width: 1),
-                                        borderRadius: BorderRadius.circular(isMobile ? 16 : 34),
-                                      ),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isMobile ? 14 : 26,
-                                        vertical: isMobile ? 16 : 26,
-                                      ),
-                                      child: BatchTableView(
-                                        batches: _batchesList,
-                                        searchQuery: _searchQuery,
-                                        selectedStatusFilter: _selectedStatusFilter,
-                                        errorMessage: _loadError,
-                                        onRefresh: () => _loadData(isRefresh: true),
-                                        isRefreshing: _isLoading || _isTableRefreshing,
-                                        onSearchChanged: (val) => setState(() => _searchQuery = val),
-                                        onFilterChanged: (val) => setState(() => _selectedStatusFilter = val),
-                                        onCreateBatch: () => setState(() {
-                                          _showBatchForm = true;
-                                          _editingBatch = null;
-                                        }),
-                                        onViewDetails: (batch) => BatchDetailDrawer.show(
-                                          context: context,
-                                          batch: batch,
-                                        ),
-                                        onEditBatch: (batch) => setState(() {
-                                          _showBatchForm = true;
-                                          _editingBatch = batch;
-                                        }),
-                                        onArchiveBatch: _archiveBatch,
-                                        onDeleteBatch: _deleteBatch,
-                                      ),
-                                    ),
-                                  );
-                                },
+                      ? BatchFormView(
+                          onCancel: () => setState(() {
+                            _showBatchForm = false;
+                            _editingBatch = null;
+                          }),
+                          onBatchSaved: () {
+                            setState(() {
+                              _showBatchForm = false;
+                              _editingBatch = null;
+                            });
+                            _loadData();
+                          },
+                          existingBatch: _editingBatch,
+                          activeRaisers: _activeRaisers,
+                          onShowSnackBar: _showThemedSnackBar,
+                        )
+                      : SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.all(isMobile ? 12 : 20),
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [_panelStart, _panelEnd],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
                               ),
+                              border: Border.all(color: _panelBorder, width: 1),
+                              borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
                             ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 14 : 26,
+                              vertical: isMobile ? 16 : 26,
+                            ),
+                                  child: _inPageConfirmation != null
+                                      ? _inPageConfirmation!
+                                      : (_selectedBatchForDetails != null
+                                          ? BatchDetailView(
+                                              batch: _selectedBatchForDetails!,
+                                              onBack: () => setState(() => _selectedBatchForDetails = null),
+                                              onEdit: (batch) => setState(() {
+                                                _selectedBatchForDetails = null;
+                                                _showBatchForm = true;
+                                                _editingBatch = batch;
+                                              }),
+                                              onArchive: (batch) {
+                                                setState(() => _selectedBatchForDetails = null);
+                                                _archiveBatch(batch);
+                                              },
+                                            )
+                                          : BatchTableView(
+                                          batches: _batchesList,
+                                          searchQuery: _searchQuery,
+                                          selectedStatusFilter: _selectedStatusFilter,
+                                          errorMessage: _loadError,
+                                          onRefresh: () => _loadData(isRefresh: true),
+                                          isRefreshing: _isLoading || _isTableRefreshing,
+                                          onSearchChanged: (val) => setState(() => _searchQuery = val),
+                                          onFilterChanged: (val) => setState(() => _selectedStatusFilter = val),
+                                          onCreateBatch: () => setState(() {
+                                            _showBatchForm = true;
+                                            _editingBatch = null;
+                                          }),
+                                          onViewDetails: (batch) => setState(() => _selectedBatchForDetails = batch),
+                                          onEditBatch: (batch) => setState(() {
+                                            _showBatchForm = true;
+                                            _editingBatch = batch;
+                                          }),
+                                          onArchiveBatch: _archiveBatch,
+                                          onDeleteBatch: _deleteBatch,
+                                        )),
+                            ),
+                          ),
                 ),
               ],
             ),
@@ -480,45 +486,54 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     );
   }
 
-  void _archiveBatch(Map<String, dynamic> batch) async {
+  void _archiveBatch(Map<String, dynamic> batch) {
     final batchName = batch['batch_name'] ?? 'Batch';
     final batchId = batch['batch_id'] ?? batch['id'];
     if (batchId == null) return;
 
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Archive Hog Batch',
-      message: 'Are you sure you want to archive "$batchName"?',
-      confirmButtonText: 'Archive Batch',
-      actionType: SlideOverActionType.danger,
-      customIcon: Icons.archive_outlined,
-    );
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Archive Hog Batch',
+        subtitle: 'Move this hog batch to archived records.',
+        message: 'Are you sure you want to archive "$batchName"?',
+        actionType: InPageActionType.danger,
+        customIcon: Icons.archive_outlined,
+        itemTitle: batchName.toString(),
+        itemSubtitle: 'Batch Code: ${batch['batch_number'] ?? batch['batch_code'] ?? 'N/A'}',
+        confirmButtonText: 'Archive Batch',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedBatchForDetails = null;
+            _isLoading = true;
+          });
+          try {
+            try {
+              await _supabase.from('batches').update({'status': 'Archived'}).eq('batch_id', batchId);
+            } catch (_) {
+              await _supabase.from('batches').update({'status': 'Archived'}).eq('id', batchId);
+            }
 
-    if (confirmed == true) {
-      setState(() => _isLoading = true);
-      try {
-        try {
-          await _supabase.from('batches').update({'status': 'Archived'}).eq('batch_id', batchId);
-        } catch (_) {
-          await _supabase.from('batches').update({'status': 'Archived'}).eq('id', batchId);
-        }
+            try {
+              await _supabase.from('assignments').update({'status': 'archived'}).eq('batch_id', batchId);
+            } catch (_) {}
 
-        try {
-          await _supabase.from('assignments').update({'status': 'archived'}).eq('batch_id', batchId);
-        } catch (_) {}
+            try {
+              await _supabase.from('investment_records').update({'stage': 'archived'}).eq('batch_id', batchId);
+            } catch (_) {}
 
-        try {
-          await _supabase.from('investment_records').update({'stage': 'archived'}).eq('batch_id', batchId);
-        } catch (_) {}
-
-        _showThemedSnackBar('Batch "$batchName" archived successfully.');
-        await _loadData();
-      } catch (e) {
-        _showThemedSnackBar('Archive failed: $e', isError: true);
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    }
+            _showThemedSnackBar('Batch "$batchName" archived successfully.');
+            await _loadData();
+          } catch (e) {
+            _showThemedSnackBar('Archive failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      );
+    });
   }
 
   void _deleteBatch(Map<String, dynamic> batch) async {
@@ -562,70 +577,85 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     if (activeHogsCount > 0 || (assignedRaiserName != null && assignedRaiserName.isNotEmpty)) {
       if (!mounted) return;
       final raiserText = assignedRaiserName != null && assignedRaiserName.isNotEmpty ? ' to $assignedRaiserName' : '';
-      await SlideOverConfirmationDrawer.show(
-        context: context,
-        title: 'Active Batch Protected',
-        message: 'Cannot delete "$batchName": This batch currently has $activeHogsCount live hogs assigned$raiserText.\n\nDeleting an active batch will wipe live farm animals and cause errors on the raiser\'s mobile app.\n\nPlease complete the raising cycle or archive the batch instead.',
-        confirmButtonText: 'I Understand',
-        actionType: SlideOverActionType.info,
-        customIcon: Icons.shield_outlined,
-      );
+      setState(() {
+        _inPageConfirmation = InPageConfirmationView(
+          title: 'Active Batch Protected',
+          subtitle: 'Cannot delete an active batch with live hogs.',
+          message: 'Cannot delete "$batchName": This batch currently has $activeHogsCount live hogs assigned$raiserText.\n\nDeleting an active batch will wipe live farm animals and cause errors on the raiser\'s mobile app.\n\nPlease complete the raising cycle or archive the batch instead.',
+          actionType: InPageActionType.warning,
+          customIcon: Icons.shield_outlined,
+          itemTitle: batchName.toString(),
+          confirmButtonText: 'I Understand',
+          cancelButtonText: 'Close',
+          onCancel: () => setState(() => _inPageConfirmation = null),
+          onConfirm: () async => setState(() => _inPageConfirmation = null),
+        );
+      });
       return;
     }
 
     if (!mounted) return;
-    final confirmed = await SlideOverConfirmationDrawer.show(
-      context: context,
-      title: 'Delete Hog Batch',
-      message: 'Are you sure you want to permanently delete "$batchName"?\nThis will also remove any linked assignment records for this batch.',
-      confirmButtonText: 'Delete Permanently',
-      actionType: SlideOverActionType.danger,
-      customIcon: Icons.delete_outline_rounded,
-    );
-
-    if (confirmed == true) {
-      setState(() => _isLoading = true);
-      try {
-        // 1. Cascade delete child assignments, hogs, and requests to prevent foreign key violations
-        try {
-          final assignmentsRes = await _supabase.from('assignments').select('assignment_id').eq('batch_id', batchId);
-          final assignmentIds = (assignmentsRes as List).map((a) => a['assignment_id']).toList();
-
-          for (var aId in assignmentIds) {
+    setState(() {
+      _inPageConfirmation = InPageConfirmationView(
+        title: 'Delete Hog Batch',
+        subtitle: 'Permanently remove this batch record.',
+        message: 'Are you sure you want to permanently delete "$batchName"?\nThis will also remove any linked assignment records for this batch.',
+        actionType: InPageActionType.danger,
+        customIcon: Icons.delete_outline_rounded,
+        itemTitle: batchName.toString(),
+        warningText: 'This action is irreversible. All linked assignment records will be deleted immediately.',
+        confirmButtonText: 'Delete Permanently',
+        cancelButtonText: 'Cancel',
+        onCancel: () => setState(() => _inPageConfirmation = null),
+        onConfirm: () async {
+          setState(() {
+            _inPageConfirmation = null;
+            _selectedBatchForDetails = null;
+            _isLoading = true;
+          });
+          try {
+            // 1. Cascade delete child assignments, hogs, and requests to prevent foreign key violations
             try {
-              await _supabase.from('stock_requests').delete().eq('assignment_id', aId);
+              final assignmentsRes = await _supabase.from('assignments').select('assignment_id').eq('batch_id', batchId);
+              final assignmentIds = (assignmentsRes as List).map((a) => a['assignment_id']).toList();
+
+              for (var aId in assignmentIds) {
+                try {
+                  await _supabase.from('stock_requests').delete().eq('assignment_id', aId);
+                } catch (_) {}
+                try {
+                  await _supabase.from('hogs').delete().eq('assignment_id', aId);
+                } catch (_) {}
+              }
+              await _supabase.from('assignments').delete().eq('batch_id', batchId);
+            } catch (cascadeErr) {
+              debugPrint('Cascade cleanup assignments warning: $cascadeErr');
+            }
+
+            // 2. Cascade delete investment records
+            try {
+              await _supabase.from('investment_records').delete().eq('batch_id', batchId);
             } catch (_) {}
             try {
-              await _supabase.from('hogs').delete().eq('assignment_id', aId);
+              await _supabase.from('investments').delete().eq('batch_id', batchId);
             } catch (_) {}
+
+            // 3. Delete from batches
+            try {
+              await _supabase.from('batches').delete().eq('batch_id', batchId);
+            } catch (_) {
+              await _supabase.from('batches').delete().eq('id', batchId);
+            }
+
+            _showThemedSnackBar('Batch "$batchName" deleted successfully from database.');
+            await _loadData();
+          } catch (e) {
+            _showThemedSnackBar('Delete failed: $e', isError: true);
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
           }
-          await _supabase.from('assignments').delete().eq('batch_id', batchId);
-        } catch (cascadeErr) {
-          debugPrint('Cascade cleanup assignments warning: $cascadeErr');
-        }
-
-        // 2. Cascade delete investment records
-        try {
-          await _supabase.from('investment_records').delete().eq('batch_id', batchId);
-        } catch (_) {}
-        try {
-          await _supabase.from('investments').delete().eq('batch_id', batchId);
-        } catch (_) {}
-
-        // 3. Delete from batches
-        try {
-          await _supabase.from('batches').delete().eq('batch_id', batchId);
-        } catch (_) {
-          await _supabase.from('batches').delete().eq('id', batchId);
-        }
-
-        _showThemedSnackBar('Batch "$batchName" deleted successfully from database.');
-        await _loadData();
-      } catch (e) {
-        _showThemedSnackBar('Delete failed: $e', isError: true);
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    }
+        },
+      );
+    });
   }
 }

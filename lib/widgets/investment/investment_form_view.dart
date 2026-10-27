@@ -1132,24 +1132,23 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
 
     if (_isLoadingData) {
       return SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.all(isMobile ? 12 : 20),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 1350),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [_panelStart, _panelEnd],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              border: Border.all(color: _panelBorder, width: 1),
-              borderRadius: BorderRadius.circular(isMobile ? 16 : 34),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_panelStart, _panelEnd],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
             ),
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 14 : 34,
-              vertical: isMobile ? 16 : 32,
-            ),
+            border: Border.all(color: _panelBorder, width: 1),
+            borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 14 : 34,
+            vertical: isMobile ? 16 : 32,
+          ),
             child: ShimmerProvider(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1291,31 +1290,29 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
               ),
             ),
           ),
-        ),
       );
     }
 
     return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.all(isMobile ? 12 : 20),
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 1350),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [_panelStart, _panelEnd],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            border: Border.all(color: _panelBorder, width: 1),
-            borderRadius: BorderRadius.circular(isMobile ? 16 : 34),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_panelStart, _panelEnd],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
           ),
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 14 : 34,
-            vertical: isMobile ? 16 : 32,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          border: Border.all(color: _panelBorder, width: 1),
+          borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 14 : 34,
+          vertical: isMobile ? 16 : 32,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header Row
               Row(
@@ -1936,8 +1933,7 @@ class _InvestmentFormViewState extends State<InvestmentFormView> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

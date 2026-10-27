@@ -10,7 +10,10 @@ class ProductLogsDrawer extends StatefulWidget {
   final String? filterProductName;
   final VoidCallback? onClearFilter;
   final bool isBottomSheet;
+  final bool isModal;
   final ScrollController? scrollController;
+  /// When set, the widget renders as full in-page content and this closes it.
+  final VoidCallback? onClose;
 
   const ProductLogsDrawer({
     super.key,
@@ -18,8 +21,92 @@ class ProductLogsDrawer extends StatefulWidget {
     this.filterProductName,
     this.onClearFilter,
     this.isBottomSheet = false,
+    this.isModal = false,
     this.scrollController,
+    this.onClose,
   });
+
+  static void showModal({
+    required BuildContext context,
+    String? filterProductId,
+    String? filterProductName,
+    VoidCallback? onClearFilter,
+  }) {
+    final isMobile = MediaQuery.of(context).size.width < 720;
+    if (isMobile) {
+      showBottomSheet(
+        context: context,
+        filterProductId: filterProductId,
+        filterProductName: filterProductName,
+        onClearFilter: onClearFilter,
+      );
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final size = MediaQuery.of(context).size;
+    final modalWidth = (size.width > 1200) ? 900.0 : (size.width > 800 ? 760.0 : size.width * 0.95);
+    final modalHeight = size.height * 0.88;
+
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Inventory Activity Logs',
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (dialogCtx, anim1, anim2) => const SizedBox.shrink(),
+      transitionBuilder: (dialogCtx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: modalWidth,
+                  height: modalHeight,
+                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: isDark
+                          ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
+                          : [Colors.white, const Color(0xFFF8FAFC)],
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                        blurRadius: 36,
+                        offset: const Offset(0, 16),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: ProductLogsDrawer(
+                      filterProductId: filterProductId,
+                      filterProductName: filterProductName,
+                      onClearFilter: onClearFilter,
+                      isBottomSheet: false,
+                      isModal: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   static void showBottomSheet({
     required BuildContext context,
@@ -167,25 +254,46 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
           ),
         ],
         Padding(
-          padding: EdgeInsets.fromLTRB(20, widget.isBottomSheet ? 8 : 24, 16, 14),
+          padding: EdgeInsets.fromLTRB(24, widget.isBottomSheet ? 12 : 24, 24, 8),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (widget.onClose != null) ...[
+                Material(
+                  color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: widget.onClose,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: _titleColor,
                       ),
                     ),
+                    const SizedBox(height: 3),
                     if (_activeProductName != null) ...[
-                      const SizedBox(height: 4),
                       InkWell(
                         onTap: () {
                           setState(() {
@@ -201,7 +309,7 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
                             Text(
                               'Showing only this product. Click to clear.',
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
+                                fontSize: 12.5,
                                 color: _accentDark,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -212,11 +320,10 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
                         ),
                       ),
                     ] else ...[
-                      const SizedBox(height: 3),
                       Text(
                         'Real-time log of product addition & updates.',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
+                          fontSize: 13,
                           color: _mutedColor,
                           fontWeight: FontWeight.w500,
                         ),
@@ -225,30 +332,53 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
                   ],
                 ),
               ),
-              IconButton(
-                icon: _isLoadingLogs
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                        ),
-                      )
-                    : Icon(Icons.refresh, color: _mutedColor, size: 20),
-                onPressed: _isLoadingLogs ? null : _loadLogs,
-                tooltip: 'Refresh Logs',
+              const SizedBox(width: 12),
+              Material(
+                color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _isLoadingLogs ? null : _loadLogs,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: _isLoadingLogs
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.refresh_rounded,
+                            color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                            size: 20,
+                          ),
+                  ),
+                ),
               ),
-              IconButton(
-                icon: Icon(Icons.close_rounded, color: _mutedColor, size: 20),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+              if (widget.onClose == null) ...[
+                const SizedBox(width: 8),
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(Icons.close_rounded, color: _mutedColor, size: 20),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        const Divider(height: 1),
+        const SizedBox(height: 12),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -267,7 +397,7 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
             ),
           ),
         ),
-        const Divider(height: 1),
+        const SizedBox(height: 14),
         Expanded(
           child: _isLoadingLogs
               ? _buildLogsSkeleton()
@@ -278,15 +408,44 @@ class _ProductLogsDrawerState extends State<ProductLogsDrawer> {
                       : ListView.builder(
                           controller: widget.scrollController,
                           physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                           itemCount: filteredList.length,
                           itemBuilder: (context, index) {
                             return _buildLogItem(filteredList[index]);
                           },
                         ),
+
         ),
       ],
     );
+
+    if (widget.onClose != null) {
+      return Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: _isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(color: Colors.transparent, child: content),
+      );
+    }
+
+    if (widget.isModal) {
+      return Material(
+        color: Colors.transparent,
+        child: SafeArea(child: content),
+      );
+    }
 
     if (widget.isBottomSheet) {
       return Container(
