@@ -171,6 +171,11 @@ class POSProduct {
     return c == 'feeds' || c == 'feed';
   }
 
+  bool get isMedicine {
+    final c = category.trim().toLowerCase();
+    return c == 'medicines' || c == 'medicine';
+  }
+
   bool get hasKiloPrice => kiloPrice != null && kiloPrice! > 0;
 
   /// Price per kilo set explicitly by the store administrator.

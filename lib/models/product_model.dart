@@ -64,6 +64,11 @@ class Product {
     return c == 'feeds' || c == 'feed';
   }
 
+  bool get isMedicine {
+    final c = category.trim().toLowerCase();
+    return c == 'medicines' || c == 'medicine';
+  }
+
   bool get hasKiloPrice => kiloPrice != null && kiloPrice! > 0;
 
   double get effectiveKiloPrice => kiloPrice ?? 0.0;

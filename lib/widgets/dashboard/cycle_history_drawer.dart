@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
+import '../../screens/finished_lifecycles_screen.dart';
 
 class CycleHistoryDrawer {
   static void show({
@@ -8,302 +9,20 @@ class CycleHistoryDrawer {
     required List<Map<String, dynamic>> completedRaisers,
     VoidCallback? onNavigateToBatches,
   }) {
-    final isMobile = MediaQuery.of(context).size.width < 720;
-    if (isMobile) {
-      _showBottomSheet(context, completedRaisers, onNavigateToBatches);
-    } else {
-      _showSideDrawer(context, completedRaisers, onNavigateToBatches);
-    }
-  }
-
-  static void _showBottomSheet(
-    BuildContext context,
-    List<Map<String, dynamic>> completedRaisers,
-    VoidCallback? onNavigateToBatches,
-  ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark
-        ? PiggyTrunkTheme.ptBorderDark
-        : PiggyTrunkTheme.ptBorder;
-    final titleColor = isDark
-        ? PiggyTrunkTheme.ptTextDark
-        : PiggyTrunkTheme.ptText;
-    final hintText = isDark
-        ? PiggyTrunkTheme.ptMutedDark
-        : PiggyTrunkTheme.ptMuted;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.90,
-        ),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: cardBorder, width: 1.2)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: hintText.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
-                            : const Color(0xFFDBEAFE),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.verified_rounded,
-                        size: 18,
-                        color: isDark
-                            ? const Color(0xFF93C5FD)
-                            : const Color(0xFF1E40AF),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Finished Lifecycles',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: titleColor,
-                            ),
-                          ),
-                          Text(
-                            'Batches that completed all feeding stages',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: hintText,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: hintText,
-                        size: 22,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(color: cardBorder.withValues(alpha: 0.5), height: 1),
-              Flexible(
-                child: _buildDrawerContent(
-                  context: sheetContext,
-                  completedRaisers: completedRaisers,
-                  isDark: isDark,
-                  cardBorder: cardBorder,
-                  titleColor: titleColor,
-                  hintText: hintText,
-                  onNavigateToBatches: () {
-                    Navigator.pop(sheetContext);
-                    onNavigateToBatches?.call();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FinishedLifecyclesScreen(
+              completedRaisers: completedRaisers,
+            ),
+        settings: const RouteSettings(name: '/dashboard'),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
       ),
     );
   }
 
-  static void _showSideDrawer(
-    BuildContext context,
-    List<Map<String, dynamic>> completedRaisers,
-    VoidCallback? onNavigateToBatches,
-  ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBorder = isDark
-        ? PiggyTrunkTheme.ptBorderDark
-        : PiggyTrunkTheme.ptBorder;
-    final titleColor = isDark
-        ? PiggyTrunkTheme.ptTextDark
-        : PiggyTrunkTheme.ptText;
-    final hintText = isDark
-        ? PiggyTrunkTheme.ptMutedDark
-        : PiggyTrunkTheme.ptMuted;
-    final size = MediaQuery.of(context).size;
-    final modalWidth = (size.width > 1200) ? 960.0 : (size.width > 800 ? 820.0 : size.width * 0.95);
-    final modalHeight = size.height * 0.88;
-
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'CycleHistoryDrawer',
-      barrierColor: Colors.black.withValues(alpha: 0.65),
-      transitionDuration: const Duration(milliseconds: 260),
-      pageBuilder: (dialogContext, animation, secondaryAnimation) =>
-          const SizedBox.shrink(),
-      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
-            child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  width: modalWidth,
-                  height: modalHeight,
-                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: isDark
-                          ? [const Color(0xFF1A2940), const Color(0xFF0F1C2F)]
-                          : [Colors.white, const Color(0xFFF8FAFC)],
-                    ),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
-                        blurRadius: 36,
-                        offset: const Offset(0, 16),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 18,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
-                                      : const Color(0xFFDBEAFE),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  Icons.verified_rounded,
-                                  size: 20,
-                                  color: isDark
-                                      ? const Color(0xFF93C5FD)
-                                      : const Color(0xFF1E40AF),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Finished Lifecycles',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                        color: titleColor,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Batches that completed all feeding stages',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: hintText,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                icon: Icon(
-                                  Icons.close_rounded,
-                                  color: hintText,
-                                  size: 22,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                tooltip: 'Close panel',
-                              ),
-                            ],
-                          ),
-                        ),
-                        Divider(
-                          color: cardBorder.withValues(alpha: 0.5),
-                          height: 1,
-                        ),
-                        Expanded(
-                          child: _buildDrawerContent(
-                            context: dialogContext,
-                            completedRaisers: completedRaisers,
-                            isDark: isDark,
-                            cardBorder: cardBorder,
-                            titleColor: titleColor,
-                            hintText: hintText,
-                            onNavigateToBatches: () {
-                              Navigator.pop(dialogContext);
-                              onNavigateToBatches?.call();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  static Widget _buildDrawerContent({
+  static Widget buildContent({
     required BuildContext context,
     required List<Map<String, dynamic>> completedRaisers,
     required bool isDark,
@@ -315,7 +34,7 @@ class CycleHistoryDrawer {
     if (completedRaisers.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -350,7 +69,9 @@ class CycleHistoryDrawer {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(20),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       itemCount: completedRaisers.length,
       separatorBuilder: (context, index) => const SizedBox(height: 20),
       itemBuilder: (context, index) {

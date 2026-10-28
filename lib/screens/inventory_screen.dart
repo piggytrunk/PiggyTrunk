@@ -38,6 +38,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   bool _isArchiveMode = false;
   bool _isLoading = true;
   bool _showAddProductForm = false;
+  String? _pendingNewBarcode;
   Product? _editingProduct;
   Product? _restockingProduct;
   Widget? _inPageConfirmation;
@@ -322,9 +323,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
     // 2. In-page Add Product Form
     if (_showAddProductForm) {
       return ProductAddForm(
-        onCancel: () => setState(() => _showAddProductForm = false),
+        key: ValueKey(_pendingNewBarcode ?? 'add-product'),
+        initialBarcode: _pendingNewBarcode,
+        onCancel: () => setState(() {
+          _showAddProductForm = false;
+          _pendingNewBarcode = null;
+        }),
         onProductAdded: () {
-          setState(() => _showAddProductForm = false);
+          setState(() {
+            _showAddProductForm = false;
+            _pendingNewBarcode = null;
+          });
           _loadProducts();
         },
         onUploadImage: _uploadProductImage,
@@ -718,7 +727,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
           },
           borderRadius: BorderRadius.circular(10),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
               border: Border.all(
@@ -729,6 +739,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Icon(
                   Icons.file_download_outlined,
@@ -761,34 +772,42 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildActionButtonsRow({required bool isMobile}) {
     final buttons = [
-      OutlinedButton.icon(
-        onPressed: _openGeneralLogsDrawer,
-        icon: Icon(
-          Icons.history_rounded,
-          size: 18,
-          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-        ),
-        label: Text(
-          'Activity Logs',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
+      SizedBox(
+        height: 42,
+        child: OutlinedButton.icon(
+          onPressed: _openGeneralLogsDrawer,
+          icon: Icon(
+            Icons.history_rounded,
+            size: 18,
             color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
           ),
-        ),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
-          side: BorderSide(
-            color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
-            width: 1.2,
+          label: Text(
+            'Activity Logs',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+            ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+            side: BorderSide(
+              color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+              width: 1.2,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 42),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         ),
       ),
       const SizedBox(width: 10),
       _buildExportButton(),
-        OutlinedButton.icon(
+      const SizedBox(width: 10),
+      SizedBox(
+        height: 42,
+        child: OutlinedButton.icon(
           onPressed: () {
             InventoryQrScannerDialog.show(
               context,
@@ -797,8 +816,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 setState(() {
                   _showLogsPage = false;
                   _showAddProductForm = false;
+                  _pendingNewBarcode = null;
                   _editingProduct = null;
                   _restockingProduct = scannedProd;
+                });
+              },
+              onNewBarcodeScanned: (newBarcode) {
+                setState(() {
+                  _showLogsPage = false;
+                  _editingProduct = null;
+                  _restockingProduct = null;
+                  _pendingNewBarcode = newBarcode;
+                  _showAddProductForm = true;
                 });
               },
             );
@@ -822,29 +851,39 @@ class _InventoryScreenState extends State<InventoryScreen> {
               color: _isDark ? const Color(0xFF1E3A5F) : const Color(0xFFBBF7D0),
               width: 1.2,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 42),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
-        const SizedBox(width: 10),
+      ),
       const SizedBox(width: 10),
-      ElevatedButton.icon(
-        onPressed: () => setState(() => _showAddProductForm = true),
-        icon: const Icon(Icons.add_rounded, size: 18),
-        label: Text(
-          'Add Product',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-            color: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+      SizedBox(
+        height: 42,
+        child: ElevatedButton.icon(
+          onPressed: () => setState(() {
+            _pendingNewBarcode = null;
+            _showAddProductForm = true;
+          }),
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: Text(
+            'Add Product',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+            ),
           ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-          foregroundColor: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          elevation: 0,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+            foregroundColor: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 42),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
         ),
       ),
     ];
@@ -852,10 +891,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (isMobile) {
       return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(children: buttons),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: buttons,
+        ),
       );
     }
-    return Row(children: buttons);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: buttons,
+    );
   }
 
 

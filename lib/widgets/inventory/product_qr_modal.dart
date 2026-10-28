@@ -60,14 +60,26 @@ class ProductQrModal extends StatelessWidget {
                     maxLines: 1,
                     style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
                   ),
-                  pw.SizedBox(height: 4),
-                  pw.BarcodeWidget(
-                    barcode: pw.Barcode.code128(),
-                    data: barcodeCode,
-                    width: 48 * PdfPageFormat.mm,
-                    height: 18 * PdfPageFormat.mm,
-                    drawText: true,
-                    // textStyle is optional in pw.BarcodeWidget
+                  pw.SizedBox(height: 3),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.qrCode(),
+                        data: barcodeCode,
+                        width: 15 * PdfPageFormat.mm,
+                        height: 15 * PdfPageFormat.mm,
+                      ),
+                      pw.SizedBox(width: 3 * PdfPageFormat.mm),
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.code128(),
+                        data: barcodeCode,
+                        width: 32 * PdfPageFormat.mm,
+                        height: 16 * PdfPageFormat.mm,
+                        drawText: true,
+                      ),
+                    ],
                   ),
                   pw.SizedBox(height: 2),
                   pw.Text(
@@ -164,10 +176,10 @@ class ProductQrModal extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // Barcode Display with White High-Contrast Background
+            // Dual QR + 1D Barcode Display with White High-Contrast Background
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -182,16 +194,49 @@ class ProductQrModal extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  BarcodeWidget(
-                    barcode: Barcode.code128(),
-                    data: barcodeData,
-                    width: 280,
-                    height: 90,
-                    drawText: true,
-                    style: GoogleFonts.sourceCodePro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1E293B),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // High-Contrast QR Code for instant Laptop Webcam recognition
+                      BarcodeWidget(
+                        barcode: Barcode.qrCode(),
+                        data: barcodeData,
+                        width: 84,
+                        height: 84,
+                        color: const Color(0xFF0F172A),
+                      ),
+                      const SizedBox(width: 16),
+                      Container(
+                        width: 1,
+                        height: 78,
+                        color: const Color(0xFFE2E8F0),
+                      ),
+                      const SizedBox(width: 16),
+                      // Standard Code-128 1D Barcode for Laser Guns & Scanners
+                      Expanded(
+                        child: BarcodeWidget(
+                          barcode: Barcode.code128(),
+                          data: barcodeData,
+                          height: 80,
+                          drawText: true,
+                          color: const Color(0xFF0F172A),
+                          style: GoogleFonts.sourceCodePro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Webcam QR + Laser Barcode ($barcodeData)',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF64748B),
                     ),
                   ),
                 ],

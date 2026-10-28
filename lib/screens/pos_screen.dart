@@ -40,8 +40,9 @@ class _POSScreenState extends State<POSScreen> {
   Color get _muted => _isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF6F8096);
 
   String _getSelectedUnit(POSProduct product) {
-    if (!product.isFeed) return 'unit';
-    return _productUnits[product.id] ?? 'sack';
+    if (product.isFeed) return _productUnits[product.id] ?? 'sack';
+    if (product.isMedicine) return _productUnits[product.id] ?? 'box';
+    return 'unit';
   }
 
   void _setSelectedUnit(POSProduct product, String unit) {
@@ -63,8 +64,20 @@ class _POSScreenState extends State<POSScreen> {
       final inCartSack = currentOrder.quantityFor(product.id, 'sack');
       final availableKg = totalKg - inCartKg - (inCartSack * 50);
       return availableKg.clamp(0, 999999);
+    } else if (unit == 'tablet') {
+      final totalTabs = product.units * 100;
+      final inCartTabs = currentOrder.quantityFor(product.id, 'tablet');
+      final inCartBox = currentOrder.quantityFor(product.id, 'box');
+      final availableTabs = totalTabs - inCartTabs - (inCartBox * 100);
+      return availableTabs.clamp(0, 999999);
+    } else if (unit == 'box') {
+      final inCartBox = currentOrder.quantityFor(product.id, 'box');
+      final inCartTabs = currentOrder.quantityFor(product.id, 'tablet');
+      final usedBoxes = inCartBox + (inCartTabs / 100.0).ceil();
+      final availableBoxes = product.units - usedBoxes;
+      return availableBoxes.clamp(0, product.units);
     } else {
-      final inCartSack = currentOrder.quantityFor(product.id, 'sack');
+      final inCartSack = currentOrder.quantityFor(product.id, 'sack') + currentOrder.quantityFor(product.id, 'unit');
       final inCartKg = currentOrder.quantityFor(product.id, 'kg');
       final usedSacks = inCartSack + (inCartKg / 50.0).ceil();
       final availableSacks = product.units - usedSacks;
@@ -86,7 +99,11 @@ class _POSScreenState extends State<POSScreen> {
       _showThemedSnackBar(
         unit == 'kg'
             ? 'Cannot exceed remaining stock ($maxAvail kg).'
-            : 'Cannot exceed remaining stock ($maxAvail sacks).',
+            : (unit == 'tablet'
+                ? 'Cannot exceed remaining stock ($maxAvail tablets).'
+                : (unit == 'box'
+                    ? 'Cannot exceed remaining stock ($maxAvail boxes).'
+                    : 'Cannot exceed remaining stock ($maxAvail units).')),
         backgroundColor: const Color(0xFFE53E3E),
         duration: const Duration(milliseconds: 900),
       );
@@ -262,10 +279,12 @@ class _POSScreenState extends State<POSScreen> {
           ),
         );
 
-        // Calculate inventory sack deduction (for 'kg', 50 kg = 1 sack)
+        // Calculate inventory unit deduction (for 'kg', 50 kg = 1 sack; for 'tablet', 100 tablets = 1 box)
         final int sacksDeducted = item.unit == 'kg'
             ? (item.quantity / 50.0).ceil().clamp(1, product.units)
-            : item.quantity;
+            : (item.unit == 'tablet'
+                ? (item.quantity / 100.0).ceil().clamp(1, product.units)
+                : item.quantity);
         final newUnits = (product.units - sacksDeducted).clamp(0, 999999);
         final newSold = product.sold + sacksDeducted;
 
@@ -314,7 +333,9 @@ class _POSScreenState extends State<POSScreen> {
             'units': sacksDeducted,
             'details': item.unit == 'kg'
                 ? 'POS Retail Sale: Sold ${item.quantity} kg ($sacksDeducted sack(s) opened/deducted). Remaining: $newUnits sacks.'
-                : 'POS Wholesale Sale: Sold ${item.quantity} sack(s). Remaining: $newUnits sacks.',
+                : (item.unit == 'tablet'
+                    ? 'POS Retail Sale: Sold ${item.quantity} tablet(s) ($sacksDeducted box(es) opened/deducted). Remaining: $newUnits boxes.'
+                    : 'POS Wholesale Sale: Sold ${item.quantity} ${item.unit == 'box' ? 'box(es)' : 'unit(s)'}. Remaining: $newUnits units.'),
           });
         } catch (_) {}
       }
@@ -638,43 +659,44 @@ class _POSScreenState extends State<POSScreen> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.maxWidth;
-                  int crossAxisCount;
-                  double childAspectRatio;
+                  final int crossAxisCount = width > 1200 ? 3 : (width > 550 ? 2 : 1);
+                  final int rowCount = (products.length / crossAxisCount).ceil();
 
-                  if (width > 1200) {
-                    crossAxisCount = 3;
-                    childAspectRatio = 1.48;
-                  } else if (width > 850) {
-                    crossAxisCount = 2;
-                    childAspectRatio = 1.78;
-                  } else if (width > 550) {
-                    crossAxisCount = 2;
-                    childAspectRatio = 1.55;
-                  } else {
-                    crossAxisCount = 1;
-                    childAspectRatio = 1.70;
-                  }
-
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: childAspectRatio,
-                    ),
-                    itemCount: products.length,
-                    itemBuilder: (context, idx) => _buildPOSProductCard(products[idx]),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: List.generate(rowCount, (rowIndex) {
+                      final int startIndex = rowIndex * crossAxisCount;
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: rowIndex < rowCount - 1 ? 14 : 0),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: List.generate(crossAxisCount, (colIndex) {
+                              final int itemIndex = startIndex + colIndex;
+                              return Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    right: colIndex < crossAxisCount - 1 ? 14 : 0,
+                                  ),
+                                  child: itemIndex < products.length
+                                      ? _buildPOSProductCard(products[itemIndex])
+                                      : const SizedBox.shrink(),
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      );
+                    }),
                   );
                 },
               ),
-            if (index != categories.length - 1) const SizedBox(height: 32),
-          ],
-        );
-      }),
-    );
-  }
+              if (index != categories.length - 1) const SizedBox(height: 32),
+            ],
+          );
+        }),
+      );
+    }
 
   Widget _buildPOSProductCard(POSProduct product) {
     final isOutOfStock = product.units <= 0;
@@ -686,11 +708,13 @@ class _POSScreenState extends State<POSScreen> {
     final double imgSize = isMobile ? 76.0 : 88.0;
     final selectedUnit = _getSelectedUnit(product);
     final isKilo = selectedUnit == 'kg';
+    final isTablet = selectedUnit == 'tablet';
+    final isSubUnit = isKilo || isTablet;
     final hasKiloPrice = product.hasKiloPrice;
     final selectedQty = _getQuantity(product.id);
-    final double unitPrice = isKilo ? product.effectiveKiloPrice : product.price;
+    final double unitPrice = isSubUnit ? product.effectiveKiloPrice : product.price;
     final int maxAvailable = _getMaxAvailable(product, selectedUnit);
-    final bool canAddToCart = !isOutOfStock && maxAvailable > 0 && (!isKilo || hasKiloPrice);
+    final bool canAddToCart = !isOutOfStock && maxAvailable > 0 && (!isSubUnit || hasKiloPrice);
 
     return Container(
       decoration: BoxDecoration(
@@ -707,7 +731,7 @@ class _POSScreenState extends State<POSScreen> {
       ),
       padding: EdgeInsets.all(isMobile ? 10 : 12),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Top Section: Image + Title + Status + Description
@@ -773,9 +797,10 @@ class _POSScreenState extends State<POSScreen> {
               SizedBox(width: isMobile ? 10 : 12),
               // Product Title & Subtitles
               Expanded(
-                child: SizedBox(
-                  height: imgSize,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: imgSize),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Header Row: Title & Stock Badge
@@ -836,16 +861,20 @@ class _POSScreenState extends State<POSScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 3),
-                      // Subtitle / Description
-                      Text(
-                        product.description.isEmpty ? 'No description' : product.description,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.jakarta(
-                          size: isMobile ? 10.5 : 11,
-                          weight: FontWeight.w500,
-                          color: _muted,
+                      const SizedBox(height: 4),
+                      // Subtitle / Description (fits multi-line admin descriptions)
+                      Tooltip(
+                        message: product.description.length > 60 ? product.description : '',
+                        child: Text(
+                          product.description.isEmpty ? 'No description' : product.description,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.jakarta(
+                            size: isMobile ? 10.5 : 11,
+                            weight: FontWeight.w500,
+                            color: _muted,
+                            height: 1.35,
+                          ),
                         ),
                       ),
                     ],
@@ -854,8 +883,9 @@ class _POSScreenState extends State<POSScreen> {
               ),
             ],
           ),
-          // Unit Selector (Only for Feeds category, pure text without icons)
-          if (product.isFeed) ...[
+          const Spacer(),
+          // Unit Selector (For Feeds and Medicines categories)
+          if (product.isFeed || product.isMedicine) ...[
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
@@ -868,17 +898,17 @@ class _POSScreenState extends State<POSScreen> {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => _setSelectedUnit(product, 'sack'),
+                      onTap: () => _setSelectedUnit(product, product.isFeed ? 'sack' : 'box'),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: !isKilo
+                          color: !isSubUnit
                               ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
-                          boxShadow: !isKilo
+                          boxShadow: !isSubUnit
                               ? [
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.08),
@@ -889,11 +919,11 @@ class _POSScreenState extends State<POSScreen> {
                               : null,
                         ),
                         child: Text(
-                          'Whole Sack',
+                          product.isFeed ? 'Whole Sack' : 'Whole Box',
                           style: AppTextStyles.jakarta(
                             size: isMobile ? 10.5 : 11.5,
-                            weight: !isKilo ? FontWeight.w800 : FontWeight.w600,
-                            color: !isKilo
+                            weight: !isSubUnit ? FontWeight.w800 : FontWeight.w600,
+                            color: !isSubUnit
                                 ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                                 : _muted,
                           ),
@@ -904,17 +934,17 @@ class _POSScreenState extends State<POSScreen> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: InkWell(
-                      onTap: () => _setSelectedUnit(product, 'kg'),
+                      onTap: () => _setSelectedUnit(product, product.isFeed ? 'kg' : 'tablet'),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isKilo
+                          color: isSubUnit
                               ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
-                          boxShadow: isKilo
+                          boxShadow: isSubUnit
                               ? [
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.08),
@@ -925,11 +955,11 @@ class _POSScreenState extends State<POSScreen> {
                               : null,
                         ),
                         child: Text(
-                          'Per Kilo',
+                          product.isFeed ? 'Per Kilo' : 'Per Tablet',
                           style: AppTextStyles.jakarta(
                             size: isMobile ? 10.5 : 11.5,
-                            weight: isKilo ? FontWeight.w800 : FontWeight.w600,
-                            color: isKilo
+                            weight: isSubUnit ? FontWeight.w800 : FontWeight.w600,
+                            color: isSubUnit
                                 ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                                 : _muted,
                           ),
@@ -964,13 +994,13 @@ class _POSScreenState extends State<POSScreen> {
                           style: AppTextStyles.jakarta(size: 10.5, weight: FontWeight.w700, color: _muted),
                         ),
                         Text(
-                          isKilo && !hasKiloPrice
-                              ? 'Not set for per kilo'
-                              : '₱${unitPrice.toStringAsFixed(2)}${isKilo ? '/kg' : ''}',
+                          isSubUnit && !hasKiloPrice
+                              ? (isTablet ? 'Not set for per tablet' : 'Not set for per kilo')
+                              : '₱${unitPrice.toStringAsFixed(2)}${isKilo ? '/kg' : (isTablet ? '/tab' : '')}',
                           style: AppTextStyles.jakarta(
-                            size: isKilo && !hasKiloPrice ? 11 : 12.5,
+                            size: isSubUnit && !hasKiloPrice ? 11 : 12.5,
                             weight: FontWeight.w800,
-                            color: isKilo && !hasKiloPrice ? const Color(0xFFFFAA00) : _text,
+                            color: isSubUnit && !hasKiloPrice ? const Color(0xFFFFAA00) : _text,
                           ),
                         ),
                       ],
@@ -990,7 +1020,9 @@ class _POSScreenState extends State<POSScreen> {
                           style: AppTextStyles.jakarta(size: 10.5, weight: FontWeight.w700, color: _muted),
                         ),
                         Text(
-                          isKilo ? '${product.units * 50} kg' : '${product.units} units',
+                          isKilo
+                              ? '${product.units * 50} kg'
+                              : (isTablet ? '${product.units * 100} tabs' : '${product.units} units'),
                           style: AppTextStyles.jakarta(
                             size: 11.5,
                             weight: FontWeight.w700,
@@ -1020,7 +1052,7 @@ class _POSScreenState extends State<POSScreen> {
               children: [
                 Flexible(
                   child: Text(
-                    isKilo ? 'Qty (kg):' : 'Qty:',
+                    isKilo ? 'Qty (kg):' : (isTablet ? 'Qty (tabs):' : 'Qty:'),
                     style: AppTextStyles.jakarta(
                       size: isMobile ? 10.5 : 11.5,
                       weight: FontWeight.w700,
@@ -1041,7 +1073,7 @@ class _POSScreenState extends State<POSScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       InkWell(
-                        onTap: isOutOfStock || selectedQty <= 1 || (isKilo && !hasKiloPrice)
+                        onTap: isOutOfStock || selectedQty <= 1 || (isSubUnit && !hasKiloPrice)
                             ? null
                             : () => _decrementProductQuantity(product.id),
                         borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
@@ -1050,7 +1082,7 @@ class _POSScreenState extends State<POSScreen> {
                           child: Icon(
                             Icons.remove_rounded,
                             size: 14,
-                            color: (isOutOfStock || selectedQty <= 1 || (isKilo && !hasKiloPrice))
+                            color: (isOutOfStock || selectedQty <= 1 || (isSubUnit && !hasKiloPrice))
                                 ? (_isDark ? Colors.white24 : Colors.black26)
                                 : (_isDark ? Colors.white : const Color(0xFF18314F)),
                           ),
@@ -1065,12 +1097,12 @@ class _POSScreenState extends State<POSScreen> {
                           style: AppTextStyles.jakarta(
                             size: 12,
                             weight: FontWeight.w800,
-                            color: (isOutOfStock || (isKilo && !hasKiloPrice)) ? _muted : _text,
+                            color: (isOutOfStock || (isSubUnit && !hasKiloPrice)) ? _muted : _text,
                           ),
                         ),
                       ),
                       InkWell(
-                        onTap: isOutOfStock || selectedQty >= maxAvailable || (isKilo && !hasKiloPrice)
+                        onTap: isOutOfStock || selectedQty >= maxAvailable || (isSubUnit && !hasKiloPrice)
                             ? null
                             : () => _incrementProductQuantity(product),
                         borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
@@ -1079,7 +1111,7 @@ class _POSScreenState extends State<POSScreen> {
                           child: Icon(
                             Icons.add_rounded,
                             size: 14,
-                            color: (isOutOfStock || selectedQty >= maxAvailable || (isKilo && !hasKiloPrice))
+                            color: (isOutOfStock || selectedQty >= maxAvailable || (isSubUnit && !hasKiloPrice))
                                 ? (_isDark ? Colors.white24 : Colors.black26)
                                 : (_isDark ? Colors.white : const Color(0xFF18314F)),
                           ),
@@ -1098,10 +1130,12 @@ class _POSScreenState extends State<POSScreen> {
             child: ElevatedButton.icon(
               onPressed: isOutOfStock
                   ? null
-                  : (isKilo && !hasKiloPrice)
+                  : (isSubUnit && !hasKiloPrice)
                       ? () {
                           _showThemedSnackBar(
-                            'Please set the per-kilo price for this product in Inventory Management.',
+                            isTablet
+                                ? 'Please set the per-tablet price for this medicine in Inventory Management.'
+                                : 'Please set the per-kilo price for this product in Inventory Management.',
                             backgroundColor: const Color(0xFFF59E0B),
                             duration: const Duration(milliseconds: 2500),
                           );
@@ -1112,7 +1146,7 @@ class _POSScreenState extends State<POSScreen> {
                               final qtyToAdd = _getQuantity(product.id);
                               if (qtyToAdd > maxAvailable) {
                                 _showThemedSnackBar(
-                                  'Cannot add $qtyToAdd ${isKilo ? 'kg' : 'item(s)'}. Only $maxAvailable remaining in stock.',
+                                  'Cannot add $qtyToAdd ${isKilo ? 'kg' : (isTablet ? 'tablet(s)' : 'item(s)')}. Only $maxAvailable remaining in stock.',
                                   backgroundColor: const Color(0xFFE53E3E),
                                   duration: const Duration(milliseconds: 1200),
                                 );
@@ -1124,7 +1158,9 @@ class _POSScreenState extends State<POSScreen> {
                                   OrderItem(
                                     id: _orderItemCounter,
                                     productId: product.id,
-                                    productName: isKilo ? '${product.name} (Per Kilo)' : product.name,
+                                    productName: isKilo
+                                        ? '${product.name} (Per Kilo)'
+                                        : (isTablet ? '${product.name} (Per Tablet)' : product.name),
                                     price: unitPrice,
                                     quantity: qtyToAdd,
                                     unit: selectedUnit,
@@ -1133,7 +1169,7 @@ class _POSScreenState extends State<POSScreen> {
                                 _productQuantities[product.id] = 1;
                               });
                               _showThemedSnackBar(
-                                '$qtyToAdd${isKilo ? 'kg' : 'x'} ${product.name} added to order',
+                                '$qtyToAdd${isKilo ? 'kg' : (isTablet ? ' tab(s)' : 'x')} ${product.name} added to order',
                                 backgroundColor: const Color(0xFF315C8F),
                                 duration: const Duration(milliseconds: 800),
                               );
@@ -1141,18 +1177,20 @@ class _POSScreenState extends State<POSScreen> {
               icon: Icon(
                 Icons.add_shopping_cart,
                 size: 14,
-                color: (!canAddToCart && !(isKilo && !hasKiloPrice))
+                color: (!canAddToCart && !(isSubUnit && !hasKiloPrice))
                     ? (_isDark ? Colors.white54 : Colors.white70)
                     : (_isDark ? const Color(0xFF0F1C2F) : Colors.white),
               ),
               label: Text(
                 isOutOfStock
                     ? 'Out of Stock'
-                    : (isKilo && !hasKiloPrice ? 'Kilo Price Not Set' : '+ Add to Order'),
+                    : (isSubUnit && !hasKiloPrice
+                        ? (isTablet ? 'Tablet Price Not Set' : 'Kilo Price Not Set')
+                        : '+ Add to Order'),
                 style: AppTextStyles.jakarta(
                   size: 11.5,
                   weight: FontWeight.w700,
-                  color: (!canAddToCart && !(isKilo && !hasKiloPrice))
+                  color: (!canAddToCart && !(isSubUnit && !hasKiloPrice))
                       ? (_isDark ? Colors.white54 : Colors.white70)
                       : (_isDark ? const Color(0xFF0F1C2F) : Colors.white),
                 ),
@@ -1160,10 +1198,10 @@ class _POSScreenState extends State<POSScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: isOutOfStock
                     ? (_isDark ? const Color(0xFF334155) : Colors.grey)
-                    : (isKilo && !hasKiloPrice
+                    : (isSubUnit && !hasKiloPrice
                         ? (_isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8))
                         : (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)),
-                foregroundColor: (!canAddToCart && !(isKilo && !hasKiloPrice))
+                foregroundColor: (!canAddToCart && !(isSubUnit && !hasKiloPrice))
                     ? (_isDark ? Colors.white54 : Colors.white70)
                     : (_isDark ? const Color(0xFF0F1C2F) : Colors.white),
                 padding: EdgeInsets.symmetric(vertical: isMobile ? 8 : 9),
@@ -1427,7 +1465,7 @@ class _POSScreenState extends State<POSScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
-                  'PHP ${item.price.toStringAsFixed(2)}${item.unit == 'kg' ? '/kg' : ''}',
+                  'PHP ${item.price.toStringAsFixed(2)}${item.unit == 'kg' ? '/kg' : (item.unit == 'tablet' ? '/tab' : '')}',
                   style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w600, color: _muted),
                 ),
                 Container(
@@ -1438,7 +1476,11 @@ class _POSScreenState extends State<POSScreen> {
                     border: Border.all(color: _border, width: 1),
                   ),
                   child: Text(
-                    item.unit == 'kg' ? '${item.quantity} kg' : '${item.quantity} ${item.unit == 'sack' ? 'sacks' : 'units'}',
+                    item.unit == 'kg'
+                        ? '${item.quantity} kg'
+                        : (item.unit == 'tablet'
+                            ? '${item.quantity} tablets'
+                            : '${item.quantity} ${item.unit == 'sack' ? 'sacks' : (item.unit == 'box' ? 'boxes' : 'units')}'),
                     style: AppTextStyles.jakarta(
                       size: 12.5,
                       weight: FontWeight.w800,

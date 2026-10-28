@@ -20,6 +20,7 @@ class ProductAddForm extends StatefulWidget {
     String? details,
   }) onInsertLog;
   final void Function(String msg, {Color? backgroundColor}) onShowSnackBar;
+  final String? initialBarcode;
 
   const ProductAddForm({
     super.key,
@@ -28,6 +29,7 @@ class ProductAddForm extends StatefulWidget {
     required this.onUploadImage,
     required this.onInsertLog,
     required this.onShowSnackBar,
+    this.initialBarcode,
   });
 
   @override
@@ -54,6 +56,14 @@ class _ProductAddFormState extends State<ProductAddForm> {
   String? _productCategoryError;
   String? _productStockError;
   String? _productPriceError;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialBarcode != null && widget.initialBarcode!.trim().isNotEmpty) {
+      _barcodeCtrl.text = widget.initialBarcode!.trim();
+    }
+  }
 
   static const List<String> _categoryOptions = <String>[
     'Feeds',
@@ -165,6 +175,8 @@ class _ProductAddFormState extends State<ProductAddForm> {
       }
 
       final kiloPriceVal = double.tryParse(_kiloPriceCtrl.text.trim());
+      final catLower = category.toLowerCase();
+      final supportsSubUnitPrice = catLower == 'feeds' || catLower == 'feed' || catLower == 'medicines' || catLower == 'medicine';
 
       final payload = {
         'name': name,
@@ -177,7 +189,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
         'image': imageUrl,
         'sold': 0,
         'is_archived': false,
-        if (category.toLowerCase() == 'feeds' && kiloPriceVal != null && kiloPriceVal > 0)
+        if (supportsSubUnitPrice && kiloPriceVal != null && kiloPriceVal > 0)
           'kilo_price': kiloPriceVal,
       };
 
@@ -501,8 +513,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
                                     _formLabel('BARCODE / UNIQUE ID'),
                                     TextButton.icon(
                                       onPressed: () {
-                                        final gen = 'PIG-' + DateTime.now().millisecondsSinceEpoch.toString().substring(7);
-                                        _barcodeCtrl.text = gen;
+                                        final gen = 'PIG-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
                                         _barcodeCtrl.text = gen;
                                       },
                                       icon: const Icon(Icons.auto_awesome, size: 14),
@@ -625,18 +636,28 @@ class _ProductAddFormState extends State<ProductAddForm> {
                     if (_productPriceError != null) _buildInlineError(_productPriceError!),
                     const SizedBox(height: 12),
 
-                    // Price per Kilo (Feeds only, optional)
-                    if (_categoryCtrl.text.trim().toLowerCase() == 'feeds') ...[
-                      _formLabel('PRICE PER KILO (PHP) - OPTIONAL'),
+                    // Price per Kilo (Feeds) or Price per Tablet (Medicines) - optional
+                    if (_categoryCtrl.text.trim().toLowerCase() == 'feeds' ||
+                        _categoryCtrl.text.trim().toLowerCase() == 'medicines' ||
+                        _categoryCtrl.text.trim().toLowerCase() == 'medicine') ...[
+                      _formLabel(
+                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                            ? 'PRICE PER KILO (PHP) - OPTIONAL'
+                            : 'PRICE PER TABLET (PHP) - OPTIONAL',
+                      ),
                       const SizedBox(height: 4),
                       Text(
-                        'Leave blank if this feed is exclusively sold as whole sacks.',
+                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                            ? 'Leave blank if this feed is exclusively sold as whole sacks.'
+                            : 'Leave blank if this medicine is exclusively sold as whole boxes/packs.',
                         style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 8),
                       _buildInput(
                         _kiloPriceCtrl,
-                        'e.g., 38.00',
+                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                            ? 'e.g., 38.00'
+                            : 'e.g., 15.00',
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
                       ),

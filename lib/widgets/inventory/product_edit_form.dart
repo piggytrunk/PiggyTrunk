@@ -150,7 +150,10 @@ class _ProductEditFormState extends State<ProductEditForm> {
       }
 
       final kiloPriceVal = double.tryParse(_kiloPriceCtrl.text.trim());
-      final isFeed = _selectedCategory.toLowerCase() == 'feeds';
+      final catLower = _selectedCategory.trim().toLowerCase();
+      final isFeed = catLower == 'feeds' || catLower == 'feed';
+      final isMedicine = catLower == 'medicines' || catLower == 'medicine';
+      final supportsSubUnitPrice = isFeed || isMedicine;
 
       final payload = {
         'name': name,
@@ -160,7 +163,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
         'barcode': barcode.isNotEmpty ? barcode : null,
         'price': priceVal,
         'image': imageUrl,
-        if (isFeed && kiloPriceVal != null && kiloPriceVal > 0) 'kilo_price': kiloPriceVal,
+        if (supportsSubUnitPrice) 'kilo_price': (kiloPriceVal != null && kiloPriceVal > 0) ? kiloPriceVal : null,
       };
 
       try {
@@ -192,7 +195,8 @@ class _ProductEditFormState extends State<ProductEditForm> {
       final double oldKilo = widget.product.kiloPrice ?? 0.0;
       final double newKilo = kiloPriceVal ?? 0.0;
       if ((oldKilo - newKilo).abs() > 0.001) {
-        changes.add('Kilo Price: ₱${oldKilo.toStringAsFixed(2)} → ₱${newKilo.toStringAsFixed(2)}');
+        final subLabel = isMedicine ? 'Tablet Price' : 'Kilo Price';
+        changes.add('$subLabel: ₱${oldKilo.toStringAsFixed(2)} → ₱${newKilo.toStringAsFixed(2)}');
       }
       if (widget.product.description != _descriptionCtrl.text.trim()) changes.add('Description updated');
       if (imageUrl != widget.product.image) changes.add('Photo updated');
@@ -470,8 +474,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
                         ),
                         TextButton.icon(
                           onPressed: () {
-                            final gen = 'PIG-' + DateTime.now().millisecondsSinceEpoch.toString().substring(7);
-                            _barcodeCtrl.text = gen;
+                            final gen = 'PIG-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
                             _barcodeCtrl.text = gen;
                           },
                           icon: const Icon(Icons.auto_awesome, size: 14),
@@ -645,10 +648,14 @@ class _ProductEditFormState extends State<ProductEditForm> {
                     ),
                     const SizedBox(height: 18),
 
-                    // Price per Kilo (Feeds only, optional)
-                    if (_selectedCategory.trim().toLowerCase() == 'feeds') ...[
+                    // Price per Kilo (Feeds) or Price per Tablet (Medicines) - optional
+                    if (_selectedCategory.trim().toLowerCase() == 'feeds' ||
+                        _selectedCategory.trim().toLowerCase() == 'medicines' ||
+                        _selectedCategory.trim().toLowerCase() == 'medicine') ...[
                       Text(
-                        'PRICE PER KILO (PHP) - OPTIONAL',
+                        _selectedCategory.trim().toLowerCase() == 'feeds'
+                            ? 'PRICE PER KILO (PHP) - OPTIONAL'
+                            : 'PRICE PER TABLET (PHP) - OPTIONAL',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
@@ -658,7 +665,9 @@ class _ProductEditFormState extends State<ProductEditForm> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Leave blank if this feed is exclusively sold as whole sacks.',
+                        _selectedCategory.trim().toLowerCase() == 'feeds'
+                            ? 'Leave blank if this feed is exclusively sold as whole sacks.'
+                            : 'Leave blank if this medicine is exclusively sold as whole boxes/packs.',
                         style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 6),

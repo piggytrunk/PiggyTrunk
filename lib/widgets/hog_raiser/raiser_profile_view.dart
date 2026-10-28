@@ -100,8 +100,21 @@ class RaiserProfileView extends StatelessWidget {
         : 'HR';
 
     final dateCreated = (row['created_at'] ?? row['date_registered'] ?? row['date_created'])?.toString().split('T').first ?? 'N/A';
-    final stage = (row['lifecycle_stage'] ?? row['current_stage'] ?? 'N/A').toString();
-    final assignedBatch = (row['assigned_batch_name'] ?? row['batch_name'] ?? 'Unassigned').toString();
+    final assignedBatchRaw = (row['assigned_batch_name'] ?? row['batch_name'] ?? '').toString().trim();
+    final assignedBatch = (assignedBatchRaw.isEmpty ||
+            assignedBatchRaw.toUpperCase() == 'N/A' ||
+            assignedBatchRaw.toLowerCase() == 'null')
+        ? 'Unassigned'
+        : assignedBatchRaw;
+
+    final rawStage = (row['lifecycle_stage'] ?? row['current_stage'] ?? '').toString().trim();
+    final stage = (assignedBatch == 'Unassigned' ||
+            pigType == 'Unassigned' ||
+            rawStage.isEmpty ||
+            rawStage.toUpperCase() == 'N/A' ||
+            rawStage.toLowerCase() == 'null')
+        ? 'Unassigned'
+        : rawStage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,6 +192,7 @@ class RaiserProfileView extends StatelessWidget {
 
         // Hero Profile Banner Card
         Container(
+          width: double.infinity,
           padding: EdgeInsets.all(isMobile ? 16 : 24),
           decoration: BoxDecoration(
             color: cardBg,
@@ -297,6 +311,7 @@ class RaiserProfileView extends StatelessWidget {
 
         // Information Grid Card
         Container(
+          width: double.infinity,
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(20),
@@ -316,8 +331,10 @@ class RaiserProfileView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              isMobile
-                  ? Column(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (isMobile || constraints.maxWidth < 560) {
+                    return Column(
                       children: [
                         _buildInfoTile('Phone Number', phone, Icons.phone_outlined, fieldBg, cardBorder, titleColor, mutedColor),
                         const SizedBox(height: 12),
@@ -331,37 +348,43 @@ class RaiserProfileView extends StatelessWidget {
                         const SizedBox(height: 12),
                         _buildInfoTile('Date Registered', dateCreated, Icons.calendar_today_outlined, fieldBg, cardBorder, titleColor, mutedColor),
                       ],
-                    )
-                  : Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
-                      children: [
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Phone Number', phone, Icons.phone_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Address', address, Icons.location_on_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Pig Type', pigType, Icons.pets_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Lifecycle Stage', stage, Icons.timeline_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Assigned Batch', assignedBatch, Icons.inventory_2_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                        SizedBox(
-                          width: 380,
-                          child: _buildInfoTile('Date Registered', dateCreated, Icons.calendar_today_outlined, fieldBg, cardBorder, titleColor, mutedColor),
-                        ),
-                      ],
-                    ),
+                    );
+                  }
+                  final int cols = constraints.maxWidth >= 900 ? 3 : 2;
+                  const double spacing = 16.0;
+                  final double tileWidth = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: [
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Phone Number', phone, Icons.phone_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Address', address, Icons.location_on_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Pig Type', pigType, Icons.pets_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Lifecycle Stage', stage, Icons.timeline_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Assigned Batch', assignedBatch, Icons.inventory_2_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildInfoTile('Date Registered', dateCreated, Icons.calendar_today_outlined, fieldBg, cardBorder, titleColor, mutedColor),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),

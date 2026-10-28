@@ -15,17 +15,20 @@ import '../../utils/app_toast.dart';
 class InventoryQrScannerDialog extends StatefulWidget {
   final List<Product> products;
   final ValueChanged<Product> onProductScanned;
+  final ValueChanged<String>? onNewBarcodeScanned;
 
   const InventoryQrScannerDialog({
     super.key,
     required this.products,
     required this.onProductScanned,
+    this.onNewBarcodeScanned,
   });
 
   static void show(
     BuildContext context, {
     required List<Product> products,
     required ValueChanged<Product> onProductScanned,
+    ValueChanged<String>? onNewBarcodeScanned,
   }) {
     showDialog(
       context: context,
@@ -33,6 +36,7 @@ class InventoryQrScannerDialog extends StatefulWidget {
       builder: (context) => InventoryQrScannerDialog(
         products: products,
         onProductScanned: onProductScanned,
+        onNewBarcodeScanned: onNewBarcodeScanned,
       ),
     );
   }
@@ -52,9 +56,14 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
   static int _viewIdCounter = 0;
   late final String _viewType;
   late final String _containerDivId;
+  html.EventListener? _barcodeEventListener;
+  html.EventListener? _cameraStartedListener;
+  html.EventListener? _cameraErrorListener;
   bool _isCameraActive = false;
   bool _isCameraStarting = false;
   String? _cameraStatusMessage;
+  String? _activeCameraLabel;
+  int _availableCameraCount = 0;
 
   @override
   void initState() {
@@ -70,6 +79,56 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
 
     if (kIsWeb) {
       _registerWebView();
+
+      _barcodeEventListener = (html.Event event) {
+        if (event is html.CustomEvent && event.detail != null) {
+          final code = event.detail.toString().trim();
+          if (code.isNotEmpty && mounted) {
+            _stopWebCamera();
+            _processScannedCode(code);
+          }
+        }
+      };
+
+      _cameraStartedListener = (html.Event event) {
+        if (!mounted) return;
+        String label = 'Laptop Camera';
+        int count = 1;
+        if (event is html.CustomEvent && event.detail != null) {
+          final detail = event.detail.toString();
+          final parts = detail.split('||');
+          if (parts.isNotEmpty && parts[0].trim().isNotEmpty) {
+            label = parts[0].trim();
+          }
+          if (parts.length > 1) {
+            count = int.tryParse(parts[1]) ?? 1;
+          }
+        }
+        setState(() {
+          _isCameraStarting = false;
+          _isCameraActive = true;
+          _cameraStatusMessage = null;
+          _activeCameraLabel = label;
+          _availableCameraCount = count;
+        });
+      };
+
+      _cameraErrorListener = (html.Event event) {
+        if (!mounted) return;
+        String err = 'Camera permission denied or unavailable.';
+        if (event is html.CustomEvent && event.detail != null) {
+          err = event.detail.toString();
+        }
+        setState(() {
+          _isCameraStarting = false;
+          _isCameraActive = false;
+          _cameraStatusMessage = err;
+        });
+      };
+
+      html.window.addEventListener('pt-barcode-scanned', _barcodeEventListener);
+      html.window.addEventListener('pt-camera-started', _cameraStartedListener);
+      html.window.addEventListener('pt-camera-error', _cameraErrorListener);
     }
 
     // Auto-focus input for USB scanner / keyboard
@@ -91,100 +150,278 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     });
   }
 
-  void _startWebCamera() {
+  void _startWebCamera({bool switchNext = false}) {
     if (!kIsWeb) return;
     setState(() {
       _isCameraStarting = true;
-      _cameraStatusMessage = 'Requesting camera access...';
+      _cameraStatusMessage = switchNext ? 'Switching camera...' : 'Starting laptop camera...';
+      _errorMessage = null;
     });
 
     try {
-      // Register callbacks on window
-      js.context['__onBarcodeScannedDart'] = (String text) {
-        _stopWebCamera();
-        _processScannedCode(text);
-      };
-
-      js.context['__onCameraStartedDart'] = () {
-        if (mounted) {
-          setState(() {
-            _isCameraStarting = false;
-            _isCameraActive = true;
-            _cameraStatusMessage = null;
-          });
-        }
-      };
-
-      js.context['__onCameraErrorDart'] = (String error) {
-        if (mounted) {
-          setState(() {
-            _isCameraStarting = false;
-            _isCameraActive = false;
-            _cameraStatusMessage = 'Camera error or permission denied: $error';
-          });
-        }
-      };
-
-      // JS Launcher
+      final doSwitch = switchNext ? 'true' : 'false';
       final script = '''
         (function() {
-          if (typeof Html5Qrcode === 'undefined') {
-            console.error('Html5Qrcode library not found');
-            if (window.__onCameraErrorDart) {
-              window.__onCameraErrorDart('Library not loaded. Please reload page.');
-            }
-            return;
+          // 1. Bridge document.getElementById into Flutter Web's Shadow DOM so Html5Qrcode finds the viewfinder div
+          if (!window.__ptPatchedGetElementById) {
+            window.__ptPatchedGetElementById = true;
+            var origGetById = document.getElementById.bind(document);
+            document.getElementById = function(id) {
+              var el = origGetById(id);
+              if (el) return el;
+              var fv = document.querySelector('flutter-view');
+              if (fv && fv.shadowRoot) {
+                el = fv.shadowRoot.getElementById(id);
+                if (el) return el;
+              }
+              var pvs = document.querySelectorAll('flt-platform-view');
+              for (var i = 0; i < pvs.length; i++) {
+                if (pvs[i].shadowRoot) {
+                  el = pvs[i].shadowRoot.getElementById(id);
+                  if (el) return el;
+                }
+              }
+              return null;
+            };
           }
 
-          try {
-            if (window._currentScanner) {
-              window._currentScanner.stop().catch(function(){}).finally(function() {
-                window._currentScanner.clear();
+          function ensureScannerLibrary() {
+            if (typeof Html5Qrcode !== 'undefined') {
+              return Promise.resolve();
+            }
+            return new Promise(function(resolve, reject) {
+              var s = document.createElement('script');
+              s.src = 'html5-qrcode.min.js';
+              s.onload = function() {
+                if (typeof Html5Qrcode !== 'undefined') {
+                  resolve();
+                } else {
+                  reject(new Error('Library unavailable'));
+                }
+              };
+              s.onerror = function() {
+                var s2 = document.createElement('script');
+                s2.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                s2.onload = function() { resolve(); };
+                s2.onerror = function() { reject(new Error('Failed to load scanner library')); };
+                document.head.appendChild(s2);
+              };
+              document.head.appendChild(s);
+            });
+          }
+
+          function isLaptopBuiltInCam(label) {
+            var l = (label || '').toLowerCase();
+            return l.indexOf('integrated') !== -1 ||
+                   l.indexOf('webcam') !== -1 ||
+                   l.indexOf('uvc') !== -1 ||
+                   l.indexOf('user facing') !== -1 ||
+                   l.indexOf('front') !== -1 ||
+                   l.indexOf('hd camera') !== -1 ||
+                   l.indexOf('usb') !== -1 ||
+                   l.indexOf('realtek') !== -1 ||
+                   l.indexOf('chicony') !== -1 ||
+                   l.indexOf('sunplus') !== -1 ||
+                   l.indexOf('bison') !== -1;
+          }
+
+          function isPhoneOrVirtualCam(label) {
+            var l = (label || '').toLowerCase();
+            return l.indexOf('poco') !== -1 ||
+                   l.indexOf('redmi') !== -1 ||
+                   l.indexOf('xiaomi') !== -1 ||
+                   l.indexOf('samsung') !== -1 ||
+                   l.indexOf('galaxy') !== -1 ||
+                   l.indexOf('iphone') !== -1 ||
+                   l.indexOf('realme') !== -1 ||
+                   l.indexOf('oppo') !== -1 ||
+                   l.indexOf('vivo') !== -1 ||
+                   l.indexOf('infinix') !== -1 ||
+                   l.indexOf('tecno') !== -1 ||
+                   l.indexOf('huawei') !== -1 ||
+                   l.indexOf('honor') !== -1 ||
+                   l.indexOf('pixel') !== -1 ||
+                   l.indexOf('oneplus') !== -1 ||
+                   l.indexOf('5g') !== -1 ||
+                   l.indexOf('phone') !== -1 ||
+                   l.indexOf('link to windows') !== -1 ||
+                   l.indexOf('windows virtual') !== -1 ||
+                   l.indexOf('virtual') !== -1 ||
+                   l.indexOf('droidcam') !== -1 ||
+                   l.indexOf('iriun') !== -1 ||
+                   l.indexOf('epoccam') !== -1 ||
+                   l.indexOf('continuity') !== -1 ||
+                   l.indexOf('mobile') !== -1;
+          }
+
+          function getLaptopCamerasOnly() {
+            return navigator.mediaDevices.enumerateDevices().then(function(allDevices) {
+              var videoInputs = allDevices.filter(function(d) {
+                return d.kind === 'videoinput';
               });
-            }
-          } catch(e) {}
+              var hasLabels = videoInputs.some(function(d) {
+                return d.label && d.label.trim().length > 0;
+              });
 
-          var scanner = new Html5Qrcode("$_containerDivId");
-          window._currentScanner = scanner;
-
-          var config = {
-            fps: 15,
-            qrbox: { width: 260, height: 160 },
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.QR_CODE
-            ]
-          };
-
-          scanner.start(
-            { facingMode: "environment" },
-            config,
-            function onScanSuccess(decodedText) {
-              if (window.__onBarcodeScannedDart) {
-                window.__onBarcodeScannedDart(decodedText);
+              if (hasLabels) {
+                // Totally remove any Phone Link / mobile / virtual cameras
+                var laptopOnly = videoInputs.filter(function(d) {
+                  return !isPhoneOrVirtualCam(d.label);
+                });
+                return laptopOnly.map(function(d) {
+                  return { id: d.deviceId, label: d.label };
+                });
               }
-            },
-            function onScanFailure(error) {
-              // Ignore frame decode errors
+
+              // If labels are hidden before permission, request front/user camera (laptop webcam)
+              // instead of generic {video: true} so Windows does not trigger Phone Link
+              return navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user' },
+                audio: false
+              }).then(function(stream) {
+                stream.getTracks().forEach(function(t) { t.stop(); });
+                return navigator.mediaDevices.enumerateDevices();
+              }).then(function(unlockedDevices) {
+                var laptopOnly = unlockedDevices.filter(function(d) {
+                  return d.kind === 'videoinput' && !isPhoneOrVirtualCam(d.label);
+                });
+                return laptopOnly.map(function(d) {
+                  return { id: d.deviceId, label: d.label };
+                });
+              });
+            });
+          }
+
+          function stopCurrentScanner() {
+            if (window.__ptNativeTimer) {
+              clearInterval(window.__ptNativeTimer);
+              window.__ptNativeTimer = null;
             }
-          ).then(function() {
-            if (window.__onCameraStartedDart) {
-              window.__onCameraStartedDart();
+            if (window._currentScanner) {
+              var old = window._currentScanner;
+              window._currentScanner = null;
+              try {
+                return old.stop().catch(function(){}).then(function() {
+                  try { old.clear(); } catch (_) {}
+                });
+              } catch (e) {}
             }
+            return Promise.resolve();
+          }
+
+          ensureScannerLibrary().then(function() {
+            return stopCurrentScanner();
+          }).then(function() {
+            return getLaptopCamerasOnly();
+          }).then(function(devices) {
+            if (!devices || devices.length === 0) {
+              window.dispatchEvent(new CustomEvent('pt-camera-error', {
+                detail: 'No built-in laptop webcam found (Phone camera disabled). Check if your laptop webcam is enabled.'
+              }));
+              return;
+            }
+
+            // Sort remaining laptop/USB cameras so Integrated Webcam is first
+            var sorted = devices.slice().sort(function(a, b) {
+              var aScore = isLaptopBuiltInCam(a.label) ? 0 : 1;
+              var bScore = isLaptopBuiltInCam(b.label) ? 0 : 1;
+              return aScore - bScore;
+            });
+
+            if (typeof window.__ptCamIndex !== 'number') {
+              window.__ptCamIndex = 0;
+            }
+            if ($doSwitch) {
+              window.__ptCamIndex = (window.__ptCamIndex + 1) % sorted.length;
+            } else {
+              window.__ptCamIndex = 0;
+            }
+
+            var chosen = sorted[window.__ptCamIndex] || sorted[0];
+            var chosenLabel = chosen.label || ('Camera ' + (window.__ptCamIndex + 1));
+
+            var container = document.getElementById("$_containerDivId");
+            if (!container) {
+              window.dispatchEvent(new CustomEvent('pt-camera-error', {
+                detail: 'Camera view initializing. Please click Turn On Camera again.'
+              }));
+              return;
+            }
+
+            var scanner = new Html5Qrcode("$_containerDivId");
+            window._currentScanner = scanner;
+
+            var config = {
+              fps: 20,
+              disableFlip: false,
+              experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+              },
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.QR_CODE
+              ]
+            };
+
+            scanner.start(
+              { deviceId: { exact: chosen.id } },
+              config,
+              function onScanSuccess(decodedText) {
+                if (decodedText) {
+                  window.dispatchEvent(new CustomEvent('pt-barcode-scanned', {
+                    detail: decodedText
+                  }));
+                }
+              },
+              function onScanFailure(_) {}
+            ).then(function() {
+              // Style the internal video so it fills the viewfinder cleanly
+              var videoEl = container.querySelector('video');
+              if (videoEl) {
+                videoEl.style.width = '100%';
+                videoEl.style.height = '100%';
+                videoEl.style.objectFit = 'cover';
+              }
+
+              // Also run native BarcodeDetector in parallel if supported by browser
+              if ('BarcodeDetector' in window && videoEl) {
+                try {
+                  var detector = new BarcodeDetector({
+                    formats: ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_39', 'qr_code']
+                  });
+                  window.__ptNativeTimer = setInterval(function() {
+                    if (!videoEl || videoEl.readyState < 2) return;
+                    detector.detect(videoEl).then(function(codes) {
+                      if (codes && codes.length > 0 && codes[0].rawValue) {
+                        window.dispatchEvent(new CustomEvent('pt-barcode-scanned', {
+                          detail: codes[0].rawValue
+                        }));
+                      }
+                    }).catch(function(){});
+                  }, 200);
+                } catch (_) {}
+              }
+
+              window.dispatchEvent(new CustomEvent('pt-camera-started', {
+                detail: chosenLabel + '||' + sorted.length
+              }));
+            }).catch(function(err) {
+              window.dispatchEvent(new CustomEvent('pt-camera-error', {
+                detail: 'Could not start ' + chosenLabel + ': ' + (err && err.message ? err.message : String(err))
+              }));
+            });
           }).catch(function(err) {
-            console.error("Camera start error: ", err);
-            if (window.__onCameraErrorDart) {
-              window.__onCameraErrorDart(err ? err.toString() : 'Camera access denied');
-            }
+            window.dispatchEvent(new CustomEvent('pt-camera-error', {
+              detail: 'Camera permission denied or unavailable.'
+            }));
           });
         })();
       ''';
-
       js.context.callMethod('eval', [script]);
     } catch (e) {
       setState(() {
@@ -194,19 +431,32 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     }
   }
 
-  void _stopWebCamera() {
-    if (!kIsWeb) return;
+  void _stopMediaTracksOnly() {
     try {
       final script = '''
-        if (window._currentScanner) {
-          window._currentScanner.stop().catch(function(){}).finally(function() {
-            window._currentScanner.clear();
+        (function() {
+          if (window.__ptNativeTimer) {
+            clearInterval(window.__ptNativeTimer);
+            window.__ptNativeTimer = null;
+          }
+          if (window._currentScanner) {
+            var old = window._currentScanner;
             window._currentScanner = null;
-          });
-        }
+            try {
+              old.stop().catch(function(){}).finally(function() {
+                try { old.clear(); } catch (_) {}
+              });
+            } catch (e) {}
+          }
+        })();
       ''';
       js.context.callMethod('eval', [script]);
     } catch (_) {}
+  }
+
+  void _stopWebCamera() {
+    if (!kIsWeb) return;
+    _stopMediaTracksOnly();
     if (mounted) {
       setState(() {
         _isCameraActive = false;
@@ -215,13 +465,135 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     }
   }
 
+  void _scanFromImageFile() {
+    if (!kIsWeb) return;
+    setState(() {
+      _errorMessage = null;
+      _cameraStatusMessage = null;
+    });
+
+    try {
+      final script = '''
+        (function() {
+          function ensureScannerLibrary() {
+            if (typeof Html5Qrcode !== 'undefined') {
+              return Promise.resolve();
+            }
+            return new Promise(function(resolve, reject) {
+              var s = document.createElement('script');
+              s.src = 'html5-qrcode.min.js';
+              s.onload = function() { resolve(); };
+              s.onerror = function() {
+                var s2 = document.createElement('script');
+                s2.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                s2.onload = function() { resolve(); };
+                s2.onerror = function() { reject(new Error('Failed to load scanner library')); };
+                document.head.appendChild(s2);
+              };
+              document.head.appendChild(s);
+            });
+          }
+
+          var input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = function(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+
+            ensureScannerLibrary().then(function() {
+              // 1. Try native BarcodeDetector on ImageBitmap first if available
+              if ('BarcodeDetector' in window && typeof createImageBitmap === 'function') {
+                createImageBitmap(file).then(function(bmp) {
+                  var detector = new BarcodeDetector({
+                    formats: ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_39', 'qr_code']
+                  });
+                  return detector.detect(bmp);
+                }).then(function(codes) {
+                  if (codes && codes.length > 0 && codes[0].rawValue) {
+                    window.dispatchEvent(new CustomEvent('pt-barcode-scanned', {
+                      detail: codes[0].rawValue
+                    }));
+                    return;
+                  }
+                  scanFileWithHtml5Qr(file);
+                }).catch(function() {
+                  scanFileWithHtml5Qr(file);
+                });
+              } else {
+                scanFileWithHtml5Qr(file);
+              }
+            }).catch(function(err) {
+              window.dispatchEvent(new CustomEvent('pt-camera-error', {
+                detail: 'Could not read image file: ' + (err && err.message ? err.message : String(err))
+              }));
+            });
+          };
+          input.click();
+
+          function scanFileWithHtml5Qr(file) {
+            var workerId = '__pt_file_qr_worker';
+            var workerDiv = document.getElementById(workerId);
+            if (!workerDiv) {
+              workerDiv = document.createElement('div');
+              workerDiv.id = workerId;
+              workerDiv.style.position = 'fixed';
+              workerDiv.style.left = '-9999px';
+              workerDiv.style.top = '-9999px';
+              workerDiv.style.width = '800px';
+              workerDiv.style.height = '600px';
+              document.body.appendChild(workerDiv);
+            }
+            var fileScanner = new Html5Qrcode(workerId);
+            fileScanner.scanFile(file, false).then(function(decodedText) {
+              if (decodedText) {
+                window.dispatchEvent(new CustomEvent('pt-barcode-scanned', {
+                  detail: decodedText
+                }));
+              }
+            }).catch(function() {
+              window.dispatchEvent(new CustomEvent('pt-camera-error', {
+                detail: 'No valid barcode or QR code found in the selected image.'
+              }));
+            });
+          }
+        })();
+      ''';
+      js.context.callMethod('eval', [script]);
+    } catch (e) {
+      setState(() {
+        _cameraStatusMessage = 'Failed to scan image: $e';
+      });
+    }
+  }
+
   @override
   void dispose() {
-    _stopWebCamera();
+    if (kIsWeb) {
+      if (_barcodeEventListener != null) {
+        html.window.removeEventListener('pt-barcode-scanned', _barcodeEventListener);
+      }
+      if (_cameraStartedListener != null) {
+        html.window.removeEventListener('pt-camera-started', _cameraStartedListener);
+      }
+      if (_cameraErrorListener != null) {
+        html.window.removeEventListener('pt-camera-error', _cameraErrorListener);
+      }
+    }
+    _stopMediaTracksOnly();
     _laserAnimCtrl.dispose();
     _manualCodeCtrl.dispose();
     _inputFocusNode.dispose();
     super.dispose();
+  }
+
+  String _fallbackBarcodeForProduct(Product p) {
+    if (p.barcode != null && p.barcode!.trim().isNotEmpty) {
+      return p.barcode!.trim();
+    }
+    final cleanId = p.id.replaceAll('-', '');
+    final shortId = cleanId.length > 8 ? cleanId.substring(0, 8).toUpperCase() : cleanId.toUpperCase();
+    return 'PIG-$shortId';
   }
 
   void _processScannedCode(String rawCode) {
@@ -235,13 +607,15 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
 
     Product? matched;
     try {
-      matched = widget.products.firstWhere(
-        (p) =>
-            (p.barcode != null && p.barcode!.toLowerCase() == targetId.toLowerCase()) ||
+      matched = widget.products.firstWhere((p) {
+        final fallbackCode = _fallbackBarcodeForProduct(p).toLowerCase();
+        return (p.barcode != null && p.barcode!.toLowerCase() == targetId.toLowerCase()) ||
+            fallbackCode == targetId.toLowerCase() ||
+            fallbackCode == clean.toLowerCase() ||
             p.id.toLowerCase() == targetId.toLowerCase() ||
             p.name.toLowerCase() == clean.toLowerCase() ||
-            (p.barcode != null && p.barcode!.toLowerCase() == clean.toLowerCase()),
-      );
+            (p.barcode != null && p.barcode!.toLowerCase() == clean.toLowerCase());
+      });
     } catch (_) {
       matched = null;
     }
@@ -250,6 +624,13 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
       Navigator.of(context).pop();
       AppToast.success(context, 'Identified Product: ${matched.name}');
       widget.onProductScanned(matched);
+    } else if (widget.onNewBarcodeScanned != null) {
+      Navigator.of(context).pop();
+      AppToast.info(
+        context,
+        'New Barcode Scanned ($targetId) — Fill in details to add this product!',
+      );
+      widget.onNewBarcodeScanned!(targetId);
     } else {
       setState(() {
         _errorMessage = 'No product found with Barcode/ID: "$clean"';
@@ -345,9 +726,15 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                   alignment: Alignment.center,
                   children: [
                     // The Real Live Web Camera Stream View (HTML5 Element)
+                    // Wrapped in IgnorePointer so it never intercepts clicks on Flutter overlay buttons
                     if (kIsWeb)
                       Positioned.fill(
-                        child: HtmlElementView(viewType: _viewType),
+                        child: IgnorePointer(
+                          child: Opacity(
+                            opacity: _isCameraActive ? 1.0 : 0.01,
+                            child: HtmlElementView(viewType: _viewType),
+                          ),
+                        ),
                       ),
 
                     // Placeholder graphic when camera is off
@@ -368,35 +755,73 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                         ),
                       ),
                       Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_isCameraStarting) ...[
-                              const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                              const SizedBox(height: 10),
-                              Text(
-                                _cameraStatusMessage ?? 'Starting Camera...',
-                                style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
-                              ),
-                            ] else ...[
-                              ElevatedButton.icon(
-                                onPressed: _startWebCamera,
-                                icon: const Icon(Icons.videocam_rounded, size: 18),
-                                label: const Text('Turn On Camera'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: PiggyTrunkTheme.ptSuccess,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_isCameraStarting) ...[
+                                const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                const SizedBox(height: 10),
+                                Text(
+                                  _cameraStatusMessage ?? 'Starting Camera...',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Or use hardware USB scanner / type below',
-                                style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 11),
-                              ),
+                              ] else ...[
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: _startWebCamera,
+                                      icon: const Icon(Icons.videocam_rounded, size: 18),
+                                      label: const Text('Turn On Camera'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: PiggyTrunkTheme.ptSuccess,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: _scanFromImageFile,
+                                      icon: const Icon(Icons.image_search_rounded, size: 17),
+                                      label: const Text('Scan Image'),
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                                        foregroundColor: Colors.white,
+                                        side: const BorderSide(color: Colors.white38),
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_cameraStatusMessage != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _cameraStatusMessage!,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: PiggyTrunkTheme.ptAccent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ] else ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Or use hardware USB scanner / type below',
+                                    style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 11),
+                                  ),
+                                ],
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ],
@@ -430,27 +855,77 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                     if (_isCameraActive)
                       Positioned(
                         top: 10,
+                        left: 10,
                         right: 10,
-                        child: InkWell(
-                          onTap: _stopWebCamera,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.videocam_off_rounded, size: 14, color: Colors.white),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Stop Camera',
-                                  style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 11),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Active Camera Label / Switch Camera Button
+                            Flexible(
+                              child: InkWell(
+                                onTap: _availableCameraCount > 1
+                                    ? () => _startWebCamera(switchNext: true)
+                                    : null,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.65),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _availableCameraCount > 1
+                                            ? Icons.cameraswitch_rounded
+                                            : Icons.videocam_rounded,
+                                        size: 14,
+                                        color: PiggyTrunkTheme.ptSuccess,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Flexible(
+                                        child: Text(
+                                          _availableCameraCount > 1
+                                              ? '${_activeCameraLabel ?? "Laptop Camera"} (Switch)'
+                                              : (_activeCameraLabel ?? 'Laptop Camera'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            // Stop Camera Button
+                            InkWell(
+                              onTap: _stopWebCamera,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.videocam_off_rounded, size: 14, color: Colors.white),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Stop Camera',
+                                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
