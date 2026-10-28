@@ -37,6 +37,7 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     with SingleTickerProviderStateMixin {
   late AnimationController _laserAnimCtrl;
   final TextEditingController _manualCodeCtrl = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
   String? _errorMessage;
 
   @override
@@ -46,12 +47,18 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+
+    // Auto-focus the input text field so a USB barcode scanner immediately inputs here
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _inputFocusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
     _laserAnimCtrl.dispose();
     _manualCodeCtrl.dispose();
+    _inputFocusNode.dispose();
     super.dispose();
   }
 
@@ -59,7 +66,7 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     final clean = rawCode.trim();
     if (clean.isEmpty) return;
 
-    // Support both standardized prefix 'PIGGYTRUNK:PRODUCT:<id>' and direct product IDs
+    // Support both standardized prefix 'PIGGYTRUNK:PRODUCT:<id>' and direct product IDs / Barcodes
     String targetId = clean;
     if (clean.startsWith('PIGGYTRUNK:PRODUCT:')) {
       targetId = clean.replaceFirst('PIGGYTRUNK:PRODUCT:', '');
@@ -69,8 +76,11 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
     try {
       matched = widget.products.firstWhere(
         (p) =>
+            (p.barcode != null && p.barcode!.toLowerCase() == targetId.toLowerCase()) ||
             p.id.toLowerCase() == targetId.toLowerCase() ||
-            p.name.toLowerCase() == clean.toLowerCase(),
+            p.name.toLowerCase() == clean.toLowerCase() ||
+            // Also match if clean starts with 'PIG-'
+            (p.barcode != null && p.barcode!.toLowerCase() == clean.toLowerCase()),
       );
     } catch (_) {
       matched = null;
@@ -78,11 +88,11 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
 
     if (matched != null) {
       Navigator.of(context).pop();
-      AppToast.success(context, 'Scanned: ${matched.name}');
+      AppToast.success(context, 'Identified Product: ${matched.name}');
       widget.onProductScanned(matched);
     } else {
       setState(() {
-        _errorMessage = 'No product found matching code: "$clean"';
+        _errorMessage = 'No product found with Barcode/ID: "$clean"';
       });
     }
   }
@@ -99,7 +109,7 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
-        width: 380,
+        width: 420,
         decoration: BoxDecoration(
           color: cardBg,
           borderRadius: BorderRadius.circular(20),
@@ -137,7 +147,7 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      'Scan Product QR Code',
+                      'Scan Product Barcode / ID',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -155,105 +165,54 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Animated Scanner Viewport
+            // Barcode Laser Scanner Viewfinder Animation
             Container(
-              width: 240,
-              height: 220,
+              height: 150,
+              width: double.infinity,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F1724) : const Color(0xFF1E293B),
+                color: const Color(0xFF0F172A),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.5),
-                  width: 1.5,
-                ),
+                border: Border.all(color: const Color(0xFF334155), width: 1.5),
               ),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Corner target indicators
-                  Positioned(
-                    top: 24,
-                    left: 24,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                          left: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 24,
-                    right: 24,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                          right: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 24,
-                    left: 24,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                          left: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 24,
-                    right: 24,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                          right: BorderSide(color: PiggyTrunkTheme.ptSuccess, width: 3),
-                        ),
-                      ),
+                  // Stylized 1D Barcode Graphic
+                  Opacity(
+                    opacity: 0.35,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(28, (i) {
+                        final isThick = i % 3 == 0;
+                        return Container(
+                          width: isThick ? 4.5 : 2.0,
+                          height: 70,
+                          margin: const EdgeInsets.symmetric(horizontal: 2.2),
+                          color: Colors.white,
+                        );
+                      }),
                     ),
                   ),
 
-                  // Center QR Icon
-                  Icon(
-                    Icons.qr_code_2_rounded,
-                    size: 80,
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-
-                  // Animated Scanning Laser Line
+                  // Red Laser Line Animation
                   AnimatedBuilder(
                     animation: _laserAnimCtrl,
                     builder: (context, child) {
                       return Positioned(
-                        top: 30 + (_laserAnimCtrl.value * 140),
-                        left: 28,
-                        right: 28,
+                        top: 25 + (_laserAnimCtrl.value * 95),
+                        left: 20,
+                        right: 20,
                         child: Container(
-                          height: 2,
+                          height: 2.5,
                           decoration: BoxDecoration(
-                            color: PiggyTrunkTheme.ptSuccess,
+                            color: PiggyTrunkTheme.ptAccent,
                             boxShadow: [
                               BoxShadow(
-                                color: PiggyTrunkTheme.ptSuccess.withValues(alpha: 0.8),
-                                blurRadius: 8,
-                                spreadRadius: 1,
+                                color: PiggyTrunkTheme.ptAccent.withValues(alpha: 0.85),
+                                blurRadius: 10,
+                                spreadRadius: 1.5,
                               ),
                             ],
                           ),
@@ -262,14 +221,22 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                     },
                   ),
 
+                  // Helper text on bottom of viewfinder
                   Positioned(
-                    bottom: 12,
-                    child: Text(
-                      'Ready to scan product barcode or QR',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10.5,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w600,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Point USB Barcode Scanner or Camera',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -278,17 +245,30 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
             ),
             const SizedBox(height: 16),
 
-            // Quick Simulator / Barcode Input for Localhost & Manual Entry
+            // Barcode Input Box (Ready for Hardware Scanner or Keyboard Entry)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Or Enter/Paste Product Code:',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: mutedColor,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Scan or Enter Barcode / Product ID:',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: titleColor,
+                      ),
+                    ),
+                    Text(
+                      'Auto-listens to scanner',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: PiggyTrunkTheme.ptSuccess,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -296,13 +276,17 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                     Expanded(
                       child: TextField(
                         controller: _manualCodeCtrl,
+                        focusNode: _inputFocusNode,
+                        autofocus: true,
                         onSubmitted: _processScannedCode,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
+                        style: GoogleFonts.sourceCodePro(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
                           color: titleColor,
                         ),
                         decoration: InputDecoration(
-                          hintText: 'e.g. paste QR code or product name...',
+                          prefixIcon: const Icon(Icons.barcode_reader, size: 20),
+                          hintText: 'e.g. 480016624912 or PIG-FEED-01...',
                           hintStyle: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             color: mutedColor,
@@ -334,14 +318,14 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                         foregroundColor: isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                         elevation: 0,
                       ),
                       child: Text(
-                        'Find',
+                        'Identify',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -355,32 +339,53 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
 
             if (_errorMessage != null) ...[
               const SizedBox(height: 10),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  color: PiggyTrunkTheme.ptAccent,
-                  fontWeight: FontWeight.w600,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: PiggyTrunkTheme.ptAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: PiggyTrunkTheme.ptAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
 
             const SizedBox(height: 16),
-            // Quick Demo Buttons for existing items on Localhost
+            // Quick Demo Chips for testing on localhost
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Quick Test on Localhost:',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: mutedColor,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: widget.products.take(3).map((p) {
+              children: widget.products.take(4).map((p) {
+                final codeToUse = p.barcode ?? p.id;
                 return ActionChip(
                   label: Text(
-                    p.name,
+                    p.barcode != null ? '${p.name} (${p.barcode})' : p.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(fontSize: 11),
                   ),
-                  avatar: const Icon(Icons.qr_code_2_rounded, size: 14),
-                  onPressed: () => _processScannedCode(p.id),
+                  avatar: const Icon(Icons.qr_code_scanner_rounded, size: 14),
+                  onPressed: () => _processScannedCode(codeToUse),
                 );
               }).toList(),
             ),

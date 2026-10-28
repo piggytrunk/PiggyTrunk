@@ -38,6 +38,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _barcodeCtrl = TextEditingController();
   final TextEditingController _categoryCtrl = TextEditingController(text: 'Feeds');
   final TextEditingController _descriptionCtrl = TextEditingController();
   final TextEditingController _priceCtrl = TextEditingController();
@@ -76,6 +77,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _barcodeCtrl.dispose();
     _categoryCtrl.dispose();
     _descriptionCtrl.dispose();
     _priceCtrl.dispose();
@@ -107,6 +109,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
   Future<void> _submitAddProduct() async {
     if (_isSubmitting) return;
     final name = _nameCtrl.text.trim();
+    final barcode = _barcodeCtrl.text.trim();
     final category = _categoryCtrl.text.trim();
     final description = _descriptionCtrl.text.trim();
     final priceInt = int.tryParse(_priceCtrl.text.trim());
@@ -168,6 +171,7 @@ class _ProductAddFormState extends State<ProductAddForm> {
         'category_id': category.toLowerCase().replaceAll(' ', '_'),
         'category': category,
         'description': description,
+        'barcode': barcode.isNotEmpty ? barcode : null,
         'price': validatedPrice.toDouble(),
         'units': validatedUnits,
         'image': imageUrl,
@@ -490,6 +494,35 @@ class _ProductAddFormState extends State<ProductAddForm> {
                                 },
                               ),
                               if (_productNameError != null) _buildInlineError(_productNameError!),
+                                const SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _formLabel('BARCODE / UNIQUE ID'),
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        final gen = 'PIG-' + DateTime.now().millisecondsSinceEpoch.toString().substring(7);
+                                        _barcodeCtrl.text = gen;
+                                        _barcodeCtrl.text = gen;
+                                      },
+                                      icon: const Icon(Icons.auto_awesome, size: 14),
+                                      label: Text(
+                                        'Auto-Generate',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: PiggyTrunkTheme.ptSuccess,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                _buildInput(
+                                  _barcodeCtrl,
+                                  'e.g., 480016624912 or FEED-001',
+                                  textCapitalization: TextCapitalization.characters,
+                                ),
                               const SizedBox(height: 12),
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,

@@ -37,6 +37,7 @@ class Product {
   final String description;
   final double price;
   final double? kiloPrice;
+  final String? barcode;
   final int units;
   final int sold;
   final DateTime createdAt;
@@ -51,6 +52,7 @@ class Product {
     required this.description,
     required this.price,
     this.kiloPrice,
+    this.barcode,
     required this.units,
     required this.sold,
     required this.createdAt,
@@ -71,6 +73,7 @@ class Product {
     final rawUnits = json['units'];
     final rawSold = json['sold'];
     final rawKiloPrice = json['kilo_price'] ?? json['retail_kilo_price'] ?? json['price_per_kilo'];
+    final rawBarcode = json['barcode'] ?? json['sku'];
 
     return Product(
       id: (json['id'] ?? '').toString(),
@@ -83,6 +86,7 @@ class Product {
       kiloPrice: rawKiloPrice is num
           ? rawKiloPrice.toDouble()
           : (rawKiloPrice != null ? double.tryParse(rawKiloPrice.toString()) : null),
+      barcode: rawBarcode?.toString().trim().isNotEmpty == true ? rawBarcode.toString().trim() : null,
       units: rawUnits is num ? rawUnits.toInt() : int.tryParse(rawUnits?.toString() ?? '0') ?? 0,
       sold: rawSold is num ? rawSold.toInt() : int.tryParse(rawSold?.toString() ?? '0') ?? 0,
       createdAt: json['created_at'] != null
@@ -102,6 +106,7 @@ class Product {
       'description': description,
       'price': price,
       'kilo_price': kiloPrice,
+      'barcode': barcode,
       'units': units,
       'sold': sold,
       'created_at': createdAt.toIso8601String(),

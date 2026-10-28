@@ -58,7 +58,6 @@ class InventoryExportService {
     }
 
     final csvString = const ListToCsvConverter().convert(rows);
-    // Add UTF-8 BOM (0xEF, 0xBB, 0xBF) so Excel & Sheets open accents / formatting cleanly
     final bytes = Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(csvString)]);
 
     final now = DateTime.now();
@@ -73,10 +72,9 @@ class InventoryExportService {
     );
   }
 
-  /// Exports products list to clean, professional branded PDF report
-  static Future<void> exportToPdf(
+  /// Generates the simple, clean PDF document fitted solely for standard A4 Portrait
+  static Future<Uint8List> generateInventoryPdfBytes(
     List<Product> products, {
-    String filenamePrefix = 'inventory_catalog_report',
     String? adminEmail,
   }) async {
     final pdf = pw.Document();
@@ -98,18 +96,19 @@ class InventoryExportService {
     final successColor = PdfColor.fromHex('2FB36F');
     final warningColor = PdfColor.fromHex('FFA566');
     final darkTextColor = PdfColor.fromHex('18314F');
+    final mutedTextColor = PdfColor.fromHex('64748B');
     final lightBgColor = PdfColor.fromHex('F8FAFC');
     final tableBorderColor = PdfColor.fromHex('E2E8F0');
 
-    // Build multi-page document with automated pagination
+    // Clean, simple A4 Portrait document
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 22),
         header: (context) {
-          // Simple, clean header without subtitle
+          // Simple clean text title and date
           return pw.Container(
-            padding: const pw.EdgeInsets.only(bottom: 12),
+            padding: const pw.EdgeInsets.only(bottom: 10),
             decoration: pw.BoxDecoration(
               border: pw.Border(bottom: pw.BorderSide(color: primaryColor, width: 2)),
             ),
@@ -120,7 +119,7 @@ class InventoryExportService {
                 pw.Text(
                   'Piggy Trunk - Inventory Report',
                   style: pw.TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: pw.FontWeight.bold,
                     color: primaryColor,
                   ),
@@ -128,8 +127,8 @@ class InventoryExportService {
                 pw.Text(
                   'Generated: $formattedDate',
                   style: pw.TextStyle(
-                    fontSize: 10,
-                    color: PdfColor.fromHex('64748B'),
+                    fontSize: 9.5,
+                    color: mutedTextColor,
                   ),
                 ),
               ],
@@ -149,14 +148,14 @@ class InventoryExportService {
                   adminEmail != null && adminEmail.isNotEmpty
                       ? 'Exported by: $adminEmail'
                       : 'Piggy Trunk Swine Management System',
-                  style: pw.TextStyle(fontSize: 8.5, color: PdfColor.fromHex('94A3B8')),
+                  style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('94A3B8')),
                 ),
                 pw.Text(
                   'Page ${context.pageNumber} of ${context.pagesCount}',
                   style: pw.TextStyle(
-                    fontSize: 8.5,
+                    fontSize: 8,
                     fontWeight: pw.FontWeight.bold,
-                    color: PdfColor.fromHex('64748B'),
+                    color: mutedTextColor,
                   ),
                 ),
               ],
@@ -165,9 +164,10 @@ class InventoryExportService {
         },
         build: (context) => [
           pw.SizedBox(height: 10),
-          // Metric Summary Cards
+
+          // Simple Summary KPI Bar
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
             decoration: pw.BoxDecoration(
               color: lightBgColor,
               borderRadius: pw.BorderRadius.circular(6),
@@ -188,9 +188,9 @@ class InventoryExportService {
               ],
             ),
           ),
-          pw.SizedBox(height: 14),
+          pw.SizedBox(height: 12),
 
-          // Inventory Table
+          // Simple, clean A4 Portrait Table
           pw.TableHelper.fromTextArray(
             headers: [
               '#',
@@ -202,14 +202,24 @@ class InventoryExportService {
               'Total Value',
               'Status',
             ],
+            columnWidths: {
+              0: const pw.FixedColumnWidth(22),
+              1: const pw.FlexColumnWidth(3.0),
+              2: const pw.FlexColumnWidth(1.6),
+              3: const pw.FlexColumnWidth(1.6),
+              4: const pw.FlexColumnWidth(1.1),
+              5: const pw.FlexColumnWidth(1.1),
+              6: const pw.FlexColumnWidth(1.8),
+              7: const pw.FlexColumnWidth(1.4),
+            },
             headerStyle: pw.TextStyle(
-              fontSize: 9.5,
+              fontSize: 8.5,
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.white,
             ),
             headerDecoration: pw.BoxDecoration(
               color: primaryColor,
-              borderRadius: pw.BorderRadius.circular(4),
+              borderRadius: pw.BorderRadius.circular(3),
             ),
             cellAlignment: pw.Alignment.centerLeft,
             cellAlignments: {
@@ -228,8 +238,8 @@ class InventoryExportService {
               6: pw.Alignment.centerRight,
               7: pw.Alignment.center,
             },
-            cellStyle: pw.TextStyle(fontSize: 8.5, color: darkTextColor),
-            cellPadding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+            cellStyle: pw.TextStyle(fontSize: 8, color: darkTextColor),
+            cellPadding: const pw.EdgeInsets.symmetric(vertical: 4.5, horizontal: 5),
             oddRowDecoration: pw.BoxDecoration(color: lightBgColor),
             data: List<List<dynamic>>.generate(products.length, (index) {
               final p = products[index];
@@ -261,7 +271,18 @@ class InventoryExportService {
       ),
     );
 
-    final pdfBytes = await pdf.save();
+    return pdf.save();
+  }
+
+  /// Exports products list to clean, professional branded PDF report
+  static Future<void> exportToPdf(
+    List<Product> products, {
+    String filenamePrefix = 'inventory_catalog_report',
+    String? adminEmail,
+  }) async {
+    final pdfBytes = await generateInventoryPdfBytes(products, adminEmail: adminEmail);
+
+    final now = DateTime.now();
     final dateSuffix =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final filename = '${filenamePrefix}_$dateSuffix.pdf';
@@ -280,7 +301,7 @@ class InventoryExportService {
         pw.Text(
           label,
           style: pw.TextStyle(
-            fontSize: 8,
+            fontSize: 7.5,
             color: PdfColor.fromHex('64748B'),
             fontWeight: pw.FontWeight.bold,
           ),
@@ -289,7 +310,7 @@ class InventoryExportService {
         pw.Text(
           value,
           style: pw.TextStyle(
-            fontSize: 10.5,
+            fontSize: 9.5,
             fontWeight: pw.FontWeight.bold,
             color: valueColor,
           ),

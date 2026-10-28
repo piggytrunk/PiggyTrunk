@@ -41,6 +41,7 @@ class ProductEditForm extends StatefulWidget {
 
 class _ProductEditFormState extends State<ProductEditForm> {
   late final TextEditingController _nameCtrl;
+  late final TextEditingController _barcodeCtrl;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _kiloPriceCtrl;
   late final TextEditingController _descriptionCtrl;
@@ -78,6 +79,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.product.name);
+    _barcodeCtrl = TextEditingController(text: widget.product.barcode ?? '');
     _selectedCategory = widget.product.category.isNotEmpty ? widget.product.category : 'Feeds';
     final priceStr = widget.product.price % 1 == 0
         ? widget.product.price.toInt().toString()
@@ -94,6 +96,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _barcodeCtrl.dispose();
     _priceCtrl.dispose();
     _kiloPriceCtrl.dispose();
     _descriptionCtrl.dispose();
@@ -123,6 +126,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
 
   Future<void> _submitSave() async {
     final name = _nameCtrl.text.trim();
+    final barcode = _barcodeCtrl.text.trim();
     final priceVal = double.tryParse(_priceCtrl.text.trim());
     if (name.isEmpty) {
       setState(() => _nameError = 'Product name is required.');
@@ -153,6 +157,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
         'category_id': _selectedCategory.toLowerCase().replaceAll(' ', '_'),
         'category': _selectedCategory,
         'description': _descriptionCtrl.text.trim(),
+        'barcode': barcode.isNotEmpty ? barcode : null,
         'price': priceVal,
         'image': imageUrl,
         if (isFeed && kiloPriceVal != null && kiloPriceVal > 0) 'kilo_price': kiloPriceVal,
@@ -450,6 +455,63 @@ class _ProductEditFormState extends State<ProductEditForm> {
                         ),
                       ),
                     ],
+                    // Barcode / Unique ID Field
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'BARCODE / UNIQUE ID',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: _mutedColor,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            final gen = 'PIG-' + DateTime.now().millisecondsSinceEpoch.toString().substring(7);
+                            _barcodeCtrl.text = gen;
+                            _barcodeCtrl.text = gen;
+                          },
+                          icon: const Icon(Icons.auto_awesome, size: 14),
+                          label: Text(
+                            'Auto-Generate',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: PiggyTrunkTheme.ptSuccess,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _barcodeCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: _fieldText,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 480016624912 or FEED-001',
+                        hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13),
+                        filled: true,
+                        fillColor: _fieldBg,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _fieldBorder, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: PiggyTrunkTheme.ptPrimary, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
                     const SizedBox(height: 18),
 
                     // Row: Category & Unit Price

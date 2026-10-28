@@ -12,6 +12,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/hog_raiser_screen.dart';
 import 'screens/investments_screen.dart';
 import 'screens/inventory_screen.dart';
+import 'screens/inventory_print_preview_screen.dart';
 import 'screens/pos_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/user_approvals_screen.dart';
@@ -186,6 +187,7 @@ class MyApp extends ConsumerWidget {
         '/raisers': (context) => const HogRaiserScreen(),
         '/investments': (context) => const InvestmentsScreen(),
         '/inventory': (context) => const InventoryScreen(),
+        '/inventory/print-preview': (context) => const InventoryPrintPreviewScreen(),
         '/pos': (context) => const POSScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/users': (context) => const UserApprovalsScreen(),

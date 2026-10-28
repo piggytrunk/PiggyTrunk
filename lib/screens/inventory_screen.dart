@@ -19,6 +19,7 @@ import '../widgets/inventory/stock_requests_tab.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../widgets/inventory/product_qr_modal.dart';
 import '../services/inventory_export_service.dart';
+import '../widgets/inventory/inventory_qr_scanner_dialog.dart';
 import '../main.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -502,6 +503,39 @@ class _InventoryScreenState extends State<InventoryScreen> {
       );
   }
 
+  List<Product> get _filteredProducts {
+    return _products.where((p) {
+      if (_selectedCategory != 'All' && p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
+        return false;
+      }
+      final q = _searchCtrl.text.trim().toLowerCase();
+      if (q.isNotEmpty) {
+        final name = p.name.toLowerCase();
+        final desc = p.description.toLowerCase();
+        if (!name.contains(q) && !desc.contains(q)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _handlePrintPreview() {
+    if (_products.isEmpty) {
+      _showThemedSnackBar('No inventory items to preview');
+      return;
+    }
+
+    final userEmail = _supabase.auth.currentUser?.email;
+    final exportList = _filteredProducts.isNotEmpty ? _filteredProducts : _products;
+
+    Navigator.of(context).pushNamed(
+      '/inventory/print-preview',
+      arguments: {
+        'products': exportList,
+        'adminEmail': userEmail,
+      },
+    );
+  }
+
   Future<void> _handleExport({required bool isPdf}) async {
     if (_products.isEmpty) {
       _showThemedSnackBar('No inventory items to export');
@@ -641,6 +675,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             _buildExportDropdownItem(
+                              icon: Icons.preview_rounded,
+                              iconColor: PiggyTrunkTheme.ptPrimary,
+                              title: 'Print Preview',
+                              subtitle: 'Interactive formatted preview',
+                              onTap: _handlePrintPreview,
+                            ),
+                            Divider(height: 8, thickness: 1, color: _cardBorder),
+                            _buildExportDropdownItem(
                               icon: Icons.table_chart_rounded,
                               iconColor: PiggyTrunkTheme.ptSuccess,
                               title: 'Export as CSV',
@@ -746,6 +788,45 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       const SizedBox(width: 10),
       _buildExportButton(),
+        OutlinedButton.icon(
+          onPressed: () {
+            InventoryQrScannerDialog.show(
+              context,
+              products: _products,
+              onProductScanned: (scannedProd) {
+                setState(() {
+                  _showLogsPage = false;
+                  _showAddProductForm = false;
+                  _editingProduct = null;
+                  _restockingProduct = scannedProd;
+                });
+              },
+            );
+          },
+          icon: Icon(
+            Icons.qr_code_scanner_rounded,
+            size: 18,
+            color: _isDark ? PiggyTrunkTheme.ptSuccess : const Color(0xFF16A34A),
+          ),
+          label: Text(
+            'Scan Barcode',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: _isDark ? Colors.white : PiggyTrunkTheme.ptText,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: _isDark ? const Color(0xFF16253B) : const Color(0xFFF0FDF4),
+            side: BorderSide(
+              color: _isDark ? const Color(0xFF1E3A5F) : const Color(0xFFBBF7D0),
+              width: 1.2,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        const SizedBox(width: 10),
       const SizedBox(width: 10),
       ElevatedButton.icon(
         onPressed: () => setState(() => _showAddProductForm = true),
@@ -1508,7 +1589,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         iconBtn(
           icon: Icons.qr_code_2_rounded,
           color: _isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
-          tooltip: 'View & Print QR Code',
+          tooltip: 'View & Print Barcode Label',
           onPressed: () => ProductQrModal.show(context, product),
         ),
         const SizedBox(width: 8),

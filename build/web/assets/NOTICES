@@ -1603,6 +1603,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
 barcode
+barcode_widget
 pdf
 pdf_widget_wrapper
 printing

@@ -1,6 +1,9 @@
+import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../models/product_model.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_toast.dart';
@@ -21,6 +24,74 @@ class ProductQrModal extends StatelessWidget {
     );
   }
 
+  String get _displayBarcode {
+    if (product.barcode != null && product.barcode!.trim().isNotEmpty) {
+      return product.barcode!.trim();
+    }
+    // Fallback if product has no custom barcode: deterministic short format
+    final cleanId = product.id.replaceAll('-', '');
+    final shortId = cleanId.length > 8 ? cleanId.substring(0, 8).toUpperCase() : cleanId.toUpperCase();
+    return 'PIG-$shortId';
+  }
+
+  Future<void> _printBarcodeLabel(BuildContext context) async {
+    try {
+      final doc = pw.Document();
+      final barcodeCode = _displayBarcode;
+      final productName = product.name;
+      final priceStr = 'PHP ${product.price.toStringAsFixed(2)}';
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat(58 * PdfPageFormat.mm, 40 * PdfPageFormat.mm, marginAll: 2 * PdfPageFormat.mm),
+          build: (pw.Context ctx) {
+            return pw.Center(
+              child: pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'PIGGY TRUNK INVENTORY',
+                    style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    productName,
+                    maxLines: 1,
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.code128(),
+                    data: barcodeCode,
+                    width: 48 * PdfPageFormat.mm,
+                    height: 18 * PdfPageFormat.mm,
+                    drawText: true,
+                    // textStyle is optional in pw.BarcodeWidget
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    priceStr,
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: 'Barcode_${product.name.replaceAll(' ', '_')}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        AppToast.error(context, 'Failed to print label: $e');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -29,14 +100,13 @@ class ProductQrModal extends StatelessWidget {
     final titleColor = isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText;
     final mutedColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
 
-    // Standardized payload format for Piggy Trunk product scanning
-    final qrData = 'PIGGYTRUNK:PRODUCT:${product.id}';
+    final barcodeData = _displayBarcode;
 
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
-        width: 360,
+        width: 380,
         decoration: BoxDecoration(
           color: cardBg,
           borderRadius: BorderRadius.circular(20),
@@ -74,7 +144,7 @@ class ProductQrModal extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      'Product QR Label',
+                      'Product Barcode Label',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -94,9 +164,10 @@ class ProductQrModal extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // QR Code Container with High-Contrast White Background for Reliable Scanning
+            // Barcode Display with White High-Contrast Background
             Container(
-              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -109,19 +180,21 @@ class ProductQrModal extends StatelessWidget {
                   ),
                 ],
               ),
-              child: QrImageView(
-                data: qrData,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
-                eyeStyle: const QrEyeStyle(
-                  eyeShape: QrEyeShape.square,
-                  color: Color(0xFF1E293B),
-                ),
-                dataModuleStyle: const QrDataModuleStyle(
-                  dataModuleShape: QrDataModuleShape.square,
-                  color: Color(0xFF1E293B),
-                ),
+              child: Column(
+                children: [
+                  BarcodeWidget(
+                    barcode: Barcode.code128(),
+                    data: barcodeData,
+                    width: 280,
+                    height: 90,
+                    drawText: true,
+                    style: GoogleFonts.sourceCodePro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 18),
@@ -171,30 +244,41 @@ class ProductQrModal extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Current Stock: ${product.units} units',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11.5,
-                      color: mutedColor,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Current Stock: ${product.units} units',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11.5,
+                          color: mutedColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        'ID: $barcodeData',
+                        style: GoogleFonts.sourceCodePro(
+                          fontSize: 11,
+                          color: mutedColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 18),
 
-            // Action Buttons (Copy Payload & Done)
+            // Action Buttons
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      AppToast.success(context, 'QR Code ready for shelf label scanning');
-                    },
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+                    onPressed: () => _printBarcodeLabel(context),
+                    icon: const Icon(Icons.print_rounded, size: 16),
                     label: Text(
-                      'Ready to Scan',
+                      'Print Barcode',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
