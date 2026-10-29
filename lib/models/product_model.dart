@@ -73,6 +73,35 @@ class Product {
 
   double get effectiveKiloPrice => kiloPrice ?? 0.0;
 
+  /// Generates an uppercase acronym from a product name (e.g., "PIGROLAC Early Wean SUPERSTART" -> "PEWS").
+  static String acronymFromName(String productName) {
+    final words = productName
+        .trim()
+        .split(RegExp(r'[^a-zA-Z0-9]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return 'PRD';
+    final buffer = StringBuffer();
+    for (final w in words) {
+      buffer.write(w[0].toUpperCase());
+    }
+    return buffer.toString();
+  }
+
+  /// Generates a formatted Acronym + Sequential Sort ID (e.g., "PEWS-001").
+  static String formatAcronymId(String productName, {int? sortNumber}) {
+    final acronym = acronymFromName(productName);
+    if (sortNumber != null && sortNumber > 0) {
+      return '$acronym-${sortNumber.toString().padLeft(3, '0')}';
+    }
+    return acronym;
+  }
+
+  /// Returns the display barcode / ID for this product using its acronym and optional sort number.
+  String displayAcronymId({int? sortNumber}) {
+    return formatAcronymId(name, sortNumber: sortNumber);
+  }
+
   factory Product.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
     final rawUnits = json['units'];

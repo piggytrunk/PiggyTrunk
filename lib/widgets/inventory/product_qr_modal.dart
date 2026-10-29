@@ -10,28 +10,30 @@ import '../../utils/app_toast.dart';
 
 class ProductQrModal extends StatelessWidget {
   final Product product;
+  final String? customBarcodeId;
 
   const ProductQrModal({
     super.key,
     required this.product,
+    this.customBarcodeId,
   });
 
-  static void show(BuildContext context, Product product) {
+  static void show(BuildContext context, Product product, {String? customBarcodeId}) {
     showDialog(
       context: context,
       barrierColor: Colors.black54,
-      builder: (context) => ProductQrModal(product: product),
+      builder: (context) => ProductQrModal(
+        product: product,
+        customBarcodeId: customBarcodeId,
+      ),
     );
   }
 
   String get _displayBarcode {
-    if (product.barcode != null && product.barcode!.trim().isNotEmpty) {
-      return product.barcode!.trim();
+    if (customBarcodeId != null && customBarcodeId!.trim().isNotEmpty) {
+      return customBarcodeId!.trim();
     }
-    // Fallback if product has no custom barcode: deterministic short format
-    final cleanId = product.id.replaceAll('-', '');
-    final shortId = cleanId.length > 8 ? cleanId.substring(0, 8).toUpperCase() : cleanId.toUpperCase();
-    return 'PIG-$shortId';
+    return product.displayAcronymId();
   }
 
   Future<void> _printBarcodeLabel(BuildContext context) async {

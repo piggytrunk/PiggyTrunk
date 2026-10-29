@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../models/product_model.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../utils/capitalization_formatters.dart';
@@ -21,6 +22,7 @@ class ProductAddForm extends StatefulWidget {
   }) onInsertLog;
   final void Function(String msg, {Color? backgroundColor}) onShowSnackBar;
   final String? initialBarcode;
+  final int nextSortNumber;
 
   const ProductAddForm({
     super.key,
@@ -30,6 +32,7 @@ class ProductAddForm extends StatefulWidget {
     required this.onInsertLog,
     required this.onShowSnackBar,
     this.initialBarcode,
+    this.nextSortNumber = 1,
   });
 
   @override
@@ -501,17 +504,22 @@ class _ProductAddFormState extends State<ProductAddForm> {
                                 textCapitalization: TextCapitalization.words,
                                 inputFormatters: const [CapitalizeWordsInputFormatter()],
                                 hasError: _productNameError != null,
-                                onChanged: (_) {
-                                  if (_productNameError != null) setState(() => _productNameError = null);
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (_productNameError != null) _productNameError = null;
+                                    _barcodeCtrl.text = val.trim().isEmpty
+                                        ? ''
+                                        : Product.formatAcronymId(val, sortNumber: widget.nextSortNumber);
+                                  });
                                 },
                               ),
                               if (_productNameError != null) _buildInlineError(_productNameError!),
                                 const SizedBox(height: 12),
-                                _formLabel('BARCODE'),
+                                _formLabel('PRODUCT ID / BARCODE (AUTO-GENERATED ACRONYM)'),
                               const SizedBox(height: 8),
                               _buildInput(
                                 _barcodeCtrl,
-                                'e.g., 480016624912',
+                                'Auto-generated from product name (e.g., PHF-001)',
                                   textCapitalization: TextCapitalization.characters, enabled: false,
                                 ),
                               const SizedBox(height: 12),

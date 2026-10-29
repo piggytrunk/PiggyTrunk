@@ -29,15 +29,22 @@ class _POSScreenState extends State<POSScreen> {
   List<POSProduct> _products = [];
   final Map<String, int> _productQuantities = {};
   final Map<String, String> _productUnits = {}; // productId -> 'sack' or 'kg'
+  final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   bool _isLoading = true;
   int _orderItemCounter = 0;
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _bg => _isDark ? PiggyTrunkTheme.ptBgDark : const Color(0xFFF4F7FB);
   Color get _surface => _isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-  Color get _surfaceSoft => _isDark ? PiggyTrunkTheme.ptSurfaceDark.withValues(alpha: 0.5) : const Color(0xFFF8FBFF);
-  Color get _border => _isDark ? PiggyTrunkTheme.ptBorderDark : const Color(0xFFD7E3F3);
-  Color get _text => _isDark ? PiggyTrunkTheme.ptTextDark : const Color(0xFF18314F);
-  Color get _muted => _isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF6F8096);
+  Color get _surfaceSoft => _isDark
+      ? PiggyTrunkTheme.ptSurfaceDark.withValues(alpha: 0.5)
+      : const Color(0xFFF8FBFF);
+  Color get _border =>
+      _isDark ? PiggyTrunkTheme.ptBorderDark : const Color(0xFFD7E3F3);
+  Color get _text =>
+      _isDark ? PiggyTrunkTheme.ptTextDark : const Color(0xFF18314F);
+  Color get _muted =>
+      _isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF6F8096);
 
   String _getSelectedUnit(POSProduct product) {
     if (product.isFeed) return _productUnits[product.id] ?? 'sack';
@@ -77,7 +84,9 @@ class _POSScreenState extends State<POSScreen> {
       final availableBoxes = product.units - usedBoxes;
       return availableBoxes.clamp(0, product.units);
     } else {
-      final inCartSack = currentOrder.quantityFor(product.id, 'sack') + currentOrder.quantityFor(product.id, 'unit');
+      final inCartSack =
+          currentOrder.quantityFor(product.id, 'sack') +
+          currentOrder.quantityFor(product.id, 'unit');
       final inCartKg = currentOrder.quantityFor(product.id, 'kg');
       final usedSacks = inCartSack + (inCartKg / 50.0).ceil();
       final availableSacks = product.units - usedSacks;
@@ -95,18 +104,6 @@ class _POSScreenState extends State<POSScreen> {
       setState(() {
         _productQuantities[product.id] = current + 1;
       });
-    } else {
-      _showThemedSnackBar(
-        unit == 'kg'
-            ? 'Cannot exceed remaining stock ($maxAvail kg).'
-            : (unit == 'tablet'
-                ? 'Cannot exceed remaining stock ($maxAvail tablets).'
-                : (unit == 'box'
-                    ? 'Cannot exceed remaining stock ($maxAvail boxes).'
-                    : 'Cannot exceed remaining stock ($maxAvail units).')),
-        backgroundColor: const Color(0xFFE53E3E),
-        duration: const Duration(milliseconds: 900),
-      );
     }
   }
 
@@ -117,6 +114,13 @@ class _POSScreenState extends State<POSScreen> {
         _productQuantities[productId] = current - 1;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -139,11 +143,21 @@ class _POSScreenState extends State<POSScreen> {
     _loadProductsFromInventory();
   }
 
-  void _showThemedSnackBar(String message, {Color? backgroundColor, Duration? duration, String? title}) {
+  void _showThemedSnackBar(
+    String message, {
+    Color? backgroundColor,
+    Duration? duration,
+    String? title,
+  }) {
     if (!mounted) return;
-    final isError = backgroundColor == Colors.red || backgroundColor == const Color(0xFFE53E3E);
-    final isWarning = backgroundColor == Colors.orange || backgroundColor == const Color(0xFFF59E0B);
-    final isSuccess = backgroundColor == Colors.green ||
+    final isError =
+        backgroundColor == Colors.red ||
+        backgroundColor == const Color(0xFFE53E3E);
+    final isWarning =
+        backgroundColor == Colors.orange ||
+        backgroundColor == const Color(0xFFF59E0B);
+    final isSuccess =
+        backgroundColor == Colors.green ||
         backgroundColor == const Color(0xFF10B981) ||
         message.toLowerCase().contains('added') ||
         message.toLowerCase().contains('success') ||
@@ -164,15 +178,16 @@ class _POSScreenState extends State<POSScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await _loadInventoryRows();
-      final rows = response
-          .map((row) => POSProduct.fromJson(row))
-          .toList();
+      final rows = response.map((row) => POSProduct.fromJson(row)).toList();
 
       if (!mounted) return;
       setState(() => _products = rows);
     } catch (e) {
       if (!mounted) return;
-      _showThemedSnackBar('Failed to load POS products: $e', backgroundColor: Colors.red);
+      _showThemedSnackBar(
+        'Failed to load POS products: $e',
+        backgroundColor: Colors.red,
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -202,6 +217,86 @@ class _POSScreenState extends State<POSScreen> {
     }
   }
 
+  List<POSProduct> get _baseSortedProducts {
+    final list = List<POSProduct>.from(_products);
+    list.sort((a, b) {
+      final cmp = a.createdAt.compareTo(b.createdAt);
+      if (cmp != 0) return cmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
+  }
+
+  int _getSortNumber(POSProduct p) {
+    final base = _baseSortedProducts;
+    final idx = base.indexWhere((item) => item.id == p.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  String _getProductAcronymId(POSProduct p) {
+    return p.displayAcronymId(sortNumber: _getSortNumber(p));
+  }
+
+  bool _matchesSearch(POSProduct p, String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final acronymId = _getProductAcronymId(p).toLowerCase();
+    final rawBarcode = (p.barcode ?? '').trim().toLowerCase();
+    final name = p.name.toLowerCase();
+    return acronymId.contains(q) ||
+        (rawBarcode.isNotEmpty && rawBarcode.contains(q)) ||
+        name.contains(q);
+  }
+
+  List<POSProduct> get _searchMatchingProducts {
+    final q = _searchCtrl.text.trim();
+    if (q.isEmpty) return [];
+    return _baseSortedProducts.where((p) => _matchesSearch(p, q)).toList();
+  }
+
+  void _addProductToOrderDirect(POSProduct product, {int? overrideQty}) {
+    if (product.units <= 0) return;
+    String selectedUnit = _getSelectedUnit(product);
+    bool isKilo = selectedUnit == 'kg';
+    bool isTablet = selectedUnit == 'tablet';
+    bool isSubUnit = isKilo || isTablet;
+
+    // Fallback to whole unit if subunit has no price set
+    if (isSubUnit && !product.hasKiloPrice) {
+      selectedUnit = product.isFeed
+          ? 'sack'
+          : (product.isMedicine ? 'box' : 'unit');
+      isKilo = false;
+      isTablet = false;
+      isSubUnit = false;
+    }
+
+    final maxAvailable = _getMaxAvailable(product, selectedUnit);
+    if (maxAvailable <= 0) return;
+
+    final qtyToAdd = (overrideQty ?? 1).clamp(1, maxAvailable);
+    final double unitPrice = isSubUnit
+        ? product.effectiveKiloPrice
+        : product.price;
+
+    setState(() {
+      _orderItemCounter++;
+      currentOrder.addItem(
+        OrderItem(
+          id: _orderItemCounter,
+          productId: product.id,
+          productName: isKilo
+              ? '${product.name} (Per Kilo)'
+              : (isTablet ? '${product.name} (Per Tablet)' : product.name),
+          price: unitPrice,
+          quantity: qtyToAdd,
+          unit: selectedUnit,
+        ),
+      );
+      _productQuantities[product.id] = 1;
+    });
+  }
+
   int _categoryWeight(String category) {
     final cat = category.trim().toLowerCase();
     if (cat == 'feeds' || cat == 'feed') return 0;
@@ -212,27 +307,40 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   List<String> get _categories {
-    final categorySet = _products.map((p) => p.category.trim()).where((c) => c.isNotEmpty).toSet();
-    final sorted = categorySet.toList()..sort((a, b) {
-      final weightA = _categoryWeight(a);
-      final weightB = _categoryWeight(b);
-      if (weightA != weightB) {
-        return weightA.compareTo(weightB);
-      }
-      return a.toLowerCase().compareTo(b.toLowerCase());
-    });
+    final q = _searchCtrl.text.trim();
+    final sourceProducts = q.isEmpty
+        ? _products
+        : _products.where((p) => _matchesSearch(p, q)).toList();
+    final categorySet = sourceProducts
+        .map((p) => p.category.trim())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+    final sorted = categorySet.toList()
+      ..sort((a, b) {
+        final weightA = _categoryWeight(a);
+        final weightB = _categoryWeight(b);
+        if (weightA != weightB) {
+          return weightA.compareTo(weightB);
+        }
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
     return sorted;
   }
 
   List<POSProduct> _productsByCategory(String category) {
-    final list = _products.where((p) => p.category.toLowerCase() == category.toLowerCase()).toList();
+    final q = _searchCtrl.text.trim();
+    final list = _products.where((p) {
+      if (p.category.toLowerCase() != category.toLowerCase()) return false;
+      return _matchesSearch(p, q);
+    }).toList();
     list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return list;
   }
 
   bool _isProductTopSeller(POSProduct product) {
     if (product.sold <= 0) return false;
-    final sorted = List<POSProduct>.from(_products)..sort((a, b) => b.sold.compareTo(a.sold));
+    final sorted = List<POSProduct>.from(_products)
+      ..sort((a, b) => b.sold.compareTo(a.sold));
     final topRank = sorted.indexWhere((p) => p.id == product.id);
     return topRank >= 0 && topRank < 3;
   }
@@ -243,19 +351,22 @@ class _POSScreenState extends State<POSScreen> {
       currentOrder.clearOrder();
       _orderItemCounter = 0;
     });
-    _showThemedSnackBar('Order cleared.', backgroundColor: Colors.orange);
   }
 
   Future<void> _completeTransaction() async {
     if (currentOrder.items.isEmpty) {
-      _showThemedSnackBar('No items in the order yet.', backgroundColor: Colors.red);
+      _showThemedSnackBar(
+        'No items in the order yet.',
+        backgroundColor: Colors.red,
+      );
       return;
     }
 
     final itemCount = currentOrder.totalItems;
     final total = currentOrder.total;
     final itemsToDeduct = List<OrderItem>.from(currentOrder.items);
-    final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(4)}';
+    final orderId =
+        'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(4)}';
     final cashierEmail = _supabase.auth.currentUser?.email ?? 'Cashier Admin';
     final nowIso = DateTime.now().toIso8601String();
 
@@ -283,8 +394,8 @@ class _POSScreenState extends State<POSScreen> {
         final int sacksDeducted = item.unit == 'kg'
             ? (item.quantity / 50.0).ceil().clamp(1, product.units)
             : (item.unit == 'tablet'
-                ? (item.quantity / 100.0).ceil().clamp(1, product.units)
-                : item.quantity);
+                  ? (item.quantity / 100.0).ceil().clamp(1, product.units)
+                  : item.quantity);
         final newUnits = (product.units - sacksDeducted).clamp(0, 999999);
         final newSold = product.sold + sacksDeducted;
 
@@ -294,7 +405,9 @@ class _POSScreenState extends State<POSScreen> {
             'order_id': orderId,
             'product_id': product.id,
             'product_name': product.name,
-            'category': product.category.isNotEmpty ? product.category : 'Feeds',
+            'category': product.category.isNotEmpty
+                ? product.category
+                : 'Feeds',
             'quantity': item.quantity,
             'unit_price': item.price,
             'total_amount': item.subtotal,
@@ -311,15 +424,15 @@ class _POSScreenState extends State<POSScreen> {
 
         // 2. Deduct inventory stock units
         try {
-          await _supabase.from('inventory_products').update({
-            'units': newUnits,
-            'sold': newSold,
-          }).eq('id', product.id);
+          await _supabase
+              .from('inventory_products')
+              .update({'units': newUnits, 'sold': newSold})
+              .eq('id', product.id);
         } catch (_) {
-          await _supabase.from('products').update({
-            'units': newUnits,
-            'sold': newSold,
-          }).eq('id', product.id);
+          await _supabase
+              .from('products')
+              .update({'units': newUnits, 'sold': newSold})
+              .eq('id', product.id);
         }
 
         // 3. Log into inventory_logs
@@ -334,8 +447,8 @@ class _POSScreenState extends State<POSScreen> {
             'details': item.unit == 'kg'
                 ? 'POS Retail Sale: Sold ${item.quantity} kg ($sacksDeducted sack(s) opened/deducted). Remaining: $newUnits sacks.'
                 : (item.unit == 'tablet'
-                    ? 'POS Retail Sale: Sold ${item.quantity} tablet(s) ($sacksDeducted box(es) opened/deducted). Remaining: $newUnits boxes.'
-                    : 'POS Wholesale Sale: Sold ${item.quantity} ${item.unit == 'box' ? 'box(es)' : 'unit(s)'}. Remaining: $newUnits units.'),
+                      ? 'POS Retail Sale: Sold ${item.quantity} tablet(s) ($sacksDeducted box(es) opened/deducted). Remaining: $newUnits boxes.'
+                      : 'POS Wholesale Sale: Sold ${item.quantity} ${item.unit == 'box' ? 'box(es)' : 'unit(s)'}. Remaining: $newUnits units.'),
           });
         } catch (_) {}
       }
@@ -354,7 +467,10 @@ class _POSScreenState extends State<POSScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showThemedSnackBar('Error completing transaction: $e', backgroundColor: Colors.red);
+      _showThemedSnackBar(
+        'Error completing transaction: $e',
+        backgroundColor: Colors.red,
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -373,7 +489,8 @@ class _POSScreenState extends State<POSScreen> {
               backgroundColor: _surface,
               child: AdminSidebar(
                 currentRoute: '/pos',
-                onLogout: () => Navigator.of(context).pushReplacementNamed('/login'),
+                onLogout: () =>
+                    Navigator.of(context).pushReplacementNamed('/login'),
                 isDrawer: true,
               ),
             )
@@ -388,7 +505,8 @@ class _POSScreenState extends State<POSScreen> {
                 if (!isSmall)
                   AdminSidebar(
                     currentRoute: '/pos',
-                    onLogout: () => Navigator.of(context).pushReplacementNamed('/login'),
+                    onLogout: () =>
+                        Navigator.of(context).pushReplacementNamed('/login'),
                   ),
                 Expanded(
                   child: LayoutBuilder(
@@ -405,14 +523,21 @@ class _POSScreenState extends State<POSScreen> {
                       if (isMobile) {
                         return SingleChildScrollView(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          padding: EdgeInsets.all(Responsive.isMobile(context) ? 10 : 16),
+                          padding: EdgeInsets.all(
+                            Responsive.isMobile(context) ? 10 : 16,
+                          ),
                           child: Column(
                             children: [
                               _buildProductsPanel(EdgeInsets.zero),
                               const SizedBox(height: 16),
                               Container(
-                                constraints: const BoxConstraints(minHeight: 480),
-                                child: _buildCurrentOrderPanel(context, stacked: true),
+                                constraints: const BoxConstraints(
+                                  minHeight: 480,
+                                ),
+                                child: _buildCurrentOrderPanel(
+                                  context,
+                                  stacked: true,
+                                ),
                               ),
                             ],
                           ),
@@ -458,10 +583,7 @@ class _POSScreenState extends State<POSScreen> {
         width: double.infinity,
         decoration: BoxDecoration(
           color: _surfaceSoft,
-          border: Border.all(
-            color: _border,
-            width: 1,
-          ),
+          border: Border.all(color: _border, width: 1),
           borderRadius: BorderRadius.circular(isMobile ? 14 : 20),
         ),
         padding: EdgeInsets.all(isMobile ? 12 : 24),
@@ -471,10 +593,7 @@ class _POSScreenState extends State<POSScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'POS',
-                  style: AppTextStyles.sectionTitle(_text),
-                ),
+                Text('POS', style: AppTextStyles.sectionTitle(_text)),
                 Wrap(
                   spacing: 10,
                   runSpacing: 8,
@@ -484,8 +603,9 @@ class _POSScreenState extends State<POSScreen> {
                       onTap: () async {
                         await Navigator.of(context).push(
                           PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) =>
-                                const DemandForecastingScreen(),
+                            pageBuilder:
+                                (context, animation, secondaryAnimation) =>
+                                    const DemandForecastingScreen(),
                             settings: const RouteSettings(name: '/forecasting'),
                             transitionDuration: Duration.zero,
                             reverseTransitionDuration: Duration.zero,
@@ -495,17 +615,26 @@ class _POSScreenState extends State<POSScreen> {
                       },
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+                          color: _isDark
+                              ? const Color(0xFF1E2F47)
+                              : const Color(0xFFEEF4FD),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+                            color: _isDark
+                                ? const Color(0xFF28405D)
+                                : const Color(0xFFD7E3F3),
                             width: 1.2,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.04),
+                              color: Colors.black.withValues(
+                                alpha: _isDark ? 0.2 : 0.04,
+                              ),
                               blurRadius: 4,
                               offset: const Offset(0, 1),
                             ),
@@ -517,7 +646,9 @@ class _POSScreenState extends State<POSScreen> {
                             Icon(
                               Icons.insights_rounded,
                               size: 16,
-                              color: _isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                              color: _isDark
+                                  ? const Color(0xFF60A5FA)
+                                  : PiggyTrunkTheme.ptPrimary,
                             ),
                             const SizedBox(width: 7),
                             Text(
@@ -525,7 +656,9 @@ class _POSScreenState extends State<POSScreen> {
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? Colors.white
+                                    : PiggyTrunkTheme.ptPrimary,
                               ),
                             ),
                           ],
@@ -536,9 +669,14 @@ class _POSScreenState extends State<POSScreen> {
                       onTap: () async {
                         await Navigator.of(context).push(
                           PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) =>
-                                BestSellersScreen(initialProducts: _products),
-                            settings: const RouteSettings(name: '/best-sellers'),
+                            pageBuilder:
+                                (context, animation, secondaryAnimation) =>
+                                    BestSellersScreen(
+                                      initialProducts: _products,
+                                    ),
+                            settings: const RouteSettings(
+                              name: '/best-sellers',
+                            ),
                             transitionDuration: Duration.zero,
                             reverseTransitionDuration: Duration.zero,
                           ),
@@ -547,17 +685,26 @@ class _POSScreenState extends State<POSScreen> {
                       },
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+                          color: _isDark
+                              ? const Color(0xFF1E2F47)
+                              : const Color(0xFFEEF4FD),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
+                            color: _isDark
+                                ? const Color(0xFF28405D)
+                                : const Color(0xFFD7E3F3),
                             width: 1.2,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: _isDark ? 0.2 : 0.04),
+                              color: Colors.black.withValues(
+                                alpha: _isDark ? 0.2 : 0.04,
+                              ),
                               blurRadius: 4,
                               offset: const Offset(0, 1),
                             ),
@@ -569,7 +716,9 @@ class _POSScreenState extends State<POSScreen> {
                             Icon(
                               Icons.local_fire_department_rounded,
                               size: 16,
-                              color: _isDark ? const Color(0xFFFFAA00) : const Color(0xFFD97706),
+                              color: _isDark
+                                  ? const Color(0xFFFFAA00)
+                                  : const Color(0xFFD97706),
                             ),
                             const SizedBox(width: 7),
                             Text(
@@ -577,7 +726,9 @@ class _POSScreenState extends State<POSScreen> {
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? Colors.white
+                                    : PiggyTrunkTheme.ptPrimary,
                               ),
                             ),
                           ],
@@ -588,11 +739,287 @@ class _POSScreenState extends State<POSScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            _buildPosSearchSection(),
             const SizedBox(height: 20),
             _buildAllCategoryProducts(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPosSearchSection() {
+    final query = _searchCtrl.text.trim();
+    final matches = _searchMatchingProducts;
+    final fieldBg = _isDark ? const Color(0xFF1A2B44) : const Color(0xFFF5F8FE);
+    final focusColor = _isDark
+        ? const Color(0xFF88A7CE)
+        : const Color(0xFF315C8F);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _searchCtrl,
+          focusNode: _searchFocusNode,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (val) {
+            final currentMatches = _searchMatchingProducts;
+            if (currentMatches.isNotEmpty) {
+              final firstAvail = currentMatches.firstWhere(
+                (p) => p.units > 0,
+                orElse: () => currentMatches.first,
+              );
+              if (firstAvail.units > 0) {
+                _addProductToOrderDirect(firstAvail);
+                _searchCtrl.clear();
+                setState(() {});
+                _searchFocusNode.requestFocus();
+              }
+            }
+          },
+          style: GoogleFonts.plusJakartaSans(
+            color: _text,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: InputDecoration(
+            hintText:
+                'Search by Barcode / Product ID (e.g. PEWS-001) or name — click result to add to order...',
+            hintStyle: GoogleFonts.plusJakartaSans(
+              color: _muted,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+            ),
+            prefixIcon: Icon(
+              Icons.qr_code_2_rounded,
+              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+              size: 20,
+            ),
+            suffixIcon: query.isNotEmpty
+                ? IconButton(
+                    icon: Icon(Icons.clear_rounded, color: _muted, size: 18),
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() {});
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: fieldBg,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: _border, width: 1.2),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: focusColor, width: 1.5),
+            ),
+          ),
+        ),
+        if (query.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 240),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _border, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: _isDark ? 0.3 : 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: matches.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    child: Text(
+                      'No matching product found for "$query".',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _muted,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: matches.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: _border.withValues(alpha: 0.6),
+                    ),
+                    itemBuilder: (context, index) {
+                      final prod = matches[index];
+                      final acronymId = _getProductAcronymId(prod);
+                      final isOut = prod.units <= 0;
+                      final selectedUnit = _getSelectedUnit(prod);
+                      final maxAvail = _getMaxAvailable(prod, selectedUnit);
+                      final canAdd = !isOut && maxAvail > 0;
+
+                      return InkWell(
+                        onTap: canAdd
+                            ? () {
+                                _addProductToOrderDirect(prod);
+                                _searchCtrl.clear();
+                                setState(() {});
+                              }
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 98,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 5,
+                                ),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _isDark
+                                      ? const Color(0xFF1E2F47)
+                                      : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(7),
+                                  border: Border.all(color: _border),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.qr_code_2_rounded,
+                                      size: 13,
+                                      color: _isDark
+                                          ? Colors.white
+                                          : PiggyTrunkTheme.ptPrimary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        acronymId,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.sourceCodePro(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: _isDark
+                                              ? Colors.white
+                                              : PiggyTrunkTheme.ptPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      prod.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: canAdd ? _text : _muted,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${prod.category} • Stock: ${prod.units} units',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: isOut
+                                            ? const Color(0xFFFFAA00)
+                                            : _muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '₱${prod.price.toStringAsFixed(2)}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: _text,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: canAdd
+                                      ? (_isDark
+                                            ? Colors.white
+                                            : PiggyTrunkTheme.ptPrimary)
+                                      : (_isDark
+                                            ? const Color(0xFF334155)
+                                            : Colors.grey.shade300),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.add_shopping_cart_rounded,
+                                      size: 13,
+                                      color: canAdd
+                                          ? (_isDark
+                                                ? PiggyTrunkTheme.ptPrimary
+                                                : Colors.white)
+                                          : _muted,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      canAdd ? '+ Add to Order' : 'Out of Stock',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: canAdd
+                                            ? (_isDark
+                                                  ? PiggyTrunkTheme.ptPrimary
+                                                  : Colors.white)
+                                            : _muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -659,15 +1086,20 @@ class _POSScreenState extends State<POSScreen> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.maxWidth;
-                  final int crossAxisCount = width > 1200 ? 3 : (width > 550 ? 2 : 1);
-                  final int rowCount = (products.length / crossAxisCount).ceil();
+                  final int crossAxisCount = width > 1200
+                      ? 3
+                      : (width > 550 ? 2 : 1);
+                  final int rowCount = (products.length / crossAxisCount)
+                      .ceil();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: List.generate(rowCount, (rowIndex) {
                       final int startIndex = rowIndex * crossAxisCount;
                       return Padding(
-                        padding: EdgeInsets.only(bottom: rowIndex < rowCount - 1 ? 14 : 0),
+                        padding: EdgeInsets.only(
+                          bottom: rowIndex < rowCount - 1 ? 14 : 0,
+                        ),
                         child: IntrinsicHeight(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -676,10 +1108,14 @@ class _POSScreenState extends State<POSScreen> {
                               return Expanded(
                                 child: Padding(
                                   padding: EdgeInsets.only(
-                                    right: colIndex < crossAxisCount - 1 ? 14 : 0,
+                                    right: colIndex < crossAxisCount - 1
+                                        ? 14
+                                        : 0,
                                   ),
                                   child: itemIndex < products.length
-                                      ? _buildPOSProductCard(products[itemIndex])
+                                      ? _buildPOSProductCard(
+                                          products[itemIndex],
+                                        )
                                       : const SizedBox.shrink(),
                                 ),
                               );
@@ -691,19 +1127,21 @@ class _POSScreenState extends State<POSScreen> {
                   );
                 },
               ),
-              if (index != categories.length - 1) const SizedBox(height: 32),
-            ],
-          );
-        }),
-      );
-    }
+            if (index != categories.length - 1) const SizedBox(height: 32),
+          ],
+        );
+      }),
+    );
+  }
 
   Widget _buildPOSProductCard(POSProduct product) {
     final isOutOfStock = product.units <= 0;
     final isTopSeller = _isProductTopSeller(product);
     final Color stockColor = isOutOfStock
         ? const Color(0xFFFFAA00)
-        : (product.units <= 10 ? const Color(0xFFFF758C) : const Color(0xFF43CB89));
+        : (product.units <= 10
+              ? const Color(0xFFFF758C)
+              : const Color(0xFF43CB89));
     final isMobile = Responsive.isMobile(context);
     final double imgSize = isMobile ? 76.0 : 88.0;
     final selectedUnit = _getSelectedUnit(product);
@@ -712,9 +1150,12 @@ class _POSScreenState extends State<POSScreen> {
     final isSubUnit = isKilo || isTablet;
     final hasKiloPrice = product.hasKiloPrice;
     final selectedQty = _getQuantity(product.id);
-    final double unitPrice = isSubUnit ? product.effectiveKiloPrice : product.price;
+    final double unitPrice = isSubUnit
+        ? product.effectiveKiloPrice
+        : product.price;
     final int maxAvailable = _getMaxAvailable(product, selectedUnit);
-    final bool canAddToCart = !isOutOfStock && maxAvailable > 0 && (!isSubUnit || hasKiloPrice);
+    final bool canAddToCart =
+        !isOutOfStock && maxAvailable > 0 && (!isSubUnit || hasKiloPrice);
 
     return Container(
       decoration: BoxDecoration(
@@ -755,12 +1196,21 @@ class _POSScreenState extends State<POSScreen> {
                           ? Image.network(
                               product.image!,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
-                                child: Icon(Icons.broken_image_outlined, color: _muted, size: 26),
-                              ),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Center(
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      color: _muted,
+                                      size: 26,
+                                    ),
+                                  ),
                             )
                           : Center(
-                              child: Icon(Icons.image_outlined, color: _muted, size: 26),
+                              child: Icon(
+                                Icons.image_outlined,
+                                color: _muted,
+                                size: 26,
+                              ),
                             ),
                     ),
                   ),
@@ -769,9 +1219,14 @@ class _POSScreenState extends State<POSScreen> {
                       top: 4,
                       left: 4,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                          color: _isDark
+                              ? Colors.white
+                              : PiggyTrunkTheme.ptPrimary,
                           borderRadius: BorderRadius.circular(5),
                           boxShadow: [
                             BoxShadow(
@@ -786,7 +1241,9 @@ class _POSScreenState extends State<POSScreen> {
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
-                            color: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                            color: _isDark
+                                ? PiggyTrunkTheme.ptPrimary
+                                : Colors.white,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -848,7 +1305,9 @@ class _POSScreenState extends State<POSScreen> {
                                 Text(
                                   isOutOfStock
                                       ? 'OUT'
-                                      : (product.units <= 10 ? 'LOW' : 'IN STOCK'),
+                                      : (product.units <= 10
+                                            ? 'LOW'
+                                            : 'IN STOCK'),
                                   style: AppTextStyles.jakarta(
                                     size: isMobile ? 8 : 8.5,
                                     weight: FontWeight.w800,
@@ -862,12 +1321,53 @@ class _POSScreenState extends State<POSScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _isDark
+                              ? const Color(0xFF1E2F47)
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: _border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.qr_code_2_rounded,
+                              size: 11,
+                              color: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _getProductAcronymId(product),
+                              style: GoogleFonts.sourceCodePro(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _isDark
+                                    ? Colors.white
+                                    : PiggyTrunkTheme.ptPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       // Subtitle / Description (fits multi-line admin descriptions)
                       Tooltip(
-                        message: product.description.length > 60 ? product.description : '',
+                        message: product.description.length > 60
+                            ? product.description
+                            : '',
                         child: Text(
-                          product.description.isEmpty ? 'No description' : product.description,
-                          maxLines: 3,
+                          product.description.isEmpty
+                              ? 'No description'
+                              : product.description,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.jakarta(
                             size: isMobile ? 10.5 : 11,
@@ -898,14 +1398,19 @@ class _POSScreenState extends State<POSScreen> {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => _setSelectedUnit(product, product.isFeed ? 'sack' : 'box'),
+                      onTap: () => _setSelectedUnit(
+                        product,
+                        product.isFeed ? 'sack' : 'box',
+                      ),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: !isSubUnit
-                              ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
+                              ? (_isDark
+                                    ? PiggyTrunkTheme.ptPrimary
+                                    : Colors.white)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                           boxShadow: !isSubUnit
@@ -922,9 +1427,13 @@ class _POSScreenState extends State<POSScreen> {
                           product.isFeed ? 'Whole Sack' : 'Whole Box',
                           style: AppTextStyles.jakarta(
                             size: isMobile ? 10.5 : 11.5,
-                            weight: !isSubUnit ? FontWeight.w800 : FontWeight.w600,
+                            weight: !isSubUnit
+                                ? FontWeight.w800
+                                : FontWeight.w600,
                             color: !isSubUnit
-                                ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                ? (_isDark
+                                      ? Colors.white
+                                      : PiggyTrunkTheme.ptPrimary)
                                 : _muted,
                           ),
                         ),
@@ -934,14 +1443,19 @@ class _POSScreenState extends State<POSScreen> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: InkWell(
-                      onTap: () => _setSelectedUnit(product, product.isFeed ? 'kg' : 'tablet'),
+                      onTap: () => _setSelectedUnit(
+                        product,
+                        product.isFeed ? 'kg' : 'tablet',
+                      ),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: isSubUnit
-                              ? (_isDark ? PiggyTrunkTheme.ptPrimary : Colors.white)
+                              ? (_isDark
+                                    ? PiggyTrunkTheme.ptPrimary
+                                    : Colors.white)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                           boxShadow: isSubUnit
@@ -958,9 +1472,13 @@ class _POSScreenState extends State<POSScreen> {
                           product.isFeed ? 'Per Kilo' : 'Per Tablet',
                           style: AppTextStyles.jakarta(
                             size: isMobile ? 10.5 : 11.5,
-                            weight: isSubUnit ? FontWeight.w800 : FontWeight.w600,
+                            weight: isSubUnit
+                                ? FontWeight.w800
+                                : FontWeight.w600,
                             color: isSubUnit
-                                ? (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                ? (_isDark
+                                      ? Colors.white
+                                      : PiggyTrunkTheme.ptPrimary)
                                 : _muted,
                           ),
                         ),
@@ -974,7 +1492,10 @@ class _POSScreenState extends State<POSScreen> {
           const SizedBox(height: 8),
           // Price & Stock Row
           Container(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 10, vertical: isMobile ? 4 : 5),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 8 : 10,
+              vertical: isMobile ? 4 : 5,
+            ),
             decoration: BoxDecoration(
               color: _bg,
               borderRadius: BorderRadius.circular(8),
@@ -991,16 +1512,24 @@ class _POSScreenState extends State<POSScreen> {
                       children: [
                         Text(
                           'PRICE: ',
-                          style: AppTextStyles.jakarta(size: 10.5, weight: FontWeight.w700, color: _muted),
+                          style: AppTextStyles.jakarta(
+                            size: 10.5,
+                            weight: FontWeight.w700,
+                            color: _muted,
+                          ),
                         ),
                         Text(
                           isSubUnit && !hasKiloPrice
-                              ? (isTablet ? 'Not set for per tablet' : 'Not set for per kilo')
+                              ? (isTablet
+                                    ? 'Not set for per tablet'
+                                    : 'Not set for per kilo')
                               : '₱${unitPrice.toStringAsFixed(2)}${isKilo ? '/kg' : (isTablet ? '/tab' : '')}',
                           style: AppTextStyles.jakarta(
                             size: isSubUnit && !hasKiloPrice ? 11 : 12.5,
                             weight: FontWeight.w800,
-                            color: isSubUnit && !hasKiloPrice ? const Color(0xFFFFAA00) : _text,
+                            color: isSubUnit && !hasKiloPrice
+                                ? const Color(0xFFFFAA00)
+                                : _text,
                           ),
                         ),
                       ],
@@ -1017,18 +1546,26 @@ class _POSScreenState extends State<POSScreen> {
                       children: [
                         Text(
                           'Stock: ',
-                          style: AppTextStyles.jakarta(size: 10.5, weight: FontWeight.w700, color: _muted),
+                          style: AppTextStyles.jakarta(
+                            size: 10.5,
+                            weight: FontWeight.w700,
+                            color: _muted,
+                          ),
                         ),
                         Text(
                           isKilo
                               ? '${product.units * 50} kg'
-                              : (isTablet ? '${product.units * 100} tabs' : '${product.units} units'),
+                              : (isTablet
+                                    ? '${product.units * 100} tabs'
+                                    : '${product.units} units'),
                           style: AppTextStyles.jakarta(
                             size: 11.5,
                             weight: FontWeight.w700,
                             color: isOutOfStock
                                 ? const Color(0xFFFFAA00)
-                                : (product.units <= 10 ? const Color(0xFFFF758C) : _text),
+                                : (product.units <= 10
+                                      ? const Color(0xFFFF758C)
+                                      : _text),
                           ),
                         ),
                       ],
@@ -1041,10 +1578,16 @@ class _POSScreenState extends State<POSScreen> {
           const SizedBox(height: 6),
           // Quantity Stepper Row
           Container(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 10, vertical: isMobile ? 3 : 4),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 8 : 10,
+              vertical: isMobile ? 3 : 4,
+            ),
             decoration: BoxDecoration(
               color: _bg,
-              border: Border.all(color: _border.withValues(alpha: 0.7), width: 1),
+              border: Border.all(
+                color: _border.withValues(alpha: 0.7),
+                width: 1,
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -1073,18 +1616,31 @@ class _POSScreenState extends State<POSScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       InkWell(
-                        onTap: isOutOfStock || selectedQty <= 1 || (isSubUnit && !hasKiloPrice)
+                        onTap:
+                            isOutOfStock ||
+                                selectedQty <= 1 ||
+                                (isSubUnit && !hasKiloPrice)
                             ? null
                             : () => _decrementProductQuantity(product.id),
-                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(5),
+                        ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2.5,
+                          ),
                           child: Icon(
                             Icons.remove_rounded,
                             size: 14,
-                            color: (isOutOfStock || selectedQty <= 1 || (isSubUnit && !hasKiloPrice))
+                            color:
+                                (isOutOfStock ||
+                                    selectedQty <= 1 ||
+                                    (isSubUnit && !hasKiloPrice))
                                 ? (_isDark ? Colors.white24 : Colors.black26)
-                                : (_isDark ? Colors.white : const Color(0xFF18314F)),
+                                : (_isDark
+                                      ? Colors.white
+                                      : const Color(0xFF18314F)),
                           ),
                         ),
                       ),
@@ -1097,23 +1653,39 @@ class _POSScreenState extends State<POSScreen> {
                           style: AppTextStyles.jakarta(
                             size: 12,
                             weight: FontWeight.w800,
-                            color: (isOutOfStock || (isSubUnit && !hasKiloPrice)) ? _muted : _text,
+                            color:
+                                (isOutOfStock || (isSubUnit && !hasKiloPrice))
+                                ? _muted
+                                : _text,
                           ),
                         ),
                       ),
                       InkWell(
-                        onTap: isOutOfStock || selectedQty >= maxAvailable || (isSubUnit && !hasKiloPrice)
+                        onTap:
+                            isOutOfStock ||
+                                selectedQty >= maxAvailable ||
+                                (isSubUnit && !hasKiloPrice)
                             ? null
                             : () => _incrementProductQuantity(product),
-                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
+                        borderRadius: const BorderRadius.horizontal(
+                          right: Radius.circular(5),
+                        ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2.5,
+                          ),
                           child: Icon(
                             Icons.add_rounded,
                             size: 14,
-                            color: (isOutOfStock || selectedQty >= maxAvailable || (isSubUnit && !hasKiloPrice))
+                            color:
+                                (isOutOfStock ||
+                                    selectedQty >= maxAvailable ||
+                                    (isSubUnit && !hasKiloPrice))
                                 ? (_isDark ? Colors.white24 : Colors.black26)
-                                : (_isDark ? Colors.white : const Color(0xFF18314F)),
+                                : (_isDark
+                                      ? Colors.white
+                                      : const Color(0xFF18314F)),
                           ),
                         ),
                       ),
@@ -1131,49 +1703,39 @@ class _POSScreenState extends State<POSScreen> {
               onPressed: isOutOfStock
                   ? null
                   : (isSubUnit && !hasKiloPrice)
-                      ? () {
-                          _showThemedSnackBar(
-                            isTablet
-                                ? 'Please set the per-tablet price for this medicine in Inventory Management.'
-                                : 'Please set the per-kilo price for this product in Inventory Management.',
-                            backgroundColor: const Color(0xFFF59E0B),
-                            duration: const Duration(milliseconds: 2500),
-                          );
-                        }
-                      : (maxAvailable <= 0
-                          ? null
-                          : () {
-                              final qtyToAdd = _getQuantity(product.id);
-                              if (qtyToAdd > maxAvailable) {
-                                _showThemedSnackBar(
-                                  'Cannot add $qtyToAdd ${isKilo ? 'kg' : (isTablet ? 'tablet(s)' : 'item(s)')}. Only $maxAvailable remaining in stock.',
-                                  backgroundColor: const Color(0xFFE53E3E),
-                                  duration: const Duration(milliseconds: 1200),
-                                );
-                                return;
-                              }
-                              setState(() {
-                                _orderItemCounter++;
-                                currentOrder.addItem(
-                                  OrderItem(
-                                    id: _orderItemCounter,
-                                    productId: product.id,
-                                    productName: isKilo
-                                        ? '${product.name} (Per Kilo)'
-                                        : (isTablet ? '${product.name} (Per Tablet)' : product.name),
-                                    price: unitPrice,
-                                    quantity: qtyToAdd,
-                                    unit: selectedUnit,
-                                  ),
-                                );
-                                _productQuantities[product.id] = 1;
-                              });
-                              _showThemedSnackBar(
-                                '$qtyToAdd${isKilo ? 'kg' : (isTablet ? ' tab(s)' : 'x')} ${product.name} added to order',
-                                backgroundColor: const Color(0xFF315C8F),
-                                duration: const Duration(milliseconds: 800),
+                  ? () {
+                      _showThemedSnackBar(
+                        isTablet
+                            ? 'Please set the per-tablet price for this medicine in Inventory Management.'
+                            : 'Please set the per-kilo price for this product in Inventory Management.',
+                        backgroundColor: const Color(0xFFF59E0B),
+                        duration: const Duration(milliseconds: 2500),
+                      );
+                    }
+                  : (maxAvailable <= 0
+                        ? null
+                        : () {
+                            final qtyToAdd = _getQuantity(product.id);
+                            if (qtyToAdd > maxAvailable) return;
+                            setState(() {
+                              _orderItemCounter++;
+                              currentOrder.addItem(
+                                OrderItem(
+                                  id: _orderItemCounter,
+                                  productId: product.id,
+                                  productName: isKilo
+                                      ? '${product.name} (Per Kilo)'
+                                      : (isTablet
+                                            ? '${product.name} (Per Tablet)'
+                                            : product.name),
+                                  price: unitPrice,
+                                  quantity: qtyToAdd,
+                                  unit: selectedUnit,
+                                ),
                               );
-                            }),
+                              _productQuantities[product.id] = 1;
+                            });
+                          }),
               icon: Icon(
                 Icons.add_shopping_cart,
                 size: 14,
@@ -1185,8 +1747,10 @@ class _POSScreenState extends State<POSScreen> {
                 isOutOfStock
                     ? 'Out of Stock'
                     : (isSubUnit && !hasKiloPrice
-                        ? (isTablet ? 'Tablet Price Not Set' : 'Kilo Price Not Set')
-                        : '+ Add to Order'),
+                          ? (isTablet
+                                ? 'Tablet Price Not Set'
+                                : 'Kilo Price Not Set')
+                          : '+ Add to Order'),
                 style: AppTextStyles.jakarta(
                   size: 11.5,
                   weight: FontWeight.w700,
@@ -1199,14 +1763,21 @@ class _POSScreenState extends State<POSScreen> {
                 backgroundColor: isOutOfStock
                     ? (_isDark ? const Color(0xFF334155) : Colors.grey)
                     : (isSubUnit && !hasKiloPrice
-                        ? (_isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8))
-                        : (_isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)),
-                foregroundColor: (!canAddToCart && !(isSubUnit && !hasKiloPrice))
+                          ? (_isDark
+                                ? const Color(0xFF475569)
+                                : const Color(0xFF94A3B8))
+                          : (_isDark
+                                ? Colors.white
+                                : PiggyTrunkTheme.ptPrimary)),
+                foregroundColor:
+                    (!canAddToCart && !(isSubUnit && !hasKiloPrice))
                     ? (_isDark ? Colors.white54 : Colors.white70)
                     : (_isDark ? const Color(0xFF0F1C2F) : Colors.white),
                 padding: EdgeInsets.symmetric(vertical: isMobile ? 8 : 9),
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
           ),
@@ -1221,7 +1792,10 @@ class _POSScreenState extends State<POSScreen> {
     Widget orderItemsContent;
     if (currentOrder.items.isEmpty) {
       orderItemsContent = Padding(
-        padding: EdgeInsets.symmetric(vertical: stacked ? 32 : 60, horizontal: 16),
+        padding: EdgeInsets.symmetric(
+          vertical: stacked ? 32 : 60,
+          horizontal: 16,
+        ),
         child: Center(
           child: Text(
             'No products added yet.',
@@ -1259,12 +1833,12 @@ class _POSScreenState extends State<POSScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Current order',
-                  style: AppTextStyles.cardTitle(_text),
-                ),
+                Text('Current order', style: AppTextStyles.cardTitle(_text)),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _bg,
                     borderRadius: BorderRadius.circular(8),
@@ -1285,11 +1859,7 @@ class _POSScreenState extends State<POSScreen> {
           if (stacked)
             orderItemsContent
           else
-            Expanded(
-              child: SingleChildScrollView(
-                child: orderItemsContent,
-              ),
-            ),
+            Expanded(child: SingleChildScrollView(child: orderItemsContent)),
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -1300,10 +1870,7 @@ class _POSScreenState extends State<POSScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Total',
-                      style: AppTextStyles.bodyStrong(_text),
-                    ),
+                    Text('Total', style: AppTextStyles.bodyStrong(_text)),
                     Text(
                       'PHP ${currentOrder.total.toStringAsFixed(2)}',
                       style: AppTextStyles.bodyStrong(_text),
@@ -1321,20 +1888,31 @@ class _POSScreenState extends State<POSScreen> {
                         children: [
                           ElevatedButton.icon(
                             onPressed: _completeTransaction,
-                            icon: const Icon(Icons.check_circle_outline, size: 18),
+                            icon: const Icon(
+                              Icons.check_circle_outline,
+                              size: 18,
+                            ),
                             label: Text(
                               'Complete Transaction',
                               style: AppTextStyles.jakarta(
                                 size: 14,
                                 weight: FontWeight.w700,
-                                color: _isDark ? const Color(0xFF0F1C2F) : Colors.white,
+                                color: _isDark
+                                    ? const Color(0xFF0F1C2F)
+                                    : Colors.white,
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              foregroundColor: _isDark ? const Color(0xFF0F1C2F) : Colors.white,
+                              backgroundColor: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
+                              foregroundColor: _isDark
+                                  ? const Color(0xFF0F1C2F)
+                                  : Colors.white,
                               minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
                             ),
                           ),
@@ -1344,18 +1922,26 @@ class _POSScreenState extends State<POSScreen> {
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size(0, 52),
                               side: BorderSide(
-                                color: _isDark ? const Color(0xFF7F94B2) : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? const Color(0xFF7F94B2)
+                                    : PiggyTrunkTheme.ptPrimary,
                                 width: 1,
                               ),
-                              foregroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              foregroundColor: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                             child: Text(
                               'Clear Order',
                               style: AppTextStyles.jakarta(
                                 size: 14,
                                 weight: FontWeight.w700,
-                                color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? Colors.white
+                                    : PiggyTrunkTheme.ptPrimary,
                               ),
                             ),
                           ),
@@ -1368,20 +1954,31 @@ class _POSScreenState extends State<POSScreen> {
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: _completeTransaction,
-                            icon: const Icon(Icons.check_circle_outline, size: 18),
+                            icon: const Icon(
+                              Icons.check_circle_outline,
+                              size: 18,
+                            ),
                             label: Text(
                               'Complete Transaction',
                               style: AppTextStyles.jakarta(
                                 size: 14,
                                 weight: FontWeight.w700,
-                                color: _isDark ? const Color(0xFF0F1C2F) : Colors.white,
+                                color: _isDark
+                                    ? const Color(0xFF0F1C2F)
+                                    : Colors.white,
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              foregroundColor: _isDark ? const Color(0xFF0F1C2F) : Colors.white,
+                              backgroundColor: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
+                              foregroundColor: _isDark
+                                  ? const Color(0xFF0F1C2F)
+                                  : Colors.white,
                               minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
                             ),
                           ),
@@ -1393,18 +1990,26 @@ class _POSScreenState extends State<POSScreen> {
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size(0, 52),
                               side: BorderSide(
-                                color: _isDark ? const Color(0xFF7F94B2) : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? const Color(0xFF7F94B2)
+                                    : PiggyTrunkTheme.ptPrimary,
                                 width: 1,
                               ),
-                              foregroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              foregroundColor: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                             child: Text(
                               'Clear Order',
                               style: AppTextStyles.jakarta(
                                 size: 14,
                                 weight: FontWeight.w700,
-                                color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                color: _isDark
+                                    ? Colors.white
+                                    : PiggyTrunkTheme.ptPrimary,
                               ),
                             ),
                           ),
@@ -1423,7 +2028,9 @@ class _POSScreenState extends State<POSScreen> {
 
   Widget _buildOrderItemRow(OrderItem item, int index) {
     return Padding(
-      padding: EdgeInsets.only(bottom: index == currentOrder.items.length - 1 ? 0 : 12),
+      padding: EdgeInsets.only(
+        bottom: index == currentOrder.items.length - 1 ? 0 : 12,
+      ),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1441,7 +2048,11 @@ class _POSScreenState extends State<POSScreen> {
                 Expanded(
                   child: Text(
                     item.productName,
-                    style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w600, color: _text),
+                    style: AppTextStyles.jakarta(
+                      size: 13,
+                      weight: FontWeight.w600,
+                      color: _text,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1466,12 +2077,21 @@ class _POSScreenState extends State<POSScreen> {
               children: [
                 Text(
                   'PHP ${item.price.toStringAsFixed(2)}${item.unit == 'kg' ? '/kg' : (item.unit == 'tablet' ? '/tab' : '')}',
-                  style: AppTextStyles.jakarta(size: 13, weight: FontWeight.w600, color: _muted),
+                  style: AppTextStyles.jakarta(
+                    size: 13,
+                    weight: FontWeight.w600,
+                    color: _muted,
+                  ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isDark ? const Color(0xFF1E293B) : const Color(0xFFEDF4FC),
+                    color: _isDark
+                        ? const Color(0xFF1E293B)
+                        : const Color(0xFFEDF4FC),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: _border, width: 1),
                   ),
@@ -1479,12 +2099,14 @@ class _POSScreenState extends State<POSScreen> {
                     item.unit == 'kg'
                         ? '${item.quantity} kg'
                         : (item.unit == 'tablet'
-                            ? '${item.quantity} tablets'
-                            : '${item.quantity} ${item.unit == 'sack' ? 'sacks' : (item.unit == 'box' ? 'boxes' : 'units')}'),
+                              ? '${item.quantity} tablets'
+                              : '${item.quantity} ${item.unit == 'sack' ? 'sacks' : (item.unit == 'box' ? 'boxes' : 'units')}'),
                     style: AppTextStyles.jakarta(
                       size: 12.5,
                       weight: FontWeight.w800,
-                      color: _isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                      color: _isDark
+                          ? const Color(0xFF60A5FA)
+                          : PiggyTrunkTheme.ptPrimary,
                     ),
                   ),
                 ),
@@ -1554,9 +2176,19 @@ class _POSScreenState extends State<POSScreen> {
               Text('POS', style: AppTextStyles.sectionTitle(_text)),
               Row(
                 children: [
-                  ShimmerBox(width: 130, height: 34, borderRadius: BorderRadius.circular(10), isDark: _isDark),
+                  ShimmerBox(
+                    width: 130,
+                    height: 34,
+                    borderRadius: BorderRadius.circular(10),
+                    isDark: _isDark,
+                  ),
                   const SizedBox(width: 8),
-                  ShimmerBox(width: 100, height: 34, borderRadius: BorderRadius.circular(10), isDark: _isDark),
+                  ShimmerBox(
+                    width: 100,
+                    height: 34,
+                    borderRadius: BorderRadius.circular(10),
+                    isDark: _isDark,
+                  ),
                 ],
               ),
             ],
@@ -1565,14 +2197,26 @@ class _POSScreenState extends State<POSScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ShimmerBox(width: 120, height: 18, borderRadius: BorderRadius.circular(4), isDark: _isDark),
-              ShimmerBox(width: 60, height: 14, borderRadius: BorderRadius.circular(4), isDark: _isDark),
+              ShimmerBox(
+                width: 120,
+                height: 18,
+                borderRadius: BorderRadius.circular(4),
+                isDark: _isDark,
+              ),
+              ShimmerBox(
+                width: 60,
+                height: 14,
+                borderRadius: BorderRadius.circular(4),
+                isDark: _isDark,
+              ),
             ],
           ),
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final crossAxisCount = constraints.maxWidth > 800 ? 3 : (constraints.maxWidth > 500 ? 2 : 1);
+              final crossAxisCount = constraints.maxWidth > 800
+                  ? 3
+                  : (constraints.maxWidth > 500 ? 2 : 1);
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -1606,13 +2250,28 @@ class _POSScreenState extends State<POSScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        ShimmerBox(width: 110, height: 14, borderRadius: BorderRadius.circular(4), isDark: _isDark),
+                        ShimmerBox(
+                          width: 110,
+                          height: 14,
+                          borderRadius: BorderRadius.circular(4),
+                          isDark: _isDark,
+                        ),
                         const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            ShimmerBox(width: 65, height: 15, borderRadius: BorderRadius.circular(4), isDark: _isDark),
-                            ShimmerBox(width: 30, height: 30, borderRadius: BorderRadius.circular(8), isDark: _isDark),
+                            ShimmerBox(
+                              width: 65,
+                              height: 15,
+                              borderRadius: BorderRadius.circular(4),
+                              isDark: _isDark,
+                            ),
+                            ShimmerBox(
+                              width: 30,
+                              height: 30,
+                              borderRadius: BorderRadius.circular(8),
+                              isDark: _isDark,
+                            ),
                           ],
                         ),
                       ],
@@ -1637,31 +2296,64 @@ class _POSScreenState extends State<POSScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ShimmerBox(width: 120, height: 20, borderRadius: BorderRadius.circular(4), isDark: _isDark),
-              ShimmerBox(width: 26, height: 26, shape: BoxShape.circle, isDark: _isDark),
+              ShimmerBox(
+                width: 120,
+                height: 20,
+                borderRadius: BorderRadius.circular(4),
+                isDark: _isDark,
+              ),
+              ShimmerBox(
+                width: 26,
+                height: 26,
+                shape: BoxShape.circle,
+                isDark: _isDark,
+              ),
             ],
           ),
           const SizedBox(height: 20),
-          ...List.generate(3, (i) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                ShimmerBox(width: 40, height: 40, borderRadius: BorderRadius.circular(8), isDark: _isDark),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ShimmerBox(width: 90, height: 12, borderRadius: BorderRadius.circular(3), isDark: _isDark),
-                      const SizedBox(height: 6),
-                      ShimmerBox(width: 55, height: 11, borderRadius: BorderRadius.circular(3), isDark: _isDark),
-                    ],
+          ...List.generate(
+            3,
+            (i) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  ShimmerBox(
+                    width: 40,
+                    height: 40,
+                    borderRadius: BorderRadius.circular(8),
+                    isDark: _isDark,
                   ),
-                ),
-                ShimmerBox(width: 45, height: 22, borderRadius: BorderRadius.circular(6), isDark: _isDark),
-              ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerBox(
+                          width: 90,
+                          height: 12,
+                          borderRadius: BorderRadius.circular(3),
+                          isDark: _isDark,
+                        ),
+                        const SizedBox(height: 6),
+                        ShimmerBox(
+                          width: 55,
+                          height: 11,
+                          borderRadius: BorderRadius.circular(3),
+                          isDark: _isDark,
+                        ),
+                      ],
+                    ),
+                  ),
+                  ShimmerBox(
+                    width: 45,
+                    height: 22,
+                    borderRadius: BorderRadius.circular(6),
+                    isDark: _isDark,
+                  ),
+                ],
+              ),
             ),
-          )),
+          ),
           const SizedBox(height: 24),
           if (!stacked) const Spacer(),
           Divider(color: _border),
@@ -1669,20 +2361,45 @@ class _POSScreenState extends State<POSScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ShimmerBox(width: 60, height: 13, borderRadius: BorderRadius.circular(3), isDark: _isDark),
-              ShimmerBox(width: 70, height: 13, borderRadius: BorderRadius.circular(3), isDark: _isDark),
+              ShimmerBox(
+                width: 60,
+                height: 13,
+                borderRadius: BorderRadius.circular(3),
+                isDark: _isDark,
+              ),
+              ShimmerBox(
+                width: 70,
+                height: 13,
+                borderRadius: BorderRadius.circular(3),
+                isDark: _isDark,
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ShimmerBox(width: 45, height: 16, borderRadius: BorderRadius.circular(4), isDark: _isDark),
-              ShimmerBox(width: 90, height: 18, borderRadius: BorderRadius.circular(4), isDark: _isDark),
+              ShimmerBox(
+                width: 45,
+                height: 16,
+                borderRadius: BorderRadius.circular(4),
+                isDark: _isDark,
+              ),
+              ShimmerBox(
+                width: 90,
+                height: 18,
+                borderRadius: BorderRadius.circular(4),
+                isDark: _isDark,
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          ShimmerBox(width: double.infinity, height: 46, borderRadius: BorderRadius.circular(12), isDark: _isDark),
+          ShimmerBox(
+            width: double.infinity,
+            height: 46,
+            borderRadius: BorderRadius.circular(12),
+            isDark: _isDark,
+          ),
         ],
       ),
     );

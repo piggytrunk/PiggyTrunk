@@ -146,8 +146,10 @@ class POSProduct {
   final String description;
   final double price;
   final double? kiloPrice;
+  final String? barcode;
   final int units;
   final int sold;
+  final DateTime createdAt;
   final bool isArchived;
 
   POSProduct({
@@ -159,10 +161,12 @@ class POSProduct {
     required this.description,
     required this.price,
     this.kiloPrice,
+    this.barcode,
     required this.units,
     required this.sold,
+    DateTime? createdAt,
     this.isArchived = false,
-  });
+  }) : createdAt = createdAt ?? DateTime.now();
 
   int get stock => units;
 
@@ -181,11 +185,41 @@ class POSProduct {
   /// Price per kilo set explicitly by the store administrator.
   double get effectiveKiloPrice => kiloPrice ?? 0.0;
 
+  /// Generates an uppercase acronym from a product name (e.g., "PIGROLAC Early Wean SUPERSTART" -> "PEWS").
+  static String acronymFromName(String productName) {
+    final words = productName
+        .trim()
+        .split(RegExp(r'[^a-zA-Z0-9]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return 'PRD';
+    final buffer = StringBuffer();
+    for (final w in words) {
+      buffer.write(w[0].toUpperCase());
+    }
+    return buffer.toString();
+  }
+
+  /// Generates a formatted Acronym + Sequential Sort ID (e.g., "PEWS-001").
+  static String formatAcronymId(String productName, {int? sortNumber}) {
+    final acronym = acronymFromName(productName);
+    if (sortNumber != null && sortNumber > 0) {
+      return '$acronym-${sortNumber.toString().padLeft(3, '0')}';
+    }
+    return acronym;
+  }
+
+  /// Returns the display barcode / ID for this product using its acronym and optional sort number.
+  String displayAcronymId({int? sortNumber}) {
+    return formatAcronymId(name, sortNumber: sortNumber);
+  }
+
   factory POSProduct.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
     final rawUnits = json['units'];
     final rawSold = json['sold'];
     final rawKiloPrice = json['kilo_price'] ?? json['retail_kilo_price'] ?? json['price_per_kilo'];
+    final rawBarcode = json['barcode'] ?? json['sku'];
 
     return POSProduct(
       id: (json['id'] ?? '').toString(),
@@ -198,8 +232,12 @@ class POSProduct {
       kiloPrice: rawKiloPrice is num
           ? rawKiloPrice.toDouble()
           : (rawKiloPrice != null ? double.tryParse(rawKiloPrice.toString()) : null),
+      barcode: rawBarcode?.toString().trim().isNotEmpty == true ? rawBarcode.toString().trim() : null,
       units: rawUnits is num ? rawUnits.toInt() : int.tryParse(rawUnits?.toString() ?? '0') ?? 0,
       sold: rawSold is num ? rawSold.toInt() : int.tryParse(rawSold?.toString() ?? '0') ?? 0,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal() ?? DateTime.now()
+          : DateTime.now(),
       isArchived: json['is_archived'] == true,
     );
   }
@@ -214,8 +252,10 @@ class POSProduct {
       'description': description,
       'price': price,
       'kilo_price': kiloPrice,
+      'barcode': barcode,
       'units': units,
       'sold': sold,
+      'created_at': createdAt.toIso8601String(),
       'is_archived': isArchived,
     };
   }

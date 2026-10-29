@@ -23,6 +23,7 @@ class ProductEditForm extends StatefulWidget {
   }) onInsertLog;
   final void Function(String msg, {Color? backgroundColor}) onShowSnackBar;
   final VoidCallback? onViewHistory;
+  final int? sortNumber;
 
   const ProductEditForm({
     super.key,
@@ -33,6 +34,7 @@ class ProductEditForm extends StatefulWidget {
     required this.onInsertLog,
     required this.onShowSnackBar,
     this.onViewHistory,
+    this.sortNumber,
   });
 
   @override
@@ -79,10 +81,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.product.name);
-    final rawBarcode = widget.product.barcode?.trim() ?? '';
-    final cleanId = widget.product.id.replaceAll('-', '');
-    final shortId = cleanId.length > 8 ? cleanId.substring(0, 8).toUpperCase() : cleanId.toUpperCase();
-    final fetchedBarcode = rawBarcode.isNotEmpty ? rawBarcode : 'PIG-$shortId';
+    final fetchedBarcode = widget.product.displayAcronymId(sortNumber: widget.sortNumber);
     _barcodeCtrl = TextEditingController(text: fetchedBarcode);
     _selectedCategory = widget.product.category.isNotEmpty ? widget.product.category : 'Feeds';
     final priceStr = widget.product.price % 1 == 0
@@ -422,8 +421,11 @@ class _ProductEditFormState extends State<ProductEditForm> {
                       controller: _nameCtrl,
                       textCapitalization: TextCapitalization.words,
                       inputFormatters: const [CapitalizeWordsInputFormatter()],
-                      onChanged: (_) {
-                        if (_nameError != null) setState(() => _nameError = null);
+                      onChanged: (val) {
+                        setState(() {
+                          if (_nameError != null) _nameError = null;
+                          _barcodeCtrl.text = Product.formatAcronymId(val, sortNumber: widget.sortNumber);
+                        });
                       },
                       style: GoogleFonts.plusJakartaSans(
                         color: _fieldText,
@@ -465,7 +467,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
                     ],
                     const SizedBox(height: 18),
                     Text(
-                      'BARCODE',
+                      'PRODUCT ID / BARCODE (ACRONYM)',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,

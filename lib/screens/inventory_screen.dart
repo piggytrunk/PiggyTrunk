@@ -19,7 +19,6 @@ import '../widgets/inventory/stock_requests_tab.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../widgets/inventory/product_qr_modal.dart';
 import '../services/inventory_export_service.dart';
-import '../widgets/inventory/inventory_qr_scanner_dialog.dart';
 import '../main.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -38,7 +37,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
   bool _isArchiveMode = false;
   bool _isLoading = true;
   bool _showAddProductForm = false;
-  String? _pendingNewBarcode;
   Product? _editingProduct;
   Product? _restockingProduct;
   Widget? _inPageConfirmation;
@@ -323,16 +321,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     // 2. In-page Add Product Form
     if (_showAddProductForm) {
       return ProductAddForm(
-        key: ValueKey(_pendingNewBarcode ?? 'add-product'),
-        initialBarcode: _pendingNewBarcode,
+        key: const ValueKey('add-product'),
+        nextSortNumber: _products.length + 1,
         onCancel: () => setState(() {
           _showAddProductForm = false;
-          _pendingNewBarcode = null;
         }),
         onProductAdded: () {
           setState(() {
             _showAddProductForm = false;
-            _pendingNewBarcode = null;
           });
           _loadProducts();
         },
@@ -346,6 +342,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (_editingProduct != null) {
       return ProductEditForm(
         product: _editingProduct!,
+        sortNumber: _getSortNumber(_editingProduct!),
         onCancel: () => setState(() => _editingProduct = null),
         onProductUpdated: () {
           setState(() => _editingProduct = null);
@@ -512,8 +509,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
       );
   }
 
+  List<Product> get _baseSortedProducts {
+    final list = List<Product>.from(_products);
+    list.sort((a, b) {
+      final cmp = a.createdAt.compareTo(b.createdAt);
+      if (cmp != 0) return cmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
+  }
+
+  int _getSortNumber(Product p) {
+    final base = _baseSortedProducts;
+    final idx = base.indexWhere((item) => item.id == p.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  String _getProductAcronymId(Product p) {
+    return p.displayAcronymId(sortNumber: _getSortNumber(p));
+  }
+
   List<Product> get _filteredProducts {
-    return _products.where((p) {
+    return _baseSortedProducts.where((p) {
       if (_selectedCategory != 'All' && p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
         return false;
       }
@@ -521,7 +538,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       if (q.isNotEmpty) {
         final name = p.name.toLowerCase();
         final desc = p.description.toLowerCase();
-        if (!name.contains(q) && !desc.contains(q)) return false;
+        final acronymId = _getProductAcronymId(p).toLowerCase();
+        if (!name.contains(q) && !desc.contains(q) && !acronymId.contains(q)) return false;
       }
       return true;
     }).toList();
@@ -807,63 +825,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       const SizedBox(width: 10),
       SizedBox(
         height: 42,
-        child: OutlinedButton.icon(
-          onPressed: () {
-            InventoryQrScannerDialog.show(
-              context,
-              products: _products,
-              onProductScanned: (scannedProd) {
-                setState(() {
-                  _showLogsPage = false;
-                  _showAddProductForm = false;
-                  _pendingNewBarcode = null;
-                  _editingProduct = null;
-                  _restockingProduct = scannedProd;
-                });
-              },
-              onNewBarcodeScanned: (newBarcode) {
-                setState(() {
-                  _showLogsPage = false;
-                  _editingProduct = null;
-                  _restockingProduct = null;
-                  _pendingNewBarcode = newBarcode;
-                  _showAddProductForm = true;
-                });
-              },
-            );
-          },
-          icon: Icon(
-            Icons.qr_code_scanner_rounded,
-            size: 18,
-            color: _isDark ? PiggyTrunkTheme.ptSuccess : const Color(0xFF16A34A),
-          ),
-          label: Text(
-            'Scan Barcode',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: _isDark ? Colors.white : PiggyTrunkTheme.ptText,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            backgroundColor: _isDark ? const Color(0xFF16253B) : const Color(0xFFF0FDF4),
-            side: BorderSide(
-              color: _isDark ? const Color(0xFF1E3A5F) : const Color(0xFFBBF7D0),
-              width: 1.2,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            minimumSize: const Size(0, 42),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
-      const SizedBox(width: 10),
-      SizedBox(
-        height: 42,
         child: ElevatedButton.icon(
           onPressed: () => setState(() {
-            _pendingNewBarcode = null;
             _showAddProductForm = true;
           }),
           icon: const Icon(Icons.add_rounded, size: 18),
@@ -943,18 +906,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget _buildProductsCatalogView() {
     final isMobile = Responsive.isMobile(context);
 
-    final filteredProducts = _products.where((p) {
-      if (_selectedCategory != 'All' && p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
-        return false;
-      }
-      final q = _searchCtrl.text.trim().toLowerCase();
-      if (q.isNotEmpty) {
-        final name = p.name.toLowerCase();
-        final desc = p.description.toLowerCase();
-        if (!name.contains(q) && !desc.contains(q)) return false;
-      }
-      return true;
-    }).toList();
+    final filteredProducts = _filteredProducts;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -973,7 +925,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     onChanged: (_) => setState(() {}),
                     style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 13.5),
                     decoration: InputDecoration(
-                      hintText: 'Search products...',
+                      hintText: 'Search products by name, acronym ID, or description...',
                       hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13.5),
                       prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
                       suffixIcon: _searchCtrl.text.isNotEmpty
@@ -1017,7 +969,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       onChanged: (_) => setState(() {}),
                       style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'Search products by name or description...',
+                        hintText: 'Search products by name, acronym ID, or description...',
                         hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
                         prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
                         suffixIcon: _searchCtrl.text.isNotEmpty
@@ -1279,13 +1231,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 width: tableWidth,
                 child: Table(
                   columnWidths: const {
-                    0: FlexColumnWidth(2.6), // Product & Description
+                    0: FlexColumnWidth(3.0), // Product & Description & Barcode ID
                     1: FlexColumnWidth(1.1), // Category
                     2: FlexColumnWidth(1.1), // Price
                     3: FlexColumnWidth(1.1), // Stock Units
                     4: FlexColumnWidth(1.2), // Status Badge
                     5: FlexColumnWidth(0.9), // Total Sold
-                    6: FixedColumnWidth(360), // Action Buttons
+                    6: FixedColumnWidth(300), // Action Buttons
                   },
                   defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                   children: [
@@ -1345,6 +1297,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final rowBg = isEven
         ? _cardBg
         : (_isDark ? const Color(0xFF16253B) : const Color(0xFFF9FBFE));
+    final acronymId = _getProductAcronymId(product);
 
     return TableRow(
       decoration: BoxDecoration(
@@ -1354,11 +1307,62 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       ),
       children: [
-        // 1. Product Thumbnail & Name & Description
+        // 1. Aligned Acronym Barcode ID (Left), Product Thumbnail, Name & Description
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              Tooltip(
+                message: 'Click to View & Print Barcode ($acronymId)',
+                child: InkWell(
+                  onTap: () => ProductQrModal.show(
+                    context,
+                    product,
+                    customBarcodeId: acronymId,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 108,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _cardBorder,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.qr_code_2_rounded,
+                          size: 14,
+                          color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            acronymId,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.sourceCodePro(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               Container(
                 width: 46,
                 height: 46,
@@ -1629,13 +1633,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        iconBtn(
-          icon: Icons.qr_code_2_rounded,
-          color: _isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
-          tooltip: 'View & Print Barcode Label',
-          onPressed: () => ProductQrModal.show(context, product),
         ),
         const SizedBox(width: 8),
         iconBtn(
