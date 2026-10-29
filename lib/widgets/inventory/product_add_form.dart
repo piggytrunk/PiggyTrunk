@@ -507,32 +507,12 @@ class _ProductAddFormState extends State<ProductAddForm> {
                               ),
                               if (_productNameError != null) _buildInlineError(_productNameError!),
                                 const SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    _formLabel('BARCODE / UNIQUE ID'),
-                                    TextButton.icon(
-                                      onPressed: () {
-                                        final gen = 'PIG-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-                                        _barcodeCtrl.text = gen;
-                                      },
-                                      icon: const Icon(Icons.auto_awesome, size: 14),
-                                      label: Text(
-                                        'Auto-Generate',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: PiggyTrunkTheme.ptSuccess,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                _buildInput(
-                                  _barcodeCtrl,
-                                  'e.g., 480016624912 or FEED-001',
-                                  textCapitalization: TextCapitalization.characters,
+                                _formLabel('BARCODE'),
+                              const SizedBox(height: 8),
+                              _buildInput(
+                                _barcodeCtrl,
+                                'e.g., 480016624912',
+                                  textCapitalization: TextCapitalization.characters, enabled: false,
                                 ),
                               const SizedBox(height: 12),
                               Row(

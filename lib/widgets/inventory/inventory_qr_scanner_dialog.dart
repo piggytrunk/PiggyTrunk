@@ -754,53 +754,22 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                           }),
                         ),
                       ),
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_isCameraStarting) ...[
-                                const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                                const SizedBox(height: 10),
-                                Text(
-                                  _cameraStatusMessage ?? 'Starting Camera...',
-                                  textAlign: TextAlign.center,
-                                  style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
-                                ),
-                              ] else ...[
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  alignment: WrapAlignment.center,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      onPressed: _startWebCamera,
-                                      icon: const Icon(Icons.videocam_rounded, size: 18),
-                                      label: const Text('Turn On Camera'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: PiggyTrunkTheme.ptSuccess,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                    ),
-                                    OutlinedButton.icon(
-                                      onPressed: _scanFromImageFile,
-                                      icon: const Icon(Icons.image_search_rounded, size: 17),
-                                      label: const Text('Scan Image'),
-                                      style: OutlinedButton.styleFrom(
-                                        backgroundColor: Colors.white.withValues(alpha: 0.08),
-                                        foregroundColor: Colors.white,
-                                        side: const BorderSide(color: Colors.white38),
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (_cameraStatusMessage != null) ...[
-                                  const SizedBox(height: 6),
+                      if (_isCameraStarting || _cameraStatusMessage != null)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isCameraStarting) ...[
+                                  const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _cameraStatusMessage ?? 'Starting Camera...',
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ] else if (_cameraStatusMessage != null) ...[
                                   Text(
                                     _cameraStatusMessage!,
                                     textAlign: TextAlign.center,
@@ -812,18 +781,11 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                ] else ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Or use hardware USB scanner / type below',
-                                    style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 11),
-                                  ),
                                 ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
                     ],
 
                     // Red Laser Animation Line
@@ -938,26 +900,13 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Scan or Enter Barcode / Product ID:',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                      ),
-                    ),
-                    Text(
-                      'Auto-detects USB scanner',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        color: PiggyTrunkTheme.ptSuccess,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Scan or Enter Barcode:',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: titleColor,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -974,8 +923,7 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                           color: titleColor,
                         ),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.barcode_reader, size: 20),
-                          hintText: 'e.g. 480016624912 or PIG-FEED-01...',
+                          hintText: 'e.g. 480016624912',
                           hintStyle: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             color: mutedColor,
@@ -1023,6 +971,60 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isCameraActive ? _stopWebCamera : _startWebCamera,
+                        icon: Icon(
+                          _isCameraActive ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _isCameraActive ? 'Stop Camera' : 'Turn On Camera',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isCameraActive
+                              ? PiggyTrunkTheme.ptAccent
+                              : PiggyTrunkTheme.ptSuccess,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _scanFromImageFile,
+                        icon: const Icon(Icons.image_search_rounded, size: 17),
+                        label: Text(
+                          'Scan Image',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                          side: BorderSide(color: cardBorder, width: 1.2),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
 
@@ -1046,38 +1048,6 @@ class _InventoryQrScannerDialogState extends State<InventoryQrScannerDialog>
                 ),
               ),
             ],
-
-            const SizedBox(height: 12),
-            // Quick Demo Chips for testing on localhost
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Quick Test on Localhost:',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: mutedColor,
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: widget.products.take(4).map((p) {
-                final codeToUse = p.barcode ?? p.id;
-                return ActionChip(
-                  label: Text(
-                    p.barcode != null ? '${p.name} (${p.barcode})' : p.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.plusJakartaSans(fontSize: 11),
-                  ),
-                  avatar: const Icon(Icons.qr_code_scanner_rounded, size: 14),
-                  onPressed: () => _processScannedCode(codeToUse),
-                );
-              }).toList(),
-            ),
           ],
         ),
       ),

@@ -79,7 +79,11 @@ class _ProductEditFormState extends State<ProductEditForm> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.product.name);
-    _barcodeCtrl = TextEditingController(text: widget.product.barcode ?? '');
+    final rawBarcode = widget.product.barcode?.trim() ?? '';
+    final cleanId = widget.product.id.replaceAll('-', '');
+    final shortId = cleanId.length > 8 ? cleanId.substring(0, 8).toUpperCase() : cleanId.toUpperCase();
+    final fetchedBarcode = rawBarcode.isNotEmpty ? rawBarcode : 'PIG-$shortId';
+    _barcodeCtrl = TextEditingController(text: fetchedBarcode);
     _selectedCategory = widget.product.category.isNotEmpty ? widget.product.category : 'Feeds';
     final priceStr = widget.product.price % 1 == 0
         ? widget.product.price.toInt().toString()
@@ -459,39 +463,19 @@ class _ProductEditFormState extends State<ProductEditForm> {
                         ),
                       ),
                     ],
-                    // Barcode / Unique ID Field
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'BARCODE / UNIQUE ID',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            color: _mutedColor,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () {
-                            final gen = 'PIG-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-                            _barcodeCtrl.text = gen;
-                          },
-                          icon: const Icon(Icons.auto_awesome, size: 14),
-                          label: Text(
-                            'Auto-Generate',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: PiggyTrunkTheme.ptSuccess,
-                            ),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 18),
+                    Text(
+                      'BARCODE',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: _mutedColor,
+                        letterSpacing: 0.6,
+                      ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     TextField(
-                      controller: _barcodeCtrl,
+                      controller: _barcodeCtrl, readOnly: true,
                       textCapitalization: TextCapitalization.characters,
                       style: GoogleFonts.plusJakartaSans(
                         color: _fieldText,
@@ -499,7 +483,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
                         fontWeight: FontWeight.w600,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'e.g. 480016624912 or FEED-001',
+                        hintText: 'e.g. 480016624912',
                         hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13),
                         filled: true,
                         fillColor: _fieldBg,
@@ -514,7 +498,6 @@ class _ProductEditFormState extends State<ProductEditForm> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
                     const SizedBox(height: 18),
 
                     // Row: Category & Unit Price
