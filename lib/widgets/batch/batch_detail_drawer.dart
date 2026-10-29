@@ -417,22 +417,62 @@ class _BatchHogsListState extends State<_BatchHogsList> {
       final assignId = widget.batch['assignment_id'];
       final batchId = widget.batch['batch_id'] ?? widget.batch['id'];
 
+      final Map<int, String> hogTypeNamesMap = {};
+      try {
+        final htList = await Supabase.instance.client
+            .from('hog_types')
+            .select('hog_type_id, type_name');
+        for (var ht in (htList as List? ?? [])) {
+          if (ht is Map && ht['hog_type_id'] != null) {
+            hogTypeNamesMap[(ht['hog_type_id'] as num).toInt()] =
+                (ht['type_name'] ?? '').toString();
+          }
+        }
+      } catch (_) {}
+
       final Set<dynamic> allAssignIds = {};
+      final Set<dynamic> activeAssignIds = {};
+      final Map<String, String> assignTypeMap = {};
+
       if (batchId != null) {
         try {
           final assignRows = await Supabase.instance.client
               .from('assignments')
-              .select('assignment_id')
+              .select('assignment_id, hog_type_id, status')
               .eq('batch_id', batchId);
           for (var a in (assignRows as List? ?? [])) {
-            if (a is Map && a['assignment_id'] != null) allAssignIds.add(a['assignment_id']);
+            if (a is Map && a['assignment_id'] != null) {
+              final aId = a['assignment_id'];
+              allAssignIds.add(aId);
+              final st = (a['status'] ?? 'active').toString().toLowerCase();
+              if (st == 'active') {
+                activeAssignIds.add(aId);
+              }
+              final htId = int.tryParse((a['hog_type_id'] ?? '').toString());
+              if (htId != null && hogTypeNamesMap.containsKey(htId)) {
+                assignTypeMap[aId.toString()] = hogTypeNamesMap[htId]!;
+              }
+            }
           }
         } catch (_) {}
       }
       if (assignId != null) allAssignIds.add(assignId);
 
+      final targetAssignIds =
+          activeAssignIds.isNotEmpty ? activeAssignIds : allAssignIds;
+
       List<dynamic> res = [];
-      if (allAssignIds.isNotEmpty) {
+      if (targetAssignIds.isNotEmpty) {
+        res = await Supabase.instance.client
+            .from('hogs')
+            .select('*')
+            .inFilter('assignment_id', targetAssignIds.toList())
+            .order('hog_id', ascending: true);
+      }
+
+      if (res.isEmpty &&
+          activeAssignIds.isNotEmpty &&
+          allAssignIds.length > activeAssignIds.length) {
         res = await Supabase.instance.client
             .from('hogs')
             .select('*')
@@ -440,11 +480,34 @@ class _BatchHogsListState extends State<_BatchHogsList> {
             .order('hog_id', ascending: true);
       }
 
+      final loadedHogs = List<Map<String, dynamic>>.from(res)
+          .where((h) =>
+              (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
+          .map((h) {
+        final copy = Map<String, dynamic>.from(h);
+        final aIdStr = (copy['assignment_id'] ?? '').toString();
+        final currentType = (copy['pig_type'] ?? '').toString().trim();
+        if (currentType.isEmpty && assignTypeMap.containsKey(aIdStr)) {
+          copy['pig_type'] = assignTypeMap[aIdStr];
+        }
+        return copy;
+      }).toList();
+
+      loadedHogs.sort((a, b) {
+        final typeA = (a['pig_type'] ?? '').toString().toLowerCase();
+        final typeB = (b['pig_type'] ?? '').toString().toLowerCase();
+        final isSowA = typeA.contains('sow') || typeA.contains('breed');
+        final isSowB = typeB.contains('sow') || typeB.contains('breed');
+        if (!isSowA && isSowB) return -1;
+        if (isSowA && !isSowB) return 1;
+        final idA = (a['hog_id'] as num?)?.toInt() ?? 0;
+        final idB = (b['hog_id'] as num?)?.toInt() ?? 0;
+        return idA.compareTo(idB);
+      });
+
       if (mounted) {
         setState(() {
-          _hogs = List<Map<String, dynamic>>.from(res)
-              .where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
-              .toList();
+          _hogs = loadedHogs;
           _isLoading = false;
         });
       }

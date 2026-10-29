@@ -45,22 +45,64 @@ class _BatchDetailViewState extends State<BatchDetailView> {
       final assignId = widget.batch['assignment_id'];
       final batchId = widget.batch['batch_id'] ?? widget.batch['id'];
 
+      final Map<int, String> hogTypeNamesMap = {};
+      try {
+        final htList = await Supabase.instance.client
+            .from('hog_types')
+            .select('hog_type_id, type_name');
+        for (var ht in (htList as List? ?? [])) {
+          if (ht is Map && ht['hog_type_id'] != null) {
+            hogTypeNamesMap[(ht['hog_type_id'] as num).toInt()] =
+                (ht['type_name'] ?? '').toString();
+          }
+        }
+      } catch (_) {}
+
       final Set<dynamic> allAssignIds = {};
+      final Set<dynamic> activeAssignIds = {};
+      final Map<String, String> assignTypeMap = {};
+
       if (batchId != null) {
         try {
           final assignRows = await Supabase.instance.client
               .from('assignments')
-              .select('assignment_id')
+              .select('assignment_id, hog_type_id, status')
               .eq('batch_id', batchId);
           for (var a in (assignRows as List? ?? [])) {
-            if (a is Map && a['assignment_id'] != null) allAssignIds.add(a['assignment_id']);
+            if (a is Map && a['assignment_id'] != null) {
+              final aId = a['assignment_id'];
+              allAssignIds.add(aId);
+              final st = (a['status'] ?? 'active').toString().toLowerCase();
+              if (st == 'active') {
+                activeAssignIds.add(aId);
+              }
+              final htId = int.tryParse((a['hog_type_id'] ?? '').toString());
+              if (htId != null && hogTypeNamesMap.containsKey(htId)) {
+                assignTypeMap[aId.toString()] = hogTypeNamesMap[htId]!;
+              }
+            }
           }
         } catch (_) {}
       }
-      if (assignId != null) allAssignIds.add(assignId);
+      if (assignId != null) {
+        allAssignIds.add(assignId);
+      }
+
+      final targetAssignIds =
+          activeAssignIds.isNotEmpty ? activeAssignIds : allAssignIds;
 
       List<dynamic> res = [];
-      if (allAssignIds.isNotEmpty) {
+      if (targetAssignIds.isNotEmpty) {
+        res = await Supabase.instance.client
+            .from('hogs')
+            .select('*')
+            .inFilter('assignment_id', targetAssignIds.toList())
+            .order('hog_id', ascending: true);
+      }
+
+      if (res.isEmpty &&
+          activeAssignIds.isNotEmpty &&
+          allAssignIds.length > activeAssignIds.length) {
         res = await Supabase.instance.client
             .from('hogs')
             .select('*')
@@ -68,11 +110,35 @@ class _BatchDetailViewState extends State<BatchDetailView> {
             .order('hog_id', ascending: true);
       }
 
+      final loadedHogs = List<Map<String, dynamic>>.from(res)
+          .where((h) =>
+              (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
+          .map((h) {
+        final copy = Map<String, dynamic>.from(h);
+        final aIdStr = (copy['assignment_id'] ?? '').toString();
+        final currentType = (copy['pig_type'] ?? '').toString().trim();
+        if (currentType.isEmpty && assignTypeMap.containsKey(aIdStr)) {
+          copy['pig_type'] = assignTypeMap[aIdStr];
+        }
+        return copy;
+      }).toList();
+
+      // Strictly sort Fattening first, Sow/Breeding second, then by hog_id ascending
+      loadedHogs.sort((a, b) {
+        final typeA = (a['pig_type'] ?? '').toString().toLowerCase();
+        final typeB = (b['pig_type'] ?? '').toString().toLowerCase();
+        final isSowA = typeA.contains('sow') || typeA.contains('breed');
+        final isSowB = typeB.contains('sow') || typeB.contains('breed');
+        if (!isSowA && isSowB) return -1;
+        if (isSowA && !isSowB) return 1;
+        final idA = (a['hog_id'] as num?)?.toInt() ?? 0;
+        final idB = (b['hog_id'] as num?)?.toInt() ?? 0;
+        return idA.compareTo(idB);
+      });
+
       if (mounted) {
         setState(() {
-          _hogs = List<Map<String, dynamic>>.from(res)
-              .where((h) => (h['health_status'] ?? '').toString().toLowerCase() != 'dead')
-              .toList();
+          _hogs = loadedHogs;
           _isLoadingHogs = false;
         });
       }
@@ -236,7 +302,7 @@ class _BatchDetailViewState extends State<BatchDetailView> {
                 children: [
                   _buildMetricCard('Assigned Raiser', raiserName, Icons.person_outline_rounded, const Color(0xFF3B82F6)),
                   const SizedBox(height: 10),
-                  _buildMetricCard('Total Heads', '$_hogs', Icons.pets_outlined, const Color(0xFF10B981)),
+                  _buildMetricCard('Total Active Heads', _isLoadingHogs ? '...' : '$totalHeads heads ($fatteningHeads Fattening, $sowHeads Sow)', Icons.pets_outlined, const Color(0xFF10B981)),
                   const SizedBox(height: 10),
                   _buildMetricCard('Created Date', dateCreated, Icons.calendar_today_outlined, const Color(0xFFF59E0B)),
                 ],
@@ -336,7 +402,7 @@ class _BatchDetailViewState extends State<BatchDetailView> {
                   separatorBuilder: (context, index) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final hog = _hogs[index];
-                    final hId = hog['hog_id']?.toString() ?? '#$index';
+                    final hogNumber = index + 1;
                     final rawType = (hog['pig_type'] ?? '').toString();
                     final isBreed = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
                     final stageName = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], isBreed);
@@ -367,7 +433,7 @@ class _BatchDetailViewState extends State<BatchDetailView> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Hog $hId',
+                                    'Hog $hogNumber',
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
