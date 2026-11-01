@@ -18,10 +18,7 @@ import '../../../utils/capitalization_formatters.dart';
 class CashierInventoryTab extends StatefulWidget {
   final VoidCallback? onProductsChanged;
 
-  const CashierInventoryTab({
-    super.key,
-    this.onProductsChanged,
-  });
+  const CashierInventoryTab({super.key, this.onProductsChanged});
 
   @override
   State<CashierInventoryTab> createState() => _CashierInventoryTabState();
@@ -49,14 +46,19 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _panelStart => _isDark ? const Color(0xFF1A2940) : Colors.white;
   Color get _panelEnd => _isDark ? const Color(0xFF0F1C2F) : Colors.white;
-  Color get _panelBorder => _isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC);
+  Color get _panelBorder =>
+      _isDark ? const Color(0xFF2A3E5B) : const Color(0xFFC9D8EC);
   Color get _cardBg => _isDark ? const Color(0xFF132238) : Colors.white;
-  Color get _cardBorder => _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
+  Color get _cardBorder =>
+      _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
   Color get _titleColor => _isDark ? Colors.white : const Color(0xFF18314F);
-  Color get _mutedColor => _isDark ? const Color(0xFF9AB1CB) : const Color(0xFF6F8096);
-  Color get _fieldBg => _isDark ? const Color(0xFF1A2B44) : const Color(0xFFF5F8FE);
+  Color get _mutedColor =>
+      _isDark ? const Color(0xFF9AB1CB) : const Color(0xFF6F8096);
+  Color get _fieldBg =>
+      _isDark ? const Color(0xFF1A2B44) : const Color(0xFFF5F8FE);
   Color get _fieldText => _isDark ? Colors.white : const Color(0xFF18314F);
-  Color get _fieldFocus => _isDark ? const Color(0xFF88A7CE) : const Color(0xFF315C8F);
+  Color get _fieldFocus =>
+      _isDark ? const Color(0xFF88A7CE) : const Color(0xFF315C8F);
 
   static const List<String> _categoryOptions = <String>[
     'All',
@@ -103,16 +105,17 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
     setState(() => _isLoading = true);
     try {
       final response = await _loadInventoryRows();
-      final rows = response
-          .map((row) => Product.fromJson(row))
-          .toList();
+      final rows = response.map((row) => Product.fromJson(row)).toList();
 
       if (!mounted) return;
       setState(() => _products = rows);
       widget.onProductsChanged?.call();
     } catch (e) {
       if (!mounted) return;
-      _showThemedSnackBar('Failed to load inventory: $e', backgroundColor: Colors.red);
+      _showThemedSnackBar(
+        'Failed to load inventory: $e',
+        backgroundColor: Colors.red,
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -146,7 +149,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
     final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final path = 'inventory/${DateTime.now().millisecondsSinceEpoch}_$safeName';
     try {
-      await _supabase.storage.from(bucket).uploadBinary(
+      await _supabase.storage
+          .from(bucket)
+          .uploadBinary(
             path,
             bytes,
             fileOptions: const FileOptions(upsert: true),
@@ -223,7 +228,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
     final isMobile = Responsive.isMobile(context);
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: PiggyTrunkTheme.ptPrimary));
+      return const Center(
+        child: CircularProgressIndicator(color: PiggyTrunkTheme.ptPrimary),
+      );
     }
 
     if (_showAddProductForm) {
@@ -245,7 +252,12 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
       color: PiggyTrunkTheme.ptPrimary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(isMobile ? 12 : 20, isMobile ? 12 : 20, isMobile ? 12 : 20, 108),
+        padding: EdgeInsets.fromLTRB(
+          isMobile ? 12 : 20,
+          isMobile ? 12 : 20,
+          isMobile ? 12 : 20,
+          108,
+        ),
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1350),
@@ -273,14 +285,28 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+                    color: _isDark
+                        ? const Color(0xFF1E2F47)
+                        : const Color(0xFFEEF4FD),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
                     children: [
-                      Expanded(child: _buildTabButton(0, 'Products Catalog', _products.length)),
+                      Expanded(
+                        child: _buildTabButton(
+                          0,
+                          'Products Catalog',
+                          _products.length,
+                        ),
+                      ),
                       const SizedBox(width: 4),
-                      Expanded(child: _buildTabButton(1, 'Raiser Stock Requests', null)),
+                      Expanded(
+                        child: _buildTabButton(
+                          1,
+                          'Raiser Stock Requests',
+                          null,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -321,7 +347,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
         ),
       ),
       style: OutlinedButton.styleFrom(
-        backgroundColor: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFEEF4FD),
+        backgroundColor: _isDark
+            ? const Color(0xFF1E2F47)
+            : const Color(0xFFEEF4FD),
         side: BorderSide(
           color: _isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3),
           width: 1.2,
@@ -412,7 +440,8 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
     final isMobile = Responsive.isMobile(context);
 
     final filteredProducts = _baseSortedProducts.where((p) {
-      if (_selectedCategory != 'All' && p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
+      if (_selectedCategory != 'All' &&
+          p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
         return false;
       }
       final q = _searchCtrl.text.trim().toLowerCase();
@@ -421,7 +450,10 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
         final desc = p.description.toLowerCase();
         final acronymId = _getProductAcronymId(p).toLowerCase();
         final rawBarcode = (p.barcode ?? '').trim().toLowerCase();
-        if (!name.contains(q) && !desc.contains(q) && !acronymId.contains(q) && !rawBarcode.contains(q)) {
+        if (!name.contains(q) &&
+            !desc.contains(q) &&
+            !acronymId.contains(q) &&
+            !rawBarcode.contains(q)) {
           return false;
         }
       }
@@ -441,14 +473,29 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                     onChanged: (_) => setState(() {}),
                     textCapitalization: TextCapitalization.words,
                     inputFormatters: const [CapitalizeWordsInputFormatter()],
-                    style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 13.5),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: _fieldText,
+                      fontSize: 13.5,
+                    ),
                     decoration: InputDecoration(
-                      hintText: 'Search by name, ID (e.g. PEWS-001), or barcode...',
-                      hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13.5),
-                      prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                      hintText:
+                          'Search by name, ID (e.g. PEWS-001), or barcode...',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        color: _mutedColor,
+                        fontSize: 13.5,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: _mutedColor,
+                        size: 20,
+                      ),
                       suffixIcon: _searchCtrl.text.isNotEmpty
                           ? IconButton(
-                              icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                              icon: Icon(
+                                Icons.clear_rounded,
+                                color: _mutedColor,
+                                size: 18,
+                              ),
                               onPressed: () {
                                 _searchCtrl.clear();
                                 setState(() {});
@@ -457,7 +504,10 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                           : null,
                       filled: true,
                       fillColor: _fieldBg,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: _cardBorder),
@@ -470,7 +520,11 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                   ),
                   const SizedBox(height: 12),
                   Row(
-                    children: _categoryOptions.map((c) => Expanded(child: _buildCategoryFilterChip(c))).toList(),
+                    children: _categoryOptions
+                        .map(
+                          (c) => Expanded(child: _buildCategoryFilterChip(c)),
+                        )
+                        .toList(),
                   ),
                   const SizedBox(height: 12),
                   _buildArchiveToggle(),
@@ -484,14 +538,29 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                       onChanged: (_) => setState(() {}),
                       textCapitalization: TextCapitalization.words,
                       inputFormatters: const [CapitalizeWordsInputFormatter()],
-                      style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 14),
+                      style: GoogleFonts.plusJakartaSans(
+                        color: _fieldText,
+                        fontSize: 14,
+                      ),
                       decoration: InputDecoration(
-                        hintText: 'Search by name, ID (e.g. PEWS-001), or barcode...',
-                        hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
-                        prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                        hintText:
+                            'Search by name, ID (e.g. PEWS-001), or barcode...',
+                        hintStyle: GoogleFonts.plusJakartaSans(
+                          color: _mutedColor,
+                          fontSize: 14,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: _mutedColor,
+                          size: 20,
+                        ),
                         suffixIcon: _searchCtrl.text.isNotEmpty
                             ? IconButton(
-                                icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                                icon: Icon(
+                                  Icons.clear_rounded,
+                                  color: _mutedColor,
+                                  size: 18,
+                                ),
                                 onPressed: () {
                                   _searchCtrl.clear();
                                   setState(() {});
@@ -500,21 +569,29 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                             : null,
                         filled: true,
                         fillColor: _fieldBg,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(color: _cardBorder),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _fieldFocus, width: 1.5),
+                          borderSide: BorderSide(
+                            color: _fieldFocus,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 14),
                   Row(
-                    children: _categoryOptions.map((c) => _buildCategoryFilterChip(c)).toList(),
+                    children: _categoryOptions
+                        .map((c) => _buildCategoryFilterChip(c))
+                        .toList(),
                   ),
                   const SizedBox(width: 14),
                   _buildArchiveToggle(),
@@ -529,16 +606,29 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
               padding: const EdgeInsets.all(40),
               child: Column(
                 children: [
-                  Icon(Icons.inventory_2_outlined, size: 48, color: _mutedColor),
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 48,
+                    color: _mutedColor,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'No products found',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.bold, color: _titleColor),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _titleColor,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _isArchiveMode ? 'No archived products in this view.' : 'Try adjusting your filters or click "+ Add Product".',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 13, color: _mutedColor),
+                    _isArchiveMode
+                        ? 'No archived products in this view.'
+                        : 'Try adjusting your filters or click "+ Add Product".',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      color: _mutedColor,
+                    ),
                   ),
                 ],
               ),
@@ -548,7 +638,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
           for (final cat in _categoryOptions) ...[
             Builder(
               builder: (context) {
-                final catProducts = filteredProducts.where((p) => p.category.toLowerCase() == cat.toLowerCase()).toList();
+                final catProducts = filteredProducts
+                    .where((p) => p.category.toLowerCase() == cat.toLowerCase())
+                    .toList();
                 if (catProducts.isEmpty) return const SizedBox.shrink();
 
                 return Column(
@@ -562,7 +654,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                             width: 4,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                              color: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -591,8 +685,10 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: catProducts.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 14),
-                      itemBuilder: (context, index) => _buildProductCard(catProducts[index]),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 14),
+                      itemBuilder: (context, index) =>
+                          _buildProductCard(catProducts[index]),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -606,7 +702,8 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   }
 
   Widget _buildCategoryFilterChip(String category) {
-    final isSelected = _selectedCategory.toLowerCase() == category.toLowerCase();
+    final isSelected =
+        _selectedCategory.toLowerCase() == category.toLowerCase();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2.5),
       child: InkWell(
@@ -628,7 +725,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: (_isDark ? Colors.black : PiggyTrunkTheme.ptPrimary).withValues(alpha: 0.15),
+                      color:
+                          (_isDark ? Colors.black : PiggyTrunkTheme.ptPrimary)
+                              .withValues(alpha: 0.15),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -705,7 +804,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
-              _isArchiveMode ? Icons.arrow_back_rounded : Icons.archive_outlined,
+              _isArchiveMode
+                  ? Icons.arrow_back_rounded
+                  : Icons.archive_outlined,
               size: 16,
               color: contentColor,
             ),
@@ -754,11 +855,19 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                       product.image!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Center(
-                        child: Icon(Icons.broken_image_outlined, color: _mutedColor, size: 28),
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: _mutedColor,
+                          size: 28,
+                        ),
                       ),
                     )
                   : Center(
-                      child: Icon(Icons.image_outlined, color: _mutedColor, size: 28),
+                      child: Icon(
+                        Icons.image_outlined,
+                        color: _mutedColor,
+                        size: 28,
+                      ),
                     ),
             ),
           ),
@@ -778,7 +887,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: isMobile ? 14 : 15,
                           fontWeight: FontWeight.w800,
-                          color: _isDark ? Colors.white : const Color(0xFF3B5B83),
+                          color: _isDark
+                              ? Colors.white
+                              : const Color(0xFF3B5B83),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -800,9 +911,14 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                     ),
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2.5,
+                      ),
                       decoration: BoxDecoration(
-                        color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFF1F5F9),
+                        color: _isDark
+                            ? const Color(0xFF1E2F47)
+                            : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: _cardBorder),
                       ),
@@ -812,7 +928,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                           Icon(
                             Icons.qr_code_2_rounded,
                             size: 12,
-                            color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                            color: _isDark
+                                ? Colors.white
+                                : PiggyTrunkTheme.ptPrimary,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -820,7 +938,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                             style: GoogleFonts.sourceCodePro(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
-                              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                              color: _isDark
+                                  ? Colors.white
+                                  : PiggyTrunkTheme.ptPrimary,
                             ),
                           ),
                         ],
@@ -830,7 +950,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  product.description.isEmpty ? 'No description' : product.description,
+                  product.description.isEmpty
+                      ? 'No description'
+                      : product.description,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.plusJakartaSans(
@@ -841,7 +963,10 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                 ),
                 SizedBox(height: isMobile ? 6 : 8),
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 12, vertical: isMobile ? 6 : 8),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 8 : 12,
+                    vertical: isMobile ? 6 : 8,
+                  ),
                   decoration: BoxDecoration(
                     color: _fieldBg,
                     borderRadius: BorderRadius.circular(10),
@@ -910,13 +1035,22 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                         ),
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: _panelBorder, width: 1.2),
-                          padding: EdgeInsets.symmetric(vertical: isMobile ? 8 : 12, horizontal: 2),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 8 : 12,
+                            horizontal: 2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.edit_outlined, size: isMobile ? 13 : 15, color: _mutedColor),
+                            Icon(
+                              Icons.edit_outlined,
+                              size: isMobile ? 13 : 15,
+                              color: _mutedColor,
+                            ),
                             const SizedBox(width: 4),
                             FittedBox(
                               fit: BoxFit.scaleDown,
@@ -947,14 +1081,22 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: PiggyTrunkTheme.ptPrimary,
                           foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(vertical: isMobile ? 8 : 12, horizontal: 2),
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 8 : 12,
+                            horizontal: 2,
+                          ),
                           elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add_shopping_cart, size: isMobile ? 13 : 15),
+                            Icon(
+                              Icons.add_shopping_cart,
+                              size: isMobile ? 13 : 15,
+                            ),
                             const SizedBox(width: 4),
                             FittedBox(
                               fit: BoxFit.scaleDown,
@@ -981,11 +1123,17 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         icon: Icon(
-                          _isArchiveMode ? Icons.unarchive_outlined : Icons.archive_outlined,
+                          _isArchiveMode
+                              ? Icons.unarchive_outlined
+                              : Icons.archive_outlined,
                           size: isMobile ? 16 : 18,
-                          color: _isArchiveMode ? PiggyTrunkTheme.ptSuccess : const Color(0xFFFF758C),
+                          color: _isArchiveMode
+                              ? PiggyTrunkTheme.ptSuccess
+                              : const Color(0xFFFF758C),
                         ),
-                        tooltip: _isArchiveMode ? 'Restore Product' : 'Archive Product',
+                        tooltip: _isArchiveMode
+                            ? 'Restore Product'
+                            : 'Archive Product',
                         onPressed: () => _toggleArchiveProduct(product),
                       ),
                     ),
@@ -1005,7 +1153,10 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
     final fg = lowStock ? const Color(0xFFFF758C) : const Color(0xFF43CB89);
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 10, vertical: isMobile ? 3 : 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 6 : 10,
+        vertical: isMobile ? 3 : 6,
+      ),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
@@ -1030,7 +1181,9 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
           ? 'Are you sure you want to restore "${product.name}" back to active inventory?'
           : 'Are you sure you want to archive "${product.name}"? It will be hidden from active inventory.',
       confirmButtonText: isRestore ? 'Restore Product' : 'Archive Product',
-      actionType: isRestore ? SlideOverActionType.success : SlideOverActionType.warning,
+      actionType: isRestore
+          ? SlideOverActionType.success
+          : SlideOverActionType.warning,
       customIcon: isRestore ? Icons.unarchive_outlined : Icons.archive_outlined,
     );
 
@@ -1047,16 +1200,25 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
           action: isRestore ? 'RESTORE' : 'ARCHIVE',
           price: product.price,
           units: product.units,
-          details: isRestore ? 'Restored product from archive.' : 'Archived product.',
+          details: isRestore
+              ? 'Restored product from archive.'
+              : 'Archived product.',
         );
 
         _showThemedSnackBar(
-          isRestore ? 'Product "${product.name}" restored successfully.' : 'Product "${product.name}" archived.',
-          backgroundColor: isRestore ? PiggyTrunkTheme.ptSuccess : Colors.orange,
+          isRestore
+              ? 'Product "${product.name}" restored successfully.'
+              : 'Product "${product.name}" archived.',
+          backgroundColor: isRestore
+              ? PiggyTrunkTheme.ptSuccess
+              : Colors.orange,
         );
         _loadProducts();
       } catch (e) {
-        _showThemedSnackBar('Operation failed: $e', backgroundColor: Colors.red);
+        _showThemedSnackBar(
+          'Operation failed: $e',
+          backgroundColor: Colors.red,
+        );
       }
     }
   }

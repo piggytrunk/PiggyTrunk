@@ -16,6 +16,7 @@ class InventoryExportService {
 
     // Header row
     rows.add([
+      'Product ID / Barcode',
       'Product Name',
       'Category',
       'Unit Price (PHP)',
@@ -28,7 +29,8 @@ class InventoryExportService {
     ]);
 
     // Data rows
-    for (final p in products) {
+    for (int i = 0; i < products.length; i++) {
+      final p = products[i];
       final totalValue = p.price * p.units;
       String status;
       if (p.isArchived) {
@@ -43,8 +45,10 @@ class InventoryExportService {
 
       final dateStr =
           '${p.createdAt.year}-${p.createdAt.month.toString().padLeft(2, '0')}-${p.createdAt.day.toString().padLeft(2, '0')}';
+      final barcodeId = p.displayAcronymId(sortNumber: i + 1);
 
       rows.add([
+        barcodeId,
         p.name,
         p.category,
         p.price.toStringAsFixed(2),
@@ -255,9 +259,11 @@ class InventoryExportService {
                 status = 'In Stock';
               }
 
+              final barcodeId = p.displayAcronymId(sortNumber: index + 1);
+
               return [
                 (index + 1).toString(),
-                p.name,
+                '${p.name}\n[$barcodeId]',
                 p.category,
                 'PHP ${p.price.toStringAsFixed(2)}',
                 p.units.toString(),

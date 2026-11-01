@@ -419,7 +419,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
       _inPageConfirmation = InPageConfirmationView(
         title: 'Confirm Approval',
         subtitle: 'Approve $name as $userRole',
-        message: 'Are you sure you want to approve the account for "$name"? They will receive an activation email immediately and will be granted system access.',
+        message: 'Are you sure you want to approve the account for "$name"?',
         actionType: InPageActionType.success,
         userName: name,
         userEmail: userEmail,

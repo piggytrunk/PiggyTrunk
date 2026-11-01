@@ -1218,6 +1218,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Row(
+                                                mainAxisSize: MainAxisSize.min,
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
                                                   Icon(
@@ -1228,7 +1229,8 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                                         : (isPillHogFunded ? _successGreen : mutedColor),
                                                   ),
                                                   const SizedBox(width: 3),
-                                                  Flexible(
+                                                  ConstrainedBox(
+                                                    constraints: const BoxConstraints(maxWidth: 120),
                                                     child: Text(
                                                       hogDisplayName,
                                                       style: GoogleFonts.plusJakartaSans(
@@ -1252,6 +1254,7 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                               ),
                                               const SizedBox(height: 2),
                                               Row(
+                                                mainAxisSize: MainAxisSize.min,
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
                                                   if (isHogDone) ...[
@@ -1262,7 +1265,8 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                                     ),
                                                     const SizedBox(width: 2),
                                                   ],
-                                                  Flexible(
+                                                  ConstrainedBox(
+                                                    constraints: const BoxConstraints(maxWidth: 120),
                                                     child: Text(
                                                       hStage,
                                                       style: GoogleFonts.plusJakartaSans(
