@@ -53,6 +53,21 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
   final Map<String, String> _hogSpecificStages = {};
   BigInt? _selectedBatchAssignmentId;
 
+  // Search & Pagination state for Hogs Inventory & Switcher
+  final TextEditingController _hogSearchCtrl = TextEditingController();
+  final ScrollController _hogSwitcherScrollCtrl = ScrollController();
+  String _hogSearchQuery = '';
+  String _selectedStageFilter = 'All';
+  int _inventoryCurrentPage = 1;
+  static const int _hogsPerPage = 15;
+
+  @override
+  void dispose() {
+    _hogSearchCtrl.dispose();
+    _hogSwitcherScrollCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2484,228 +2499,352 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
                             subtitle: strings.noHogsSubtitle,
                           ),
                         ] else ...[
-                          ...visibleHogs.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final hog = entry.value;
-                            final rawStatus = (hog['health_status'] ?? 'Healthy').toString();
-                            final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
-                            final tagNumber = hog['tag_number'] ?? '#${index + 1}';
-                            final String? weight = null;
-                            final hogType = _getHogPigType(hog, batchType);
-                            final isSow = hogType == 'Sow';
-                            final hogStage = _getHogStage(hog, displayStage, isSow);
-                            final bool isThisHogDone = (hogStage.toLowerCase() == 'selling' ||
-                                hogStage.toLowerCase() == 'lactation' ||
-                                (hog['status'] ?? '').toString().toLowerCase() == 'completed');
-
-                            return GestureDetector(
-                              onTap: () => _showHogDetailModal(context, hog, index, batchType, displayStage, isConcluded: isBatchConcluded || isThisHogDone),
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: (isBatchConcluded || isThisHogDone)
-                                      ? (isDark ? const Color(0xFF142032) : const Color(0xFFF8FAFC))
-                                      : (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: (isBatchConcluded || isThisHogDone)
-                                        ? (isDark ? const Color(0xFF24334A) : const Color(0xFFE2E8F0))
-                                        : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                          // Search & Filter Row for large batches
+                          if (visibleHogs.length > 4) ...[
+                            Container(
+                              decoration: BoxDecoration(
+                                color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: borderColor),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.02),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
+                                ],
+                              ),
+                              child: TextField(
+                                controller: _hogSearchCtrl,
+                                onChanged: (val) {
+                                  setState(() {
+                                    _hogSearchQuery = val;
+                                    _inventoryCurrentPage = 1;
+                                  });
+                                },
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  color: textColor,
                                 ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 46,
-                                      height: 46,
-                                      decoration: BoxDecoration(
-                                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.pets_rounded,
-                                          color: isBatchConcluded
-                                              ? (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))
-                                              : (isDark ? Colors.white : _brandColor),
-                                          size: 22,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                '${strings.isFilipino ? "Baboy" : "Hog"} $tagNumber',
-                                                style: GoogleFonts.plusJakartaSans(
-                                                  fontSize: 14.5,
-                                                  fontWeight: FontWeight.w800,
-                                                  color: isBatchConcluded
-                                                      ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
-                                                      : (isDark ? Colors.white : _brandColor),
-                                                ),
-                                              ),
-                                              if (isBatchConcluded && isThisHogDone) ...[
-                                                const SizedBox(width: 8),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                                  decoration: BoxDecoration(
-                                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: Text(
-                                                    strings.isFilipino ? 'Tapos na' : 'Concluded',
-                                                    style: GoogleFonts.plusJakartaSans(
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
+                                decoration: InputDecoration(
+                                  hintText: strings.isFilipino ? 'Hanapin ang tag o numero (hal. 15, 88)...' : 'Search by tag or number (e.g. 15, 88)...',
+                                  hintStyle: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12.5,
+                                    color: mutedColor,
+                                  ),
+                                  prefixIcon: Icon(Icons.search_rounded, size: 18, color: mutedColor),
+                                  suffixIcon: _hogSearchQuery.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear_rounded, size: 16),
+                                          onPressed: () {
+                                            _hogSearchCtrl.clear();
+                                            setState(() {
+                                              _hogSearchQuery = '';
+                                              _inventoryCurrentPage = 1;
+                                            });
+                                          },
+                                        )
+                                      : null,
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            // Stage filter pills
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  _buildInventoryFilterChip('All', strings.isFilipino ? 'Lahat' : 'All', visibleHogs.length, isDark),
+                                  ...currentStages.map((st) {
+                                    final cnt = visibleHogs.where((h) {
+                                      final isSow = _getHogPigType(h, batchType) == 'Sow';
+                                      return _getHogStage(h, displayStage, isSow).toLowerCase() == st.toLowerCase();
+                                    }).length;
+                                    return _buildInventoryFilterChip(st, st, cnt, isDark);
+                                  }),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+
+                          Builder(
+                            builder: (context) {
+                              final filteredHogs = visibleHogs.where((h) {
+                                if (_hogSearchQuery.isNotEmpty) {
+                                  final q = _hogSearchQuery.toLowerCase().trim();
+                                  final tag = (h['tag_number'] ?? '').toString().toLowerCase();
+                                  final id = (h['hog_id'] ?? '').toString().toLowerCase();
+                                  if (!tag.contains(q) && !id.contains(q)) return false;
+                                }
+                                if (_selectedStageFilter != 'All') {
+                                  final isSow = _getHogPigType(h, batchType) == 'Sow';
+                                  final st = _getHogStage(h, displayStage, isSow);
+                                  if (st.toLowerCase() != _selectedStageFilter.toLowerCase()) return false;
+                                }
+                                return true;
+                              }).toList();
+
+                              if (filteredHogs.isEmpty) {
+                                return RaiserEmptyState(
+                                  icon: Icons.pets_outlined,
+                                  message: strings.noHogsFound,
+                                  subtitle: strings.noHogsSubtitle,
+                                );
+                              }
+
+                              final int totalFiltered = filteredHogs.length;
+                              final int totalPages = (totalFiltered / _hogsPerPage).ceil().clamp(1, 9999);
+                              final int currentPage = _inventoryCurrentPage.clamp(1, totalPages);
+                              final int startIndex = (currentPage - 1) * _hogsPerPage;
+                              final int endIndex = (startIndex + _hogsPerPage).clamp(0, totalFiltered);
+                              final paginatedList = filteredHogs.sublist(startIndex, endIndex);
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...paginatedList.map((hog) {
+                                    final index = visibleHogs.indexOf(hog);
+                                    final rawStatus = (hog['health_status'] ?? 'Healthy').toString();
+                                    final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
+                                    final tagNumber = hog['tag_number'] ?? '#${index + 1}';
+                                    final String? weight = null;
+                                    final hogType = _getHogPigType(hog, batchType);
+                                    final isSow = hogType == 'Sow';
+                                    final hogStage = _getHogStage(hog, displayStage, isSow);
+                                    final bool isThisHogDone = (hogStage.toLowerCase() == 'selling' ||
+                                        hogStage.toLowerCase() == 'lactation' ||
+                                        (hog['status'] ?? '').toString().toLowerCase() == 'completed');
+
+                                    return GestureDetector(
+                                      onTap: () => _showHogDetailModal(context, hog, index, batchType, displayStage, isConcluded: isBatchConcluded || isThisHogDone),
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: (isBatchConcluded || isThisHogDone)
+                                              ? (isDark ? const Color(0xFF142032) : const Color(0xFFF8FAFC))
+                                              : (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white),
+                                          borderRadius: BorderRadius.circular(18),
+                                          border: Border.all(
+                                            color: (isBatchConcluded || isThisHogDone)
+                                                ? (isDark ? const Color(0xFF24334A) : const Color(0xFFE2E8F0))
+                                                : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
                                           ),
-                                          const SizedBox(height: 5),
-                                          Wrap(
-                                            spacing: 6,
-                                            runSpacing: 4,
-                                            children: [
-                                              // Distinct Fattening vs Sow/Breed Tag
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                                decoration: BoxDecoration(
-                                                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(
-                                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                                                    width: 0.8,
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  isSow ? strings.sowBreedTag : strings.fatteningTag,
-                                                  style: GoogleFonts.plusJakartaSans(
-                                                    fontSize: 10.5,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: isDark ? const Color(0xFFF1F5F9) : _brandColor,
-                                                  ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 46,
+                                              height: 46,
+                                              decoration: BoxDecoration(
+                                                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                                  width: 1,
                                                 ),
                                               ),
-                                              // Specific Feed Stage Tag
-                                              Builder(
-                                                builder: (context) {
-                                                  final isHogCompleted = hogStage.toLowerCase() == 'selling' || hogStage.toLowerCase() == 'lactation';
-                                                  return Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                                    decoration: BoxDecoration(
-                                                      color: isHogCompleted
-                                                          ? _successGreen.withValues(alpha: isDark ? 0.22 : 0.12)
-                                                          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                      border: Border.all(
-                                                        color: isHogCompleted
-                                                            ? _successGreen.withValues(alpha: isDark ? 0.6 : 0.4)
-                                                            : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
-                                                        width: 0.8,
+                                              child: Center(
+                                                child: Icon(
+                                                  Icons.pets_rounded,
+                                                  color: isBatchConcluded
+                                                      ? (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))
+                                                      : (isDark ? Colors.white : _brandColor),
+                                                  size: 22,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        '${strings.isFilipino ? "Baboy" : "Hog"} $tagNumber',
+                                                        style: GoogleFonts.plusJakartaSans(
+                                                          fontSize: 14.5,
+                                                          fontWeight: FontWeight.w800,
+                                                          color: isBatchConcluded
+                                                              ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
+                                                              : (isDark ? Colors.white : _brandColor),
+                                                        ),
                                                       ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        if (isHogCompleted) ...[
-                                                          const Icon(Icons.check_rounded, size: 10, color: _successGreen),
-                                                          const SizedBox(width: 3),
-                                                        ],
-                                                        Text(
-                                                          isHogCompleted ? '$hogStage • Complete' : hogStage,
-                                                          style: GoogleFonts.plusJakartaSans(
-                                                            fontSize: 10.5,
-                                                            fontWeight: FontWeight.w700,
-                                                            color: isHogCompleted ? _successGreen : (isDark ? const Color(0xFFE2E8F0) : _brandColor),
+                                                      if (isBatchConcluded && isThisHogDone) ...[
+                                                        const SizedBox(width: 8),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            strings.isFilipino ? 'Tapos na' : 'Concluded',
+                                                            style: GoogleFonts.plusJakartaSans(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w700,
+                                                              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                                            ),
                                                           ),
                                                         ),
                                                       ],
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 5),
+                                                  Wrap(
+                                                    spacing: 6,
+                                                    runSpacing: 4,
+                                                    children: [
+                                                      // Distinct Fattening vs Sow/Breed Tag
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                                        decoration: BoxDecoration(
+                                                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          border: Border.all(
+                                                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                                                            width: 0.8,
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          isSow ? strings.sowBreedTag : strings.fatteningTag,
+                                                          style: GoogleFonts.plusJakartaSans(
+                                                            fontSize: 10.5,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: isDark ? const Color(0xFFF1F5F9) : _brandColor,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      // Specific Feed Stage Tag
+                                                      Builder(
+                                                        builder: (context) {
+                                                          final isHogCompleted = hogStage.toLowerCase() == 'selling' || hogStage.toLowerCase() == 'lactation';
+                                                          return Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                                            decoration: BoxDecoration(
+                                                              color: isHogCompleted
+                                                                  ? _successGreen.withValues(alpha: isDark ? 0.22 : 0.12)
+                                                                  : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                                                              borderRadius: BorderRadius.circular(6),
+                                                              border: Border.all(
+                                                                color: isHogCompleted
+                                                                    ? _successGreen.withValues(alpha: isDark ? 0.6 : 0.4)
+                                                                    : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                                                                width: 0.8,
+                                                              ),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                if (isHogCompleted) ...[
+                                                                  const Icon(Icons.check_rounded, size: 10, color: _successGreen),
+                                                                  const SizedBox(width: 3),
+                                                                ],
+                                                                Text(
+                                                                  isHogCompleted ? ' • Complete' : hogStage,
+                                                                  style: GoogleFonts.plusJakartaSans(
+                                                                    fontSize: 10.5,
+                                                                    fontWeight: FontWeight.w700,
+                                                                    color: isHogCompleted ? _successGreen : (isDark ? const Color(0xFFE2E8F0) : _brandColor),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  if (weight != null && weight.isNotEmpty) ...[
+                                                    const SizedBox(height: 5),
+                                                    Text(
+                                                      ': ',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 11,
+                                                        color: PiggyTrunkTheme.ptMuted,
+                                                      ),
                                                     ),
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                          if (weight != null && weight.isNotEmpty) ...[
-                                            const SizedBox(height: 5),
-                                            Text(
-                                              weight,
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 11.5,
-                                                fontWeight: FontWeight.w500,
-                                                color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+                                                  ],
+                                                ],
                                               ),
                                             ),
+                                            const SizedBox(width: 8),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: isHealthy
+                                                        ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F5E9))
+                                                        : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFEBEE)),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        isHealthy ? Icons.check_circle_outline : Icons.error_outline,
+                                                        size: 13,
+                                                        color: isHealthy ? const Color(0xFF10B981) : const Color(0xFFE53935),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        strings.formatStatus(rawStatus).toUpperCase(),
+                                                        style: GoogleFonts.plusJakartaSans(
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.w700,
+                                                          color: isHealthy ? const Color(0xFF10B981) : const Color(0xFFE53935),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Icon(
+                                                  Icons.arrow_forward_ios_rounded,
+                                                  size: 13,
+                                                  color: isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFFCBD5E1),
+                                                ),
+                                              ],
+                                            ),
                                           ],
-                                        ],
-                                      ),
-                                    ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: isHealthy
-                                        ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F5E9))
-                                        : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFEBEE)),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        isHealthy ? Icons.check_circle_outline : Icons.error_outline,
-                                        size: 13,
-                                        color: isHealthy ? const Color(0xFF10B981) : const Color(0xFFE53935),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        strings.formatStatus(rawStatus).toUpperCase(),
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: isHealthy ? const Color(0xFF10B981) : const Color(0xFFE53935),
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 13,
-                                  color: isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFFCBD5E1),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ],
+                                    );
+                                  }),
+
+                                  // Pagination Controls Toolbar
+                                  if (totalPages > 1) ...[
+                                    const SizedBox(height: 6),
+                                    _buildPaginationToolbar(
+                                      currentPage: currentPage,
+                                      totalPages: totalPages,
+                                      totalItems: totalFiltered,
+                                      startIndex: startIndex + 1,
+                                      endIndex: endIndex,
+                                      isDark: isDark,
+                                      strings: strings,
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
+                        ]
               ] else ...[
                 // ==================== REPORTS TAB ====================
                 Row(
@@ -3120,6 +3259,412 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
     );
   }
 
+  Widget _buildInventoryFilterChip(String key, String label, int count, bool isDark) {
+    final isSelected = _selectedStageFilter.toLowerCase() == key.toLowerCase();
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedStageFilter = key;
+            _inventoryCurrentPage = 1;
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? (isDark ? Colors.white : _brandColor)
+                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? (isDark ? Colors.white : _brandColor)
+                  : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                      : (isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (isDark ? const Color(0xFF0F172A).withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.2))
+                      : (isDark ? const Color(0xFF0F172A) : Colors.white),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected
+                        ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                        : (isDark ? const Color(0xFFCBD5E1) : PiggyTrunkTheme.ptMuted),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaginationToolbar({
+    required int currentPage,
+    required int totalPages,
+    required int totalItems,
+    required int startIndex,
+    required int endIndex,
+    required bool isDark,
+    required AppStrings strings,
+  }) {
+    final borderColor = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final surfaceColor = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '$startIndex–$endIndex of $totalItems',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                onPressed: currentPage > 1
+                    ? () => setState(() => _inventoryCurrentPage = currentPage - 1)
+                    : null,
+                visualDensity: VisualDensity.compact,
+                color: isDark ? Colors.white : _brandColor,
+                disabledColor: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$currentPage / $totalPages',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : _brandColor,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                onPressed: currentPage < totalPages
+                    ? () => setState(() => _inventoryCurrentPage = currentPage + 1)
+                    : null,
+                visualDensity: VisualDensity.compact,
+                color: isDark ? Colors.white : _brandColor,
+                disabledColor: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _scrollSwitcherToHog(int index) {
+    if (!_hogSwitcherScrollCtrl.hasClients) return;
+    try {
+      const double itemWidth = 110.0;
+      final double targetOffset = (index * itemWidth) - 80.0;
+      final double clamped = targetOffset.clamp(
+        0.0,
+        _hogSwitcherScrollCtrl.position.maxScrollExtent,
+      );
+      _hogSwitcherScrollCtrl.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } catch (_) {}
+  }
+
+  void _showHogPickerModal(
+    BuildContext context,
+    List<Map<String, dynamic>> allHogs,
+    String fallbackType,
+    String fallbackStage,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final strings = AppStrings.of(context);
+    final bg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
+    final textColor = isDark ? Colors.white : _brandColor;
+    final modalSearchCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            final query = modalSearchCtrl.text.toLowerCase().trim();
+            final filtered = allHogs.where((h) {
+              if (query.isEmpty) return true;
+              final tag = (h['tag_number'] ?? '').toString().toLowerCase();
+              final id = (h['hog_id'] ?? '').toString().toLowerCase();
+              return tag.contains(query) || id.contains(query);
+            }).toList();
+
+            return Container(
+              height: MediaQuery.of(ctx).size.height * 0.72,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(
+                  color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          strings.isFilipino ? 'Piliin ang Alagang Baboy' : 'Select Hog',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: textColor,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${allHogs.length} ${strings.hogs}',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: modalSearchCtrl,
+                      onChanged: (_) => setModalState(() {}),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13.5,
+                        color: textColor,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: strings.isFilipino ? 'Hanapin ang tag o numero...' : 'Search tag number (e.g. 15, 88)...',
+                        hintStyle: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: isDark ? const Color(0xFF64748B) : PiggyTrunkTheme.ptMuted,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          size: 18,
+                          color: isDark ? const Color(0xFF64748B) : PiggyTrunkTheme.ptMuted,
+                        ),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              strings.noHogsFound,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                color: PiggyTrunkTheme.ptMuted,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, i) {
+                              final h = filtered[i];
+                              final originalIdx = allHogs.indexOf(h);
+                              final isSelected = _selectedHogIndex == originalIdx;
+                              final tag = h['tag_number'] ?? '#${originalIdx + 1}';
+                              final hType = _getHogPigType(h, fallbackType);
+                              final hIsBreed = hType.toLowerCase() == 'sow';
+                              final hStage = _getHogStage(h, fallbackStage, hIsBreed);
+                              final rawStatus = (h['health_status'] ?? 'Healthy').toString();
+                              final isHealthy = rawStatus.toLowerCase() == 'healthy' || rawStatus.isEmpty;
+
+                              return InkWell(
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  setState(() {
+                                    _selectedHogIndex = originalIdx >= 0 ? originalIdx : 0;
+                                  });
+                                  _scrollSwitcherToHog(_selectedHogIndex);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF))
+                                        : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                          : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(7),
+                                            decoration: BoxDecoration(
+                                              color: (isSelected ? (isDark ? const Color(0xFF38BDF8) : _brandColor) : PiggyTrunkTheme.ptMuted)
+                                                  .withValues(alpha: 0.12),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.pets_rounded,
+                                              size: 14,
+                                              color: isSelected
+                                                  ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                                  : PiggyTrunkTheme.ptMuted,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '${strings.isFilipino ? "Baboy" : "Hog"} $tag',
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 13.5,
+                                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                                                  color: isSelected
+                                                      ? (isDark ? Colors.white : _brandColor)
+                                                      : textColor,
+                                                ),
+                                              ),
+                                              Text(
+                                                '$hStage • ${isHealthy ? strings.healthy : rawStatus}',
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 11,
+                                                  color: isHealthy ? _successGreen : _dangerRed,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 18,
+                                          color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildFeedsCard({
     required String title,
     required String badgeText,
@@ -3285,129 +3830,310 @@ class _RaiserHogsTabState extends State<RaiserHogsTab> {
               final effectiveHogs = hogs ?? widget.hogsList;
               if (effectiveHogs.length <= 1) return const SizedBox.shrink();
 
+              final bool isManyHogs = effectiveHogs.length > 3;
+
               return Padding(
                 padding: const EdgeInsets.only(top: 14),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: effectiveHogs.asMap().entries.map((entry) {
-                      final idx = entry.key;
-                      final h = entry.value;
-                      final isSelected = _selectedHogIndex == idx;
-                      final isHovered = _hoveredHogIndex == idx;
-                      final tag = h['tag_number'] ?? '#${idx + 1}';
-                      final hType = _getHogPigType(h, fallbackType);
-                      final hIsBreed = hType.toLowerCase() == 'sow';
-                      final hStage = _getHogStage(h, fallbackStage, hIsBreed);
-                      final isHogDone = hStage.toLowerCase() == 'selling' || hStage.toLowerCase() == 'lactation';
-
-                      return Expanded(
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          onEnter: (_) => setState(() => _hoveredHogIndex = idx),
-                          onExit: (_) => setState(() {
-                            if (_hoveredHogIndex == idx) _hoveredHogIndex = null;
-                          }),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              setState(() {
-                                _selectedHogIndex = idx;
-                                _hoveredHogIndex = null;
-                              });
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 140),
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
-                                    : (isHovered
-                                        ? (isDark ? const Color(0xFF1E293B) : Colors.white.withValues(alpha: 0.65))
-                                        : Colors.transparent),
-                                borderRadius: BorderRadius.circular(9),
-                                boxShadow: isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 1),
-                                        ),
-                                      ]
-                                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isManyHogs) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.pets_rounded,
+                                size: 14,
+                                color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
                               ),
-                              child: SelectionContainer.disabled(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.pets_rounded,
-                                          size: 13,
-                                          color: isSelected
-                                              ? (isDark ? Colors.white : _brandColor)
-                                              : (isHovered
-                                                  ? (isDark ? Colors.white : _brandColor)
-                                                  : PiggyTrunkTheme.ptMuted),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            '${strings.isFilipino ? "Baboy" : "Hog"} $tag',
-                                            style: GoogleFonts.plusJakartaSans(
-                                              fontSize: 12,
-                                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                              color: isSelected
-                                                  ? (isDark ? Colors.white : _brandColor)
-                                                  : (isHovered
-                                                      ? (isDark ? Colors.white : _brandColor)
-                                                      : PiggyTrunkTheme.ptMuted),
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isHogDone) ...[
-                                          const Icon(Icons.check_rounded, size: 11, color: _successGreen),
-                                          const SizedBox(width: 3),
-                                        ],
-                                        Text(
-                                          isHogDone ? '$hStage • Complete' : hStage,
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 11,
-                                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                            color: isHogDone
-                                                ? _successGreen
-                                                : (isSelected
-                                                    ? (isDark ? const Color(0xFFF1F5F9) : _brandColor)
-                                                    : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                              const SizedBox(width: 6),
+                              Text(
+                                '${strings.isFilipino ? "Pumili ng Baboy" : "Select Hog"} (${effectiveHogs.length} ${strings.hogs}):',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
                                 ),
+                              ),
+                            ],
+                          ),
+                          InkWell(
+                            onTap: () => _showHogPickerModal(context, effectiveHogs, fallbackType, fallbackStage),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    strings.isFilipino ? 'Tingnan Lahat ▾' : 'Jump to Hog ▾',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: isManyHogs
+                          ? SingleChildScrollView(
+                              controller: _hogSwitcherScrollCtrl,
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: effectiveHogs.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  final h = entry.value;
+                                  final isSelected = _selectedHogIndex == idx;
+                                  final isHovered = _hoveredHogIndex == idx;
+                                  final tag = h['tag_number'] ?? '#${idx + 1}';
+                                  final hType = _getHogPigType(h, fallbackType);
+                                  final hIsBreed = hType.toLowerCase() == 'sow';
+                                  final hStage = _getHogStage(h, fallbackStage, hIsBreed);
+                                  final isHogDone = hStage.toLowerCase() == 'selling' || hStage.toLowerCase() == 'lactation';
+
+                                  return Padding(
+                                    padding: EdgeInsets.only(right: idx == effectiveHogs.length - 1 ? 0 : 6),
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      onEnter: (_) => setState(() => _hoveredHogIndex = idx),
+                                      onExit: (_) => setState(() {
+                                        if (_hoveredHogIndex == idx) _hoveredHogIndex = null;
+                                      }),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedHogIndex = idx;
+                                            _hoveredHogIndex = null;
+                                          });
+                                          _scrollSwitcherToHog(idx);
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 140),
+                                          constraints: const BoxConstraints(minWidth: 104),
+                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
+                                                : (isHovered
+                                                    ? (isDark ? const Color(0xFF1E293B) : Colors.white.withValues(alpha: 0.65))
+                                                    : Colors.transparent),
+                                            borderRadius: BorderRadius.circular(9),
+                                            border: isSelected
+                                                ? Border.all(
+                                                    color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                                                    width: 1.5,
+                                                  )
+                                                : null,
+                                            boxShadow: isSelected
+                                                ? [
+                                                    BoxShadow(
+                                                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(0, 1),
+                                                    ),
+                                                  ]
+                                                : null,
+                                          ),
+                                          child: SelectionContainer.disabled(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.pets_rounded,
+                                                      size: 13,
+                                                      color: isSelected
+                                                          ? (isDark ? const Color(0xFF38BDF8) : _brandColor)
+                                                          : (isHovered
+                                                              ? (isDark ? Colors.white : _brandColor)
+                                                              : PiggyTrunkTheme.ptMuted),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      '${strings.isFilipino ? "Baboy" : "Hog"} $tag',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 12,
+                                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                        color: isSelected
+                                                            ? (isDark ? Colors.white : _brandColor)
+                                                            : (isHovered
+                                                                ? (isDark ? Colors.white : _brandColor)
+                                                                : PiggyTrunkTheme.ptMuted),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (isHogDone) ...[
+                                                      const Icon(Icons.check_rounded, size: 11, color: _successGreen),
+                                                      const SizedBox(width: 3),
+                                                    ],
+                                                    Text(
+                                                      isHogDone ? '$hStage • Complete' : hStage,
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 10.5,
+                                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                        color: isHogDone
+                                                            ? _successGreen
+                                                            : (isSelected
+                                                                ? (isDark ? const Color(0xFFF1F5F9) : _brandColor)
+                                                                : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            )
+                          : Row(
+                              children: effectiveHogs.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final h = entry.value;
+                                final isSelected = _selectedHogIndex == idx;
+                                final isHovered = _hoveredHogIndex == idx;
+                                final tag = h['tag_number'] ?? '#${idx + 1}';
+                                final hType = _getHogPigType(h, fallbackType);
+                                final hIsBreed = hType.toLowerCase() == 'sow';
+                                final hStage = _getHogStage(h, fallbackStage, hIsBreed);
+                                final isHogDone = hStage.toLowerCase() == 'selling' || hStage.toLowerCase() == 'lactation';
+
+                                return Expanded(
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    onEnter: (_) => setState(() => _hoveredHogIndex = idx),
+                                    onExit: (_) => setState(() {
+                                      if (_hoveredHogIndex == idx) _hoveredHogIndex = null;
+                                    }),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedHogIndex = idx;
+                                          _hoveredHogIndex = null;
+                                        });
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 140),
+                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
+                                              : (isHovered
+                                                  ? (isDark ? const Color(0xFF1E293B) : Colors.white.withValues(alpha: 0.65))
+                                                  : Colors.transparent),
+                                          borderRadius: BorderRadius.circular(9),
+                                          boxShadow: isSelected
+                                              ? [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 1),
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: SelectionContainer.disabled(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.pets_rounded,
+                                                    size: 13,
+                                                    color: isSelected
+                                                        ? (isDark ? Colors.white : _brandColor)
+                                                        : (isHovered
+                                                            ? (isDark ? Colors.white : _brandColor)
+                                                            : PiggyTrunkTheme.ptMuted),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Flexible(
+                                                    child: Text(
+                                                      '${strings.isFilipino ? "Baboy" : "Hog"} $tag',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 12,
+                                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                        color: isSelected
+                                                            ? (isDark ? Colors.white : _brandColor)
+                                                            : (isHovered
+                                                                ? (isDark ? Colors.white : _brandColor)
+                                                                : PiggyTrunkTheme.ptMuted),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (isHogDone) ...[
+                                                    const Icon(Icons.check_rounded, size: 11, color: _successGreen),
+                                                    const SizedBox(width: 3),
+                                                  ],
+                                                  Text(
+                                                    isHogDone ? '$hStage • Complete' : hStage,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 11,
+                                                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                      color: isHogDone
+                                                          ? _successGreen
+                                                          : (isSelected
+                                                              ? (isDark ? const Color(0xFFF1F5F9) : _brandColor)
+                                                              : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                    ),
+                  ],
                 ),
               );
             },

@@ -1148,139 +1148,279 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                             width: 0.8,
                           ),
                         ),
-                        child: Row(
-                          children: visibleHogs.asMap().entries.map((entry) {
-                            final idx = entry.key;
-                            final h = entry.value;
-                            final isSelected = _selectedHogIndex == idx;
-                            final hIsSow = _getHogPigType(h, widget.hogType) == 'Sow';
-                            final hStage = _getHogStage(h, widget.currentStage, hIsSow);
-                            final isHogDone = (h['status'] ?? '').toString().toLowerCase() == 'completed' ||
-                                (h['status'] ?? '').toString().toLowerCase() == 'sold' ||
-                                hStage.toLowerCase() == 'selling' ||
-                                hStage.toLowerCase() == 'lactation' ||
-                                hStage.toLowerCase().contains('sell') ||
-                                hStage.toLowerCase().contains('lactat');
-                            final rawTag = (h['tag_number'] ?? 'HOG-${h['hog_id'] ?? (idx + 1)}').toString();
-                            final hogNum = rawTag.replaceAll(RegExp(r'[^0-9]'), '');
-                            final hogDisplayName = hogNum.isNotEmpty
-                                ? '${strings.isFilipino ? "Baboy" : "Hog"} $hogNum'
-                                : rawTag;
-                            final isPillHogFunded = targetTags
-                                .map((e) => e.toUpperCase().trim())
-                                .contains(rawTag.toUpperCase().trim());
+                        child: visibleHogs.length > 3
+                            ? SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Row(
+                                  children: visibleHogs.asMap().entries.map((entry) {
+                                    final idx = entry.key;
+                                    final h = entry.value;
+                                    final isSelected = _selectedHogIndex == idx;
+                                    final hIsSow = _getHogPigType(h, widget.hogType) == 'Sow';
+                                    final hStage = _getHogStage(h, widget.currentStage, hIsSow);
+                                    final isHogDone = (h['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                                        (h['status'] ?? '').toString().toLowerCase() == 'sold' ||
+                                        hStage.toLowerCase() == 'selling' ||
+                                        hStage.toLowerCase() == 'lactation' ||
+                                        hStage.toLowerCase().contains('sell') ||
+                                        hStage.toLowerCase().contains('lactat');
+                                    final rawTag = (h['tag_number'] ?? 'HOG-${h['hog_id'] ?? (idx + 1)}').toString();
+                                    final hogNum = rawTag.replaceAll(RegExp(r'[^0-9]'), '');
+                                    final hogDisplayName = hogNum.isNotEmpty
+                                        ? '${strings.isFilipino ? "Baboy" : "Hog"} $hogNum'
+                                        : rawTag;
+                                    final isPillHogFunded = targetTags
+                                        .map((e) => e.toUpperCase().trim())
+                                        .contains(rawTag.toUpperCase().trim());
 
-                            return Expanded(
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => setState(() => _selectedHogIndex = idx),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 140),
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
-                                        : (isPillHogFunded
-                                            ? (isDark ? const Color(0xFF0F2B1D) : const Color(0xFFF0FDF4))
-                                            : Colors.transparent),
-                                    borderRadius: BorderRadius.circular(9),
-                                    border: isSelected
-                                        ? Border.all(
-                                            color: isDark ? Colors.white : _brandColor,
-                                            width: 1.6,
-                                          )
-                                        : (isPillHogFunded
-                                            ? Border.all(
-                                                color: _successGreen.withValues(alpha: isDark ? 0.8 : 0.6),
-                                                width: 1.2,
-                                              )
-                                            : Border.all(
-                                                color: Colors.transparent,
-                                                width: 1.6,
-                                              )),
-                                    boxShadow: isSelected
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 1),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.pets_rounded,
-                                            size: 12,
+                                    return Padding(
+                                      padding: EdgeInsets.only(right: idx == visibleHogs.length - 1 ? 0 : 6),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => setState(() => _selectedHogIndex = idx),
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 140),
+                                          constraints: const BoxConstraints(minWidth: 104),
+                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                                          decoration: BoxDecoration(
                                             color: isSelected
-                                                ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
-                                                : (isPillHogFunded ? _successGreen : mutedColor),
+                                                ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
+                                                : (isPillHogFunded
+                                                    ? (isDark ? const Color(0xFF0F2B1D) : const Color(0xFFF0FDF4))
+                                                    : Colors.transparent),
+                                            borderRadius: BorderRadius.circular(9),
+                                            border: isSelected
+                                                ? Border.all(
+                                                    color: isDark ? Colors.white : _brandColor,
+                                                    width: 1.6,
+                                                  )
+                                                : (isPillHogFunded
+                                                    ? Border.all(
+                                                        color: _successGreen.withValues(alpha: isDark ? 0.8 : 0.6),
+                                                        width: 1.2,
+                                                      )
+                                                    : Border.all(
+                                                        color: Colors.transparent,
+                                                        width: 1.6,
+                                                      )),
+                                            boxShadow: isSelected
+                                                ? [
+                                                    BoxShadow(
+                                                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(0, 1),
+                                                    ),
+                                                  ]
+                                                : null,
                                           ),
-                                          const SizedBox(width: 3),
-                                          Flexible(
-                                            child: Text(
-                                              hogDisplayName,
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 11.5,
-                                                fontWeight: isSelected || isPillHogFunded
-                                                    ? FontWeight.w800
-                                                    : FontWeight.w600,
-                                                color: isSelected
-                                                    ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
-                                                    : (isPillHogFunded ? _successGreen : mutedColor),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.pets_rounded,
+                                                    size: 12,
+                                                    color: isSelected
+                                                        ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                                        : (isPillHogFunded ? _successGreen : mutedColor),
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Flexible(
+                                                    child: Text(
+                                                      hogDisplayName,
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 11.5,
+                                                        fontWeight: isSelected || isPillHogFunded
+                                                            ? FontWeight.w800
+                                                            : FontWeight.w600,
+                                                        color: isSelected
+                                                            ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                                            : (isPillHogFunded ? _successGreen : mutedColor),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  if (isPillHogFunded) ...[
+                                                    const SizedBox(width: 2),
+                                                    const Icon(Icons.check_circle_rounded, size: 9, color: _successGreen),
+                                                  ],
+                                                ],
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (isPillHogFunded) ...[
-                                            const SizedBox(width: 2),
-                                            const Icon(Icons.check_circle_rounded, size: 9, color: _successGreen),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          if (isHogDone) ...[
-                                            Icon(
-                                              Icons.check_rounded,
-                                              size: 10,
-                                              color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
-                                            ),
-                                            const SizedBox(width: 2),
-                                          ],
-                                          Flexible(
-                                            child: Text(
-                                              hStage,
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 10.5,
-                                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                                color: isHogDone
-                                                    ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
-                                                    : (isSelected
-                                                        ? (isDark ? const Color(0xFFF1F5F9) : PiggyTrunkTheme.ptPrimary)
-                                                        : (isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF94A3B8))),
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  if (isHogDone) ...[
+                                                    Icon(
+                                                      Icons.check_rounded,
+                                                      size: 10,
+                                                      color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                  ],
+                                                  Flexible(
+                                                    child: Text(
+                                                      hStage,
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        fontSize: 10.5,
+                                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                        color: isHogDone
+                                                            ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
+                                                            : (isSelected
+                                                                ? (isDark ? const Color(0xFFF1F5F9) : PiggyTrunkTheme.ptPrimary)
+                                                                : (isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF94A3B8))),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                    );
+                                  }).toList(),
                                 ),
+                              )
+                            : Row(
+                                children: visibleHogs.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  final h = entry.value;
+                                  final isSelected = _selectedHogIndex == idx;
+                                  final hIsSow = _getHogPigType(h, widget.hogType) == 'Sow';
+                                  final hStage = _getHogStage(h, widget.currentStage, hIsSow);
+                                  final isHogDone = (h['status'] ?? '').toString().toLowerCase() == 'completed' ||
+                                      (h['status'] ?? '').toString().toLowerCase() == 'sold' ||
+                                      hStage.toLowerCase() == 'selling' ||
+                                      hStage.toLowerCase() == 'lactation' ||
+                                      hStage.toLowerCase().contains('sell') ||
+                                      hStage.toLowerCase().contains('lactat');
+                                  final rawTag = (h['tag_number'] ?? 'HOG-${h['hog_id'] ?? (idx + 1)}').toString();
+                                  final hogNum = rawTag.replaceAll(RegExp(r'[^0-9]'), '');
+                                  final hogDisplayName = hogNum.isNotEmpty
+                                      ? '${strings.isFilipino ? "Baboy" : "Hog"} $hogNum'
+                                      : rawTag;
+                                  final isPillHogFunded = targetTags
+                                      .map((e) => e.toUpperCase().trim())
+                                      .contains(rawTag.toUpperCase().trim());
+
+                                  return Expanded(
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () => setState(() => _selectedHogIndex = idx),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 140),
+                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? (isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white)
+                                              : (isPillHogFunded
+                                                  ? (isDark ? const Color(0xFF0F2B1D) : const Color(0xFFF0FDF4))
+                                                  : Colors.transparent),
+                                          borderRadius: BorderRadius.circular(9),
+                                          border: isSelected
+                                              ? Border.all(
+                                                  color: isDark ? Colors.white : _brandColor,
+                                                  width: 1.6,
+                                                )
+                                              : (isPillHogFunded
+                                                  ? Border.all(
+                                                      color: _successGreen.withValues(alpha: isDark ? 0.8 : 0.6),
+                                                      width: 1.2,
+                                                    )
+                                                  : Border.all(
+                                                      color: Colors.transparent,
+                                                      width: 1.6,
+                                                    )),
+                                          boxShadow: isSelected
+                                              ? [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 1),
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.pets_rounded,
+                                                  size: 12,
+                                                  color: isSelected
+                                                      ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                                      : (isPillHogFunded ? _successGreen : mutedColor),
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Flexible(
+                                                  child: Text(
+                                                    hogDisplayName,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 11.5,
+                                                      fontWeight: isSelected || isPillHogFunded
+                                                          ? FontWeight.w800
+                                                          : FontWeight.w600,
+                                                      color: isSelected
+                                                          ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
+                                                          : (isPillHogFunded ? _successGreen : mutedColor),
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (isPillHogFunded) ...[
+                                                  const SizedBox(width: 2),
+                                                  const Icon(Icons.check_circle_rounded, size: 9, color: _successGreen),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                if (isHogDone) ...[
+                                                  Icon(
+                                                    Icons.check_rounded,
+                                                    size: 10,
+                                                    color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                                                  ),
+                                                  const SizedBox(width: 2),
+                                                ],
+                                                Flexible(
+                                                  child: Text(
+                                                    hStage,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 10.5,
+                                                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                      color: isHogDone
+                                                          ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
+                                                          : (isSelected
+                                                              ? (isDark ? const Color(0xFFF1F5F9) : PiggyTrunkTheme.ptPrimary)
+                                                              : (isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF94A3B8))),
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
-                            );
-                          }).toList(),
-                        ),
                       ),
                     ),
                   ],

@@ -649,35 +649,112 @@ class _SignUpScreenState extends State<SignUpScreen> {
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Row(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(
-              Icons.check_circle_rounded,
-              color: Color(0xFF10B981),
-              size: 28,
-            ),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Account Created Successfully!',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Color(0xFF18314F),
+            // Centered Emerald Badge Icon
+            Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFD1FAE5),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF10B981),
+                  size: 34,
                 ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Modal Title
+            Text(
+              'Account Created Successfully!',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                fontSize: 18.5,
+                color: const Color(0xFF18314F),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Status Description
+            Text(
+              'Your account has been registered and is awaiting Admin review and approval before you can sign in.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13.5,
+                color: const Color(0xFF475569),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Notification / Gmail & Spam Callout Box
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(
+                      Icons.mark_email_read_outlined,
+                      color: Color(0xFF243B53),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12.5,
+                          color: const Color(0xFF334155),
+                          height: 1.4,
+                        ),
+                        children: const [
+                          TextSpan(
+                            text: 'We will notify you once approved!\n',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF18314F),
+                            ),
+                          ),
+                          TextSpan(
+                            text: 'Please check your Gmail (including your ',
+                          ),
+                          TextSpan(
+                            text: 'Spam folder',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          TextSpan(
+                            text: ') for updates.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        content: const Text(
-          'Your account has been registered and is awaiting Admin review and approval before you can sign in.\n\nWe will notify you once approved!',
-          style: TextStyle(
-            fontSize: 14,
-            color: Color(0xFF334155),
-            height: 1.45,
-          ),
-        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         actions: [
           SizedBox(
             width: double.infinity,
@@ -699,9 +776,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   arguments: _selectedRole,
                 );
               },
-              child: const Text(
+              child: Text(
                 'Go to Sign In',
-                style: TextStyle(
+                style: GoogleFonts.plusJakartaSans(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 15,

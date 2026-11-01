@@ -23,7 +23,8 @@ class RaiserHomeTab extends StatelessWidget {
   final ValueChanged<int> onNavigateToTab;
   final Function(int notificationId) onMarkNotificationAsRead;
   final VoidCallback onMarkAllRead;
-  final Function(String targetStage, [dynamic targetHogId]) onUpdateLifecycleStage;
+  final Function(String targetStage, [dynamic targetHogId])
+  onUpdateLifecycleStage;
 
   static const Color _brandColor = Color(0xFF18314F);
   static const Color _gradientEndColor = Color(0xFF3B5270);
@@ -56,26 +57,44 @@ class RaiserHomeTab extends StatelessWidget {
   String _formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr).toLocal();
-      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       return '${months[date.month - 1]} ${date.day}, ${date.year}';
     } catch (_) {
       return dateStr;
     }
   }
 
-  static int _compareBatchTypes(Map<String, dynamic> a, Map<String, dynamic> b) {
-    final aType = (a['hog_types'] is Map
+  static int _compareBatchTypes(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final aType =
+        (a['hog_types'] is Map
             ? a['hog_types']['type_name']
             : (a['hog_types'] is List && (a['hog_types'] as List).isNotEmpty
-                ? (a['hog_types'] as List).first['type_name']
-                : null)) ??
+                  ? (a['hog_types'] as List).first['type_name']
+                  : null)) ??
         a['pig_type'] ??
         '';
-    final bType = (b['hog_types'] is Map
+    final bType =
+        (b['hog_types'] is Map
             ? b['hog_types']['type_name']
             : (b['hog_types'] is List && (b['hog_types'] as List).isNotEmpty
-                ? (b['hog_types'] as List).first['type_name']
-                : null)) ??
+                  ? (b['hog_types'] as List).first['type_name']
+                  : null)) ??
         b['pig_type'] ??
         '';
 
@@ -90,8 +109,12 @@ class RaiserHomeTab extends StatelessWidget {
     final bPrio = getPriority(bType);
     if (aPrio != bPrio) return aPrio.compareTo(bPrio);
 
-    final aId = a['assignment_id'] is num ? (a['assignment_id'] as num).toInt() : 0;
-    final bId = b['assignment_id'] is num ? (b['assignment_id'] as num).toInt() : 0;
+    final aId = a['assignment_id'] is num
+        ? (a['assignment_id'] as num).toInt()
+        : 0;
+    final bId = b['assignment_id'] is num
+        ? (b['assignment_id'] as num).toInt()
+        : 0;
     return aId.compareTo(bId);
   }
 
@@ -102,10 +125,12 @@ class RaiserHomeTab extends StatelessWidget {
     final raiserName = raiserData['name'] ?? strings.hogRaiserRole;
 
     // Active and Completed Batches Partitioning (Fattening ALWAYS first)
-    final activeBatches = activeAssignments.where((a) => a['is_cycle_completed'] != true).toList()
-      ..sort(_compareBatchTypes);
-    final completedBatches = activeAssignments.where((a) => a['is_cycle_completed'] == true).toList()
-      ..sort(_compareBatchTypes);
+    final activeBatches =
+        activeAssignments.where((a) => a['is_cycle_completed'] != true).toList()
+          ..sort(_compareBatchTypes);
+    final completedBatches =
+        activeAssignments.where((a) => a['is_cycle_completed'] == true).toList()
+          ..sort(_compareBatchTypes);
     final hasInvestment = initialCapital > 0 || investedAmount > 0;
 
     // Resilient fallback: Only reactivate if the batch's hogs are NOT all at final stage
@@ -120,18 +145,24 @@ class RaiserHomeTab extends StatelessWidget {
 
     final hasActiveBatch = activeBatches.isNotEmpty;
     final hasCompletedBatch = completedBatches.isNotEmpty;
-    final double totalPartnerCapital = (hasActiveBatch ? activeBatches : activeAssignments).fold<double>(
-      0.0,
-      (sum, a) => sum + ((a['partner_capital'] as num?)?.toDouble() ?? 0.0),
-    );
+    final double totalPartnerCapital =
+        (hasActiveBatch ? activeBatches : activeAssignments).fold<double>(
+          0.0,
+          (sum, a) => sum + ((a['partner_capital'] as num?)?.toDouble() ?? 0.0),
+        );
 
     final List<String> allBatchNames = [];
-    final targetBatches = hasActiveBatch ? activeBatches : <Map<String, dynamic>>[];
+    final targetBatches = hasActiveBatch
+        ? activeBatches
+        : <Map<String, dynamic>>[];
     for (var a in targetBatches) {
       String n = '';
       if (a['batches'] is Map) {
-        n = (a['batches']['batch_name'] ?? a['batches']['name'] ?? '').toString();
-      } else if (a['batches'] is List && (a['batches'] as List).isNotEmpty && (a['batches'] as List).first is Map) {
+        n = (a['batches']['batch_name'] ?? a['batches']['name'] ?? '')
+            .toString();
+      } else if (a['batches'] is List &&
+          (a['batches'] as List).isNotEmpty &&
+          (a['batches'] as List).first is Map) {
         n = ((a['batches'] as List).first['batch_name'] ?? '').toString();
       }
       if (n.isEmpty) n = (a['batch_name'] ?? '').toString();
@@ -152,44 +183,69 @@ class RaiserHomeTab extends StatelessWidget {
     // Pig Type and Lifecycle stage
     final String rawPigType = (raiserData['pig_type'] ?? '').toString().trim();
     final String pigType = hasActiveBatch
-        ? ((rawPigType.isNotEmpty && rawPigType != 'N/A' && rawPigType != 'None')
-            ? rawPigType
-            : (activeBatches[0]['hog_types']?['type_name'] ?? 'Fattening').toString())
+        ? ((rawPigType.isNotEmpty &&
+                  rawPigType != 'N/A' &&
+                  rawPigType != 'None')
+              ? rawPigType
+              : (activeBatches[0]['hog_types']?['type_name'] ?? 'Fattening')
+                    .toString())
         : (strings.isFilipino ? 'Walang Naka-assign' : 'Unassigned');
 
-    final String rawStage = (raiserData['lifecycle_stage'] ?? '').toString().trim();
+    final String rawStage = (raiserData['lifecycle_stage'] ?? '')
+        .toString()
+        .trim();
     String activeStage = hasActiveBatch
-        ? ((rawStage.isNotEmpty && rawStage != 'N/A' && rawStage != 'None' && rawStage.toLowerCase() != 'lactation')
-            ? rawStage
-            : (activeBatches[0]['lifecycle_stage'] ?? 'Booster').toString())
+        ? ((rawStage.isNotEmpty &&
+                  rawStage != 'N/A' &&
+                  rawStage != 'None' &&
+                  rawStage.toLowerCase() != 'lactation')
+              ? rawStage
+              : (activeBatches[0]['lifecycle_stage'] ?? 'Booster').toString())
         : (strings.isFilipino ? 'Walang Siklo' : 'No Cycle');
 
     // Scope hogs list to active batches only
-    final activeAssignIds = activeBatches.map((a) => (a['assignment_id'] ?? a['id'])?.toString()).where((id) => id != null).toSet();
-    final activeHogsList = hogsList.where((h) => activeAssignIds.contains(h['assignment_id']?.toString())).toList();
+    final activeAssignIds = activeBatches
+        .map((a) => (a['assignment_id'] ?? a['id'])?.toString())
+        .where((id) => id != null)
+        .toSet();
+    final activeHogsList = hogsList
+        .where((h) => activeAssignIds.contains(h['assignment_id']?.toString()))
+        .toList();
 
     if (hasActiveBatch && activeHogsList.isNotEmpty) {
-      final isBr = pigType.toLowerCase() == 'sow' || pigType.toLowerCase().contains('breed');
+      final isBr =
+          pigType.toLowerCase() == 'sow' ||
+          pigType.toLowerCase().contains('breed');
       activeStage = _getHogCurrentStage(activeHogsList[0], isBr, activeStage);
     } else if (hasActiveBatch && hogsList.isNotEmpty) {
       // Fallback if hogs couldn't be strictly partitioned by assignment_id
-      final isBr = pigType.toLowerCase() == 'sow' || pigType.toLowerCase().contains('breed');
+      final isBr =
+          pigType.toLowerCase() == 'sow' ||
+          pigType.toLowerCase().contains('breed');
       activeStage = _getHogCurrentStage(hogsList[0], isBr, activeStage);
     }
 
-    final bool isBatchCycleCompleted = activeAssignments.isNotEmpty && !hasActiveBatch;
+    final bool isBatchCycleCompleted =
+        activeAssignments.isNotEmpty && !hasActiveBatch;
 
-    final bool isInvestmentDepleted = hasActiveBatch && investedAmount <= 0 && (initialCapital > 0 || stocksSpendAmount > 0);
+    final bool isInvestmentDepleted =
+        hasActiveBatch &&
+        investedAmount <= 0 &&
+        (initialCapital > 0 || stocksSpendAmount > 0);
 
     String? fatteningStage;
     String? sowStage;
     int fatteningCount = 0;
     int sowCount = 0;
-    final targetHogsForStage = activeHogsList.isNotEmpty ? activeHogsList : hogsList;
+    final targetHogsForStage = activeHogsList.isNotEmpty
+        ? activeHogsList
+        : hogsList;
     if (hasActiveBatch) {
       for (var h in targetHogsForStage) {
         final hType = _getHogPigType(h, pigType);
-        final isBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
+        final isBreed =
+            hType.toLowerCase().contains('sow') ||
+            hType.toLowerCase().contains('breed');
         final st = _getHogCurrentStage(h, isBreed, activeStage);
         if (isBreed) {
           sowCount++;
@@ -199,9 +255,13 @@ class RaiserHomeTab extends StatelessWidget {
           fatteningStage ??= st;
         }
       }
-      if (fatteningCount == 0 && sowCount == 0 && activeAssignments.isNotEmpty) {
+      if (fatteningCount == 0 &&
+          sowCount == 0 &&
+          activeAssignments.isNotEmpty) {
         for (var a in activeAssignments) {
-          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '').toString().toLowerCase();
+          final t = (a['hog_types']?['type_name'] ?? a['pig_type'] ?? '')
+              .toString()
+              .toLowerCase();
           final heads = (a['assigned_heads'] as num?)?.toInt() ?? 0;
           if (t.contains('sow') || t.contains('breed')) {
             sowCount += heads;
@@ -211,18 +271,26 @@ class RaiserHomeTab extends StatelessWidget {
         }
       }
     }
-    final bool hasBothTypes = hasActiveBatch && ((fatteningCount > 0 && sowCount > 0) || (fatteningStage != null && sowStage != null));
+    final bool hasBothTypes =
+        hasActiveBatch &&
+        ((fatteningCount > 0 && sowCount > 0) ||
+            (fatteningStage != null && sowStage != null));
 
-    final String displayStage = hasActiveBatch ? activeStage : (strings.isFilipino ? 'Walang Aktibong Siklo' : 'No Active Cycle');
-    final String displayPigType = hasActiveBatch ? pigType : (strings.isFilipino ? 'Walang Naka-assign' : 'Unassigned');
+    final String displayStage = hasActiveBatch
+        ? activeStage
+        : (strings.isFilipino ? 'Walang Aktibong Siklo' : 'No Active Cycle');
+    final String displayPigType = hasActiveBatch
+        ? pigType
+        : (strings.isFilipino ? 'Walang Naka-assign' : 'Unassigned');
 
     // Metrics computation
     final int totalHogs = hasActiveBatch
         ? (activeHogsList.isNotEmpty
-            ? activeHogsList.length
-            : (hogsList.isNotEmpty
-                ? hogsList.length
-                : (activeAssignments[0]['assigned_heads'] as num? ?? 0).toInt()))
+              ? activeHogsList.length
+              : (hogsList.isNotEmpty
+                    ? hogsList.length
+                    : (activeAssignments[0]['assigned_heads'] as num? ?? 0)
+                          .toInt()))
         : 0;
 
     final int sickHogsCount = hogsList.where((h) {
@@ -237,8 +305,13 @@ class RaiserHomeTab extends StatelessWidget {
           s == 'injured';
     }).length;
 
-    final int healthyHogsCount = (totalHogs - sickHogsCount).clamp(0, totalHogs);
-    final double healthPercent = totalHogs > 0 ? (healthyHogsCount / totalHogs * 100) : 0.0;
+    final int healthyHogsCount = (totalHogs - sickHogsCount).clamp(
+      0,
+      totalHogs,
+    );
+    final double healthPercent = totalHogs > 0
+        ? (healthyHogsCount / totalHogs * 100)
+        : 0.0;
 
     final int pendingRequestsCount = requestsList.where((r) {
       final s = (r['status'] ?? '').toString().toLowerCase();
@@ -249,7 +322,9 @@ class RaiserHomeTab extends StatelessWidget {
       onRefresh: onRefresh,
       color: _brandColor,
       child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 108.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,18 +389,27 @@ class RaiserHomeTab extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5.5,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2),
+                          ),
                         ),
                         child: Text(
                           (hasActiveBatch && activeBatchName.isNotEmpty)
                               ? activeBatchName.toUpperCase()
                               : (hasCompletedBatch
-                                  ? (strings.isFilipino ? 'SIKLO NATAPOS' : 'CYCLE COMPLETED')
-                                  : (strings.isFilipino ? 'WALANG BATCH' : 'NO BATCH ASSIGNED')),
+                                    ? (strings.isFilipino
+                                          ? 'SIKLO NATAPOS'
+                                          : 'CYCLE COMPLETED')
+                                    : (strings.isFilipino
+                                          ? 'WALANG BATCH'
+                                          : 'NO BATCH ASSIGNED')),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
@@ -340,23 +424,40 @@ class RaiserHomeTab extends StatelessWidget {
                             width: 8,
                             height: 8,
                             decoration: BoxDecoration(
-                              color: (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch))
+                              color:
+                                  (isBatchCycleCompleted ||
+                                      (!hasActiveBatch && hasCompletedBatch))
                                   ? const Color(0xFF38BDF8)
                                   : (isInvestmentDepleted
-                                      ? const Color(0xFFF87171)
-                                      : ((hasActiveBatch && hasInvestment) ? _successGreen : const Color(0xFFFFA566))),
+                                        ? const Color(0xFFF87171)
+                                        : ((hasActiveBatch && hasInvestment)
+                                              ? _successGreen
+                                              : const Color(0xFFFFA566))),
                               shape: BoxShape.circle,
                             ),
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch))
-                                ? (strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Completed')
+                            (isBatchCycleCompleted ||
+                                    (!hasActiveBatch && hasCompletedBatch))
+                                ? (strings.isFilipino
+                                      ? 'Tapos na ang Siklo'
+                                      : 'Cycle Completed')
                                 : (isInvestmentDepleted
-                                    ? (strings.isFilipino ? 'Naubos ang Puhunan' : 'Depleted Budget')
-                                    : ((hasActiveBatch && hasInvestment)
-                                        ? (strings.isFilipino ? 'Aktibong Siklo' : 'Active Cycle')
-                                        : (hasActiveBatch ? (strings.isFilipino ? 'Nakabinbing Puhunan' : 'Pending Investment') : (strings.isFilipino ? 'Nakabinbing Batch' : 'Pending Batch')))),
+                                      ? (strings.isFilipino
+                                            ? 'Naubos ang Puhunan'
+                                            : 'Depleted Budget')
+                                      : ((hasActiveBatch && hasInvestment)
+                                            ? (strings.isFilipino
+                                                  ? 'Aktibong Siklo'
+                                                  : 'Active Cycle')
+                                            : (hasActiveBatch
+                                                  ? (strings.isFilipino
+                                                        ? 'Nakabinbing Puhunan'
+                                                        : 'Pending Investment')
+                                                  : (strings.isFilipino
+                                                        ? 'Nakabinbing Batch'
+                                                        : 'Pending Batch')))),
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -387,26 +488,38 @@ class RaiserHomeTab extends StatelessWidget {
                                   children: [
                                     Text(
                                       stocksSpendAmount > 0
-                                          ? strings.remainingBudget.toUpperCase()
+                                          ? strings.remainingBudget
+                                                .toUpperCase()
                                           : strings.totalCurrentInvestment,
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w600,
-                                        color: Colors.white.withValues(alpha: 0.85),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85,
+                                        ),
                                         letterSpacing: 0.5,
                                       ),
                                     ),
                                     const SizedBox(width: 6),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.18),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.18,
+                                        ),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.info_outline_rounded, color: Colors.white, size: 12),
+                                          const Icon(
+                                            Icons.info_outline_rounded,
+                                            color: Colors.white,
+                                            size: 12,
+                                          ),
                                           const SizedBox(width: 3),
                                           Text(
                                             strings.viewBreakdown,
@@ -421,7 +534,8 @@ class RaiserHomeTab extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),                                 Text(
+                                const SizedBox(height: 6),
+                                Text(
                                   (isBatchCycleCompleted || !hasActiveBatch)
                                       ? _formatCurrency(0.0)
                                       : _formatCurrency(investedAmount),
@@ -432,19 +546,33 @@ class RaiserHomeTab extends StatelessWidget {
                                     letterSpacing: -0.5,
                                   ),
                                 ),
-                                if (isBatchCycleCompleted || (!hasActiveBatch && hasCompletedBatch)) ...[
+                                if (isBatchCycleCompleted ||
+                                    (!hasActiveBatch && hasCompletedBatch)) ...[
                                   const SizedBox(height: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4.5,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.12),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.18,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF34D399)),
+                                        const Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 12,
+                                          color: Color(0xFF34D399),
+                                        ),
                                         const SizedBox(width: 5),
                                         Text(
                                           strings.isFilipino
@@ -459,19 +587,35 @@ class RaiserHomeTab extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                ] else if (initialCapital > 0 || stocksSpendAmount > 0) ...[
+                                ] else if (initialCapital > 0 ||
+                                    stocksSpendAmount > 0) ...[
                                   const SizedBox(height: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4.5,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.12),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.18,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.account_balance_wallet_outlined, size: 12, color: Colors.white.withValues(alpha: 0.9)),
+                                        Icon(
+                                          Icons.account_balance_wallet_outlined,
+                                          size: 12,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.9,
+                                          ),
+                                        ),
                                         const SizedBox(width: 4),
                                         Text(
                                           '${strings.initialCapital}: ${_formatCurrency(initialCapital)}',
@@ -484,9 +628,18 @@ class RaiserHomeTab extends StatelessWidget {
                                         if (totalPartnerCapital > 0) ...[
                                           Text(
                                             '  •  ',
-                                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.5,
+                                              ),
+                                              fontSize: 11,
+                                            ),
                                           ),
-                                          const Icon(Icons.handshake_rounded, size: 12, color: Color(0xFF6EE7B7)),
+                                          const Icon(
+                                            Icons.handshake_rounded,
+                                            size: 12,
+                                            color: Color(0xFF6EE7B7),
+                                          ),
                                           const SizedBox(width: 3),
                                           Text(
                                             '+${_formatCurrency(totalPartnerCapital)} Partner',
@@ -499,9 +652,18 @@ class RaiserHomeTab extends StatelessWidget {
                                         ],
                                         Text(
                                           '  •  ',
-                                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.5,
+                                            ),
+                                            fontSize: 11,
+                                          ),
                                         ),
-                                        const Icon(Icons.remove_circle_outline_rounded, size: 12, color: Color(0xFFFCA5A5)),
+                                        const Icon(
+                                          Icons.remove_circle_outline_rounded,
+                                          size: 12,
+                                          color: Color(0xFFFCA5A5),
+                                        ),
                                         const SizedBox(width: 4),
                                         Text(
                                           '${strings.deductedLabel}: -${_formatCurrency(stocksSpendAmount)}',
@@ -515,14 +677,24 @@ class RaiserHomeTab extends StatelessWidget {
                                     ),
                                   ),
                                 ],
-                                if (isBatchCycleCompleted || isInvestmentDepleted) ...[
+                                if (isBatchCycleCompleted ||
+                                    isInvestmentDepleted) ...[
                                   const SizedBox(height: 10),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 7,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.12),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.18,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       children: [
@@ -540,15 +712,17 @@ class RaiserHomeTab extends StatelessWidget {
                                           child: Text(
                                             isBatchCycleCompleted
                                                 ? (strings.isFilipino
-                                                    ? 'Nakatapos na ang siklo ng batch. Maghintay sa susunod na batch mula sa Admin.'
-                                                    : 'Batch cycle completed. Awaiting next batch assignment from Farm Admin.')
+                                                      ? 'Nakatapos na ang siklo ng batch. Maghintay sa susunod na batch mula sa Admin.'
+                                                      : 'Batch cycle completed. Awaiting next batch assignment from Farm Admin.')
                                                 : (strings.isFilipino
-                                                    ? 'Paalala: Naubos na ang natitirang puhunan (₱0). Makipag-ugnayan sa Farm Admin.'
-                                                    : 'Notice: Investment budget depleted (₱0). Coordinate with Farm Admin.'),
+                                                      ? 'Paalala: Naubos na ang natitirang puhunan (₱0). Makipag-ugnayan sa Farm Admin.'
+                                                      : 'Notice: Investment budget depleted (₱0). Coordinate with Farm Admin.'),
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
-                                              color: Colors.white.withValues(alpha: 0.95),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.95,
+                                              ),
                                               height: 1.25,
                                             ),
                                           ),
@@ -568,7 +742,9 @@ class RaiserHomeTab extends StatelessWidget {
                                   strings.isFilipino
                                       ? 'Tapos na ang siklo ng batch na ito. Maghintay sa susunod na batch bago makahiling muli ng supply.'
                                       : 'This batch cycle is completed. Please wait for your next batch to request supplies.',
-                                  title: strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Completed',
+                                  title: strings.isFilipino
+                                      ? 'Tapos na ang Siklo'
+                                      : 'Cycle Completed',
                                 );
                               } else {
                                 onNavigateToTab(1);
@@ -583,8 +759,12 @@ class RaiserHomeTab extends StatelessWidget {
                               ),
                               child: Center(
                                 child: Icon(
-                                  isBatchCycleCompleted ? Icons.check_rounded : Icons.add,
-                                  color: isBatchCycleCompleted ? const Color(0xFF10B981) : _brandColor,
+                                  isBatchCycleCompleted
+                                      ? Icons.check_rounded
+                                      : Icons.add,
+                                  color: isBatchCycleCompleted
+                                      ? const Color(0xFF10B981)
+                                      : _brandColor,
                                   size: 24,
                                 ),
                               ),
@@ -611,9 +791,11 @@ class RaiserHomeTab extends StatelessWidget {
                       value: '$totalHogs ${strings.hogs}',
                       subtitle: hasBothTypes
                           ? (strings.isFilipino
-                              ? '$fatteningCount Pangkaraniwan • $sowCount Inahin'
-                              : '$fatteningCount Fattening • $sowCount Sow')
-                          : (hasActiveBatch ? activeBatchName : strings.noActiveBatchNotice),
+                                ? '$fatteningCount Pangkaraniwan • $sowCount Inahin'
+                                : '$fatteningCount Fattening • $sowCount Sow')
+                          : (hasActiveBatch
+                                ? activeBatchName
+                                : strings.noActiveBatchNotice),
                       icon: Icons.pets_rounded,
                       accentColor: const Color(0xFFEF5B6C),
                       bgColor: const Color(0xFFFEF2F2),
@@ -623,30 +805,46 @@ class RaiserHomeTab extends StatelessWidget {
                   Expanded(
                     child: _buildMetricCard(
                       context: context,
-                      title: strings.isFilipino ? 'Kalusugan ng Baboy' : 'Hog Health',
+                      title: strings.isFilipino
+                          ? 'Kalusugan ng Baboy'
+                          : 'Hog Health',
                       value: totalHogs > 0
                           ? (sickHogsCount == 0
-                              ? '${healthPercent.toStringAsFixed(0)}% ${strings.isFilipino ? 'Maayos' : 'Good'}'
-                              : '${healthPercent.toStringAsFixed(healthPercent.truncateToDouble() == healthPercent ? 0 : 1)}% ${strings.isFilipino ? 'Maayos' : 'Good'}')
+                                ? '${healthPercent.toStringAsFixed(0)}% ${strings.isFilipino ? 'Maayos' : 'Good'}'
+                                : '${healthPercent.toStringAsFixed(healthPercent.truncateToDouble() == healthPercent ? 0 : 1)}% ${strings.isFilipino ? 'Maayos' : 'Good'}')
                           : (strings.isFilipino ? 'Walang Alaga' : 'No Hogs'),
                       subtitle: totalHogs > 0
                           ? (sickHogsCount == 0
-                              ? (strings.isFilipino ? 'Lahat ng $totalHogs ay malusog' : 'All $totalHogs healthy')
-                              : '$sickHogsCount ${strings.isFilipino ? 'nangangailangan ng lunas' : 'need care'}')
-                          : (strings.isFilipino ? 'Walang aktibong alaga' : 'No active hogs'),
+                                ? (strings.isFilipino
+                                      ? 'Lahat ng $totalHogs ay malusog'
+                                      : 'All $totalHogs healthy')
+                                : '$sickHogsCount ${strings.isFilipino ? 'nangangailangan ng lunas' : 'need care'}')
+                          : (strings.isFilipino
+                                ? 'Walang aktibong alaga'
+                                : 'No active hogs'),
                       icon: totalHogs > 0
-                          ? (sickHogsCount == 0 ? Icons.health_and_safety_rounded : Icons.healing_rounded)
+                          ? (sickHogsCount == 0
+                                ? Icons.health_and_safety_rounded
+                                : Icons.healing_rounded)
                           : Icons.health_and_safety_outlined,
                       accentColor: totalHogs > 0
                           ? (sickHogsCount == 0
-                              ? const Color(0xFF10B981)
-                              : (healthPercent >= 75 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444)))
-                          : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                                ? const Color(0xFF10B981)
+                                : (healthPercent >= 75
+                                      ? const Color(0xFFF59E0B)
+                                      : const Color(0xFFEF4444)))
+                          : (isDark
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF64748B)),
                       bgColor: totalHogs > 0
                           ? (sickHogsCount == 0
-                              ? const Color(0xFFECFDF5)
-                              : (healthPercent >= 75 ? const Color(0xFFFFFBEB) : const Color(0xFFFEF2F2)))
-                          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                                ? const Color(0xFFECFDF5)
+                                : (healthPercent >= 75
+                                      ? const Color(0xFFFFFBEB)
+                                      : const Color(0xFFFEF2F2)))
+                          : (isDark
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFFF1F5F9)),
                     ),
                   ),
                 ],
@@ -662,7 +860,9 @@ class RaiserHomeTab extends StatelessWidget {
                       context: context,
                       title: strings.stockRequestsTitle,
                       value: '$pendingRequestsCount ${strings.filterPending}',
-                      subtitle: strings.isFilipino ? 'Naghihintay ng apruba ng Admin' : 'Awaiting Admin approval',
+                      subtitle: strings.isFilipino
+                          ? 'Naghihintay ng apruba ng Admin'
+                          : 'Awaiting Admin approval',
                       icon: Icons.assignment_rounded,
                       accentColor: const Color(0xFFF59E0B),
                       bgColor: const Color(0xFFFFFBEB),
@@ -676,51 +876,67 @@ class RaiserHomeTab extends StatelessWidget {
                       value: displayStage,
                       customValueWidget: hasActiveBatch
                           ? (hasBothTypes
-                              ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      strings.isFilipino
-                                          ? '$fatteningCount Pangkaraniwan - ${fatteningStage ?? "Booster"}'
-                                          : '$fatteningCount Fattening - ${fatteningStage ?? "Booster"}',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: isDark ? Colors.white : _brandColor,
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        strings.isFilipino
+                                            ? '$fatteningCount Pangkaraniwan - ${fatteningStage ?? "Booster"}'
+                                            : '$fatteningCount Fattening - ${fatteningStage ?? "Booster"}',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: isDark
+                                              ? Colors.white
+                                              : _brandColor,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      strings.isFilipino
-                                          ? '$sowCount Inahing Baboy - ${sowStage ?? "Booster"}'
-                                          : '$sowCount Sow / Breeding - ${sowStage ?? "Booster"}',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: isDark ? Colors.white : _brandColor,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        strings.isFilipino
+                                            ? '$sowCount Inahing Baboy - ${sowStage ?? "Booster"}'
+                                            : '$sowCount Sow / Breeding - ${sowStage ?? "Booster"}',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: isDark
+                                              ? Colors.white
+                                              : _brandColor,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    ],
+                                  )
+                                : Text(
+                                    pigType.toLowerCase().contains('sow') ||
+                                            pigType.toLowerCase().contains(
+                                              'breed',
+                                            )
+                                        ? (strings.isFilipino
+                                              ? '$sowCount Inahing Baboy - $displayStage'
+                                              : '$sowCount Sow / Breeding - $displayStage')
+                                        : (strings.isFilipino
+                                              ? '$fatteningCount Pangkaraniwan - $displayStage'
+                                              : '$fatteningCount Fattening - $displayStage'),
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: isDark
+                                          ? Colors.white
+                                          : _brandColor,
                                     ),
-                                  ],
-                                )
-                              : Text(
-                                  pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed')
-                                      ? (strings.isFilipino ? '$sowCount Inahing Baboy - $displayStage' : '$sowCount Sow / Breeding - $displayStage')
-                                      : (strings.isFilipino ? '$fatteningCount Pangkaraniwan - $displayStage' : '$fatteningCount Fattening - $displayStage'),
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: isDark ? Colors.white : _brandColor,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ))
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ))
                           : Text(
-                              strings.isFilipino ? 'Walang Aktibong Siklo' : 'No Active Cycle',
+                              strings.isFilipino
+                                  ? 'Walang Aktibong Siklo'
+                                  : 'No Active Cycle',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
@@ -728,12 +944,17 @@ class RaiserHomeTab extends StatelessWidget {
                               ),
                             ),
                       subtitle: hasActiveBatch
-                          ? (displayPigType.toLowerCase().contains('sow') && !displayPigType.toLowerCase().contains('fatten')
-                              ? 'Sow / Breeding'
-                              : (displayPigType.toLowerCase().contains('sow')
-                                  ? 'Sow / Breeding & Fattening'
-                                  : displayPigType))
-                          : (strings.isFilipino ? 'Kailangan ng aktibong batch' : 'Active batch required'),
+                          ? (displayPigType.toLowerCase().contains('sow') &&
+                                    !displayPigType.toLowerCase().contains(
+                                      'fatten',
+                                    )
+                                ? 'Sow / Breeding'
+                                : (displayPigType.toLowerCase().contains('sow')
+                                      ? 'Sow / Breeding & Fattening'
+                                      : displayPigType))
+                          : (strings.isFilipino
+                                ? 'Kailangan ng aktibong batch'
+                                : 'Active batch required'),
                       icon: Icons.restaurant_rounded,
                       accentColor: const Color(0xFF2563EB),
                       bgColor: const Color(0xFFEFF6FF),
@@ -807,11 +1028,18 @@ class RaiserHomeTab extends StatelessWidget {
             ] else ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 32,
+                  horizontal: 20,
+                ),
                 decoration: BoxDecoration(
                   color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                  border: Border.all(
+                    color: isDark
+                        ? PiggyTrunkTheme.ptBorderDark
+                        : PiggyTrunkTheme.ptBorder,
+                  ),
                 ),
                 child: Center(
                   child: Column(
@@ -819,20 +1047,32 @@ class RaiserHomeTab extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: (hasCompletedBatch ? const Color(0xFF10B981) : const Color(0xFFF59E0B)).withValues(alpha: 0.12),
+                          color:
+                              (hasCompletedBatch
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFF59E0B))
+                                  .withValues(alpha: 0.12),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          hasCompletedBatch ? Icons.check_circle_outline_rounded : Icons.inventory_2_outlined,
+                          hasCompletedBatch
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.inventory_2_outlined,
                           size: 32,
-                          color: hasCompletedBatch ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          color: hasCompletedBatch
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFF59E0B),
                         ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         hasCompletedBatch
-                            ? (strings.isFilipino ? 'Tapos na ang Siklo ng Alaga' : 'Hog Raising Cycle Concluded')
-                            : (strings.isFilipino ? 'Walang Aktibong Batch ng Baboy' : 'No Active Hog Batch'),
+                            ? (strings.isFilipino
+                                  ? 'Tapos na ang Siklo ng Alaga'
+                                  : 'Hog Raising Cycle Concluded')
+                            : (strings.isFilipino
+                                  ? 'Walang Aktibong Batch ng Baboy'
+                                  : 'No Active Hog Batch'),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -843,15 +1083,17 @@ class RaiserHomeTab extends StatelessWidget {
                       Text(
                         hasCompletedBatch
                             ? (strings.isFilipino
-                                ? 'Matagumpay na natapos ang iyong nakaraang batch. Makipag-ugnayan sa Farm Admin upang mabigyan ng bagong batch ng alaga.'
-                                : 'Your previous batch concluded successfully. Please contact Farm Admin to assign your new raising batch.')
+                                  ? 'Matagumpay na natapos ang iyong nakaraang batch. Makipag-ugnayan sa Farm Admin upang mabigyan ng bagong batch ng alaga.'
+                                  : 'Your previous batch concluded successfully. Please contact Farm Admin to assign your new raising batch.')
                             : (strings.isFilipino
-                                ? 'Walang aktibong batch na nakatalaga sa kasalukuyan. Makipag-ugnayan sa Farm Admin upang mabigyan ng alaga.'
-                                : 'No active raising batch assigned yet. Please contact Farm Admin to get started.'),
+                                  ? 'Walang aktibong batch na nakatalaga sa kasalukuyan. Makipag-ugnayan sa Farm Admin upang mabigyan ng alaga.'
+                                  : 'No active raising batch assigned yet. Please contact Farm Admin to get started.'),
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
-                          color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                          color: isDark
+                              ? PiggyTrunkTheme.ptMutedDark
+                              : PiggyTrunkTheme.ptMuted,
                           height: 1.4,
                         ),
                       ),
@@ -869,15 +1111,21 @@ class RaiserHomeTab extends StatelessWidget {
                   Icon(
                     Icons.history_rounded,
                     size: 18,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    color: isDark
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF64748B),
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    strings.isFilipino ? 'Mga Natapos na Siklo (Archived)' : 'Concluded Cycles (Archived)',
+                    strings.isFilipino
+                        ? 'Mga Natapos na Siklo (Archived)'
+                        : 'Concluded Cycles (Archived)',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      color: isDark
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF64748B),
                     ),
                   ),
                 ],
@@ -889,7 +1137,8 @@ class RaiserHomeTab extends StatelessWidget {
                   assignment: completedBatches[cIdx],
                   strings: strings,
                 ),
-                if (cIdx < completedBatches.length - 1) const SizedBox(height: 12),
+                if (cIdx < completedBatches.length - 1)
+                  const SizedBox(height: 12),
               ],
               const SizedBox(height: 28),
             ],
@@ -926,9 +1175,15 @@ class RaiserHomeTab extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 32),
                     decoration: BoxDecoration(
-                      color: isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white,
+                      color: isDark
+                          ? PiggyTrunkTheme.ptSurfaceDark
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                      border: Border.all(
+                        color: isDark
+                            ? PiggyTrunkTheme.ptBorderDark
+                            : PiggyTrunkTheme.ptBorder,
+                      ),
                     ),
                     child: Center(
                       child: Text(
@@ -936,7 +1191,9 @@ class RaiserHomeTab extends StatelessWidget {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                          color: isDark
+                              ? PiggyTrunkTheme.ptMutedDark
+                              : PiggyTrunkTheme.ptMuted,
                         ),
                       ),
                     ),
@@ -945,19 +1202,26 @@ class RaiserHomeTab extends StatelessWidget {
                     children: requestsList.take(3).map((req) {
                       final dateStr = _formatDate(req['request_date'] ?? '');
                       final status = (req['status'] ?? 'Pending').toString();
-                      final feedType = (req['feed_type'] ?? '').toString().trim();
-                      final category = (req['category'] ?? '').toString().trim();
+                      final feedType = (req['feed_type'] ?? '')
+                          .toString()
+                          .trim();
+                      final category = (req['category'] ?? '')
+                          .toString()
+                          .trim();
                       final productName = feedType.isNotEmpty
                           ? feedType
                           : (category.isNotEmpty ? category : strings.request);
                       final qty = (req['quantity'] as num?)?.toInt();
-                      final itemLabel = qty != null ? '$qty × $productName' : productName;
+                      final itemLabel = qty != null
+                          ? '$qty × $productName'
+                          : productName;
 
                       return _buildActivityItem(
                         context: context,
                         icon: Icons.assignment_outlined,
                         title: itemLabel,
-                        subtitle: '$dateStr • ${strings.isFilipino ? "Katayuan" : "Status"}: ${strings.formatStatus(status).toUpperCase()}',
+                        subtitle:
+                            '$dateStr • ${strings.isFilipino ? "Katayuan" : "Status"}: ${strings.formatStatus(status).toUpperCase()}',
                         isCompleted: status.toLowerCase() == 'approved',
                       );
                     }).toList(),
@@ -982,9 +1246,13 @@ class RaiserHomeTab extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
     final textColor = isDark ? Colors.white : _brandColor;
-    final mutedColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final mutedColor = isDark
+        ? PiggyTrunkTheme.ptMutedDark
+        : PiggyTrunkTheme.ptMuted;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1059,7 +1327,9 @@ class RaiserHomeTab extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
     final textColor = isDark ? Colors.white : _brandColor;
 
     return Expanded(
@@ -1122,8 +1392,22 @@ class RaiserHomeTab extends StatelessWidget {
   String _stageIdToName(dynamic stageId, bool isBreeding, String fallback) {
     if (stageId == null) return fallback;
     final id = int.tryParse(stageId.toString());
-    final fatteningStages = const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
-    final sowStages = const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation'];
+    final fatteningStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Finisher',
+      'Selling',
+    ];
+    final sowStages = const [
+      'Booster',
+      'Pre-Starter',
+      'Starter',
+      'Grower',
+      'Breeder',
+      'Lactation',
+    ];
     final list = isBreeding ? sowStages : fatteningStages;
     if (id != null && id >= 1 && id <= list.length) {
       return list[id - 1];
@@ -1136,16 +1420,27 @@ class RaiserHomeTab extends StatelessWidget {
   }
 
   String _getHogPigType(Map<String, dynamic> hog, String fallbackType) {
-    final rawType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '').toString().trim();
-    if (rawType.isNotEmpty && rawType != 'null' && rawType != 'N/A' && rawType != 'None') {
+    final rawType = (hog['pig_type'] ?? hog['type_name'] ?? hog['type'] ?? '')
+        .toString()
+        .trim();
+    if (rawType.isNotEmpty &&
+        rawType != 'null' &&
+        rawType != 'N/A' &&
+        rawType != 'None') {
       final l = rawType.toLowerCase();
       return (l == 'sow' || l.contains('breed')) ? 'Sow' : 'Fattening';
     }
     final fallbackLower = fallbackType.toLowerCase();
-    return (fallbackLower == 'sow' || fallbackLower.contains('breed')) ? 'Sow' : 'Fattening';
+    return (fallbackLower == 'sow' || fallbackLower.contains('breed'))
+        ? 'Sow'
+        : 'Fattening';
   }
 
-  String _getHogCurrentStage(Map<String, dynamic> hog, bool isBreeding, String fallbackStage) {
+  String _getHogCurrentStage(
+    Map<String, dynamic> hog,
+    bool isBreeding,
+    String fallbackStage,
+  ) {
     final dbStage = hog['stage_id'] ?? hog['lifecycle_stage'] ?? hog['stage'];
     if (dbStage != null) {
       return _stageIdToName(dbStage, isBreeding, fallbackStage);
@@ -1153,7 +1448,10 @@ class RaiserHomeTab extends StatelessWidget {
     return fallbackStage;
   }
 
-  Future<void> _notifyAdminFinalStageReached(String targetStage, [Map<String, dynamic>? hog]) async {
+  Future<void> _notifyAdminFinalStageReached(
+    String targetStage, [
+    Map<String, dynamic>? hog,
+  ]) async {
     final sLower = targetStage.trim().toLowerCase();
     final isFinal = sLower == 'selling' || sLower == 'lactation';
     if (!isFinal) return;
@@ -1224,7 +1522,9 @@ class RaiserHomeTab extends StatelessWidget {
             'timestamp': DateTime.now().toIso8601String(),
           },
         });
-        debugPrint('Automatic milestone notification sent to admin: $batchName ($pigType - $targetStage)');
+        debugPrint(
+          'Automatic milestone notification sent to admin: $batchName ($pigType - $targetStage)',
+        );
       }
     } catch (e) {
       debugPrint('Notice sending milestone notification to admin: $e');
@@ -1250,22 +1550,42 @@ class RaiserHomeTab extends StatelessWidget {
     required String activeStage,
   }) {
     final textColor = isDark ? Colors.white : _brandColor;
-    final mutedColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final mutedColor = isDark
+        ? PiggyTrunkTheme.ptMutedDark
+        : PiggyTrunkTheme.ptMuted;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
 
     if (targetHogsForStage.isEmpty) {
-      final isSow = pigType.toLowerCase().contains('sow') || pigType.toLowerCase().contains('breed');
+      final isSow =
+          pigType.toLowerCase().contains('sow') ||
+          pigType.toLowerCase().contains('breed');
       final stages = isSow
-          ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-          : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+          ? const [
+              'Booster',
+              'Pre-Starter',
+              'Starter',
+              'Grower',
+              'Breeder',
+              'Lactation',
+            ]
+          : const [
+              'Booster',
+              'Pre-Starter',
+              'Starter',
+              'Grower',
+              'Finisher',
+              'Selling',
+            ];
       return _buildFeedsCard(
         context: context,
         title: strings.isFilipino ? 'Mga Stage ng Pakain' : 'Feeds Stages',
         badgeText: hasInvestment
             ? (isSow
-                ? (strings.isFilipino ? 'Inahin' : 'Sow')
-                : (strings.isFilipino ? 'Pangkaraniwan' : 'Fattening'))
+                  ? (strings.isFilipino ? 'Inahin' : 'Sow')
+                  : (strings.isFilipino ? 'Pangkaraniwan' : 'Fattening'))
             : strings.unassigned,
         stages: stages,
         activeStage: activeStage,
@@ -1284,8 +1604,14 @@ class RaiserHomeTab extends StatelessWidget {
       if (aIsFat && !bIsFat) return -1;
       if (!aIsFat && bIsFat) return 1;
 
-      final aTagStr = (a['tag_number'] ?? '').toString().replaceAll('#', '').trim();
-      final bTagStr = (b['tag_number'] ?? '').toString().replaceAll('#', '').trim();
+      final aTagStr = (a['tag_number'] ?? '')
+          .toString()
+          .replaceAll('#', '')
+          .trim();
+      final bTagStr = (b['tag_number'] ?? '')
+          .toString()
+          .replaceAll('#', '')
+          .trim();
       final aTagNum = int.tryParse(aTagStr);
       final bTagNum = int.tryParse(bTagStr);
       if (aTagNum != null && bTagNum != null) {
@@ -1309,7 +1635,9 @@ class RaiserHomeTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  strings.isFilipino ? 'Siklo ng mga Alagang Baboy' : 'Hogs Lifecycle Progress',
+                  strings.isFilipino
+                      ? 'Siklo ng mga Alagang Baboy'
+                      : 'Hogs Lifecycle Progress',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -1318,7 +1646,9 @@ class RaiserHomeTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  strings.isFilipino ? 'Yugto ng bawat alaga sa kasalukuyang batch' : 'Growth stage per assigned hog in active batch',
+                  strings.isFilipino
+                      ? 'Yugto ng bawat alaga sa kasalukuyang batch'
+                      : 'Growth stage per assigned hog in active batch',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w500,
@@ -1330,30 +1660,43 @@ class RaiserHomeTab extends StatelessWidget {
             GestureDetector(
               onTap: () => onNavigateToTab(2),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
+                  color: isDark
+                      ? PiggyTrunkTheme.ptSurfaceSoftDark
+                      : PiggyTrunkTheme.ptSurfaceSoft,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                    color: isDark
+                        ? PiggyTrunkTheme.ptBorderDark
+                        : PiggyTrunkTheme.ptBorder,
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      strings.isFilipino ? '${sortedHogs.length} na Baboy' : '${sortedHogs.length} Hogs',
+                      strings.isFilipino
+                          ? '${sortedHogs.length} na Baboy'
+                          : '${sortedHogs.length} Hogs',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptText,
+                        color: isDark
+                            ? PiggyTrunkTheme.ptTextDark
+                            : PiggyTrunkTheme.ptText,
                       ),
                     ),
                     const SizedBox(width: 4),
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 14,
-                      color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                      color: isDark
+                          ? PiggyTrunkTheme.ptMutedDark
+                          : PiggyTrunkTheme.ptMuted,
                     ),
                   ],
                 ),
@@ -1363,160 +1706,299 @@ class RaiserHomeTab extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        // List of Individual Hog Cards
-        ...sortedHogs.asMap().entries.map((entry) {
-          final idx = entry.key;
-          final h = entry.value;
+        // List of Individual Hog Cards (Capped at top 4 on Dashboard with shortcut to Tab 2)
+        Builder(
+          builder: (context) {
+            final displayHogs = sortedHogs.length > 4
+                ? sortedHogs.take(4).toList()
+                : sortedHogs;
 
-          final rawTag = (h['tag_number'] ?? '').toString().trim();
-          final tag = rawTag.isNotEmpty ? (rawTag.startsWith('#') ? rawTag : '#$rawTag') : '#${idx + 1}';
-
-          final hType = _getHogPigType(h, pigType);
-          final isBreed = hType.toLowerCase().contains('sow') || hType.toLowerCase().contains('breed');
-          final typeLabel = strings.isFilipino
-              ? (isBreed ? strings.sowBreedTag.toUpperCase() : strings.fatteningTag.toUpperCase())
-              : (isBreed ? 'SOW / BREEDING' : 'FATTENING');
-
-          final currentHogStage = _getHogCurrentStage(h, isBreed, activeStage);
-          final stageNum = _stageNameToId(currentHogStage, isBreed);
-          final isTerminal = stageNum >= 6 ||
-              currentHogStage.trim().toLowerCase() == 'selling' ||
-              currentHogStage.trim().toLowerCase() == 'lactation';
-
-          final stages = isBreed
-              ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-              : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
-
-          final hogTitle = strings.isFilipino ? 'Baboy $tag' : 'Hog $tag';
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: cardBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Header Row (Clean, no icon, strict theme tokens)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          hogTitle,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: textColor,
+                ...displayHogs.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final h = entry.value;
+
+                  final rawTag = (h['tag_number'] ?? '').toString().trim();
+                  final tag = rawTag.isNotEmpty
+                      ? (rawTag.startsWith('#') ? rawTag : '#$rawTag')
+                      : '#${idx + 1}';
+
+                  final hType = _getHogPigType(h, pigType);
+                  final isBreed =
+                      hType.toLowerCase().contains('sow') ||
+                      hType.toLowerCase().contains('breed');
+                  final typeLabel = strings.isFilipino
+                      ? (isBreed
+                            ? strings.sowBreedTag.toUpperCase()
+                            : strings.fatteningTag.toUpperCase())
+                      : (isBreed ? 'SOW / BREEDING' : 'FATTENING');
+
+                  final currentHogStage = _getHogCurrentStage(
+                    h,
+                    isBreed,
+                    activeStage,
+                  );
+                  final stageNum = _stageNameToId(currentHogStage, isBreed);
+                  final isTerminal =
+                      stageNum >= 6 ||
+                      currentHogStage.trim().toLowerCase() == 'selling' ||
+                      currentHogStage.trim().toLowerCase() == 'lactation';
+
+                  final stages = isBreed
+                      ? const [
+                          'Booster',
+                          'Pre-Starter',
+                          'Starter',
+                          'Grower',
+                          'Breeder',
+                          'Lactation',
+                        ]
+                      : const [
+                          'Booster',
+                          'Pre-Starter',
+                          'Starter',
+                          'Grower',
+                          'Finisher',
+                          'Selling',
+                        ];
+
+                  final hogTitle = strings.isFilipino
+                      ? 'Baboy $tag'
+                      : 'Hog $tag';
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: cardBorder),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.2 : 0.02,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                          decoration: BoxDecoration(
-                            color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            typeLabel,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
-                    if (isTerminal)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
-                              .withValues(alpha: isDark ? 0.2 : 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
-                                .withValues(alpha: isDark ? 0.5 : 0.35),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top Header Row (Clean, no icon, strict theme tokens)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(
-                              Icons.check_circle_rounded,
-                              size: 11,
-                              color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  hogTitle,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? PiggyTrunkTheme.ptSurfaceSoftDark
+                                        : PiggyTrunkTheme.ptSurfaceSoft,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? PiggyTrunkTheme.ptBorderDark
+                                          : PiggyTrunkTheme.ptBorder,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    typeLabel,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark
+                                          ? PiggyTrunkTheme.ptMutedDark
+                                          : PiggyTrunkTheme.ptMuted,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              strings.isFilipino ? 'TAPOS NA' : 'COMPLETE',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w800,
-                                color: isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess,
-                                letterSpacing: 0.3,
+                            if (isTerminal)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (isDark
+                                              ? PiggyTrunkTheme.ptSuccessDark
+                                              : PiggyTrunkTheme.ptSuccess)
+                                          .withValues(
+                                            alpha: isDark ? 0.2 : 0.1,
+                                          ),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color:
+                                        (isDark
+                                                ? PiggyTrunkTheme.ptSuccessDark
+                                                : PiggyTrunkTheme.ptSuccess)
+                                            .withValues(
+                                              alpha: isDark ? 0.5 : 0.35,
+                                            ),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 11,
+                                      color: isDark
+                                          ? PiggyTrunkTheme.ptSuccessDark
+                                          : PiggyTrunkTheme.ptSuccess,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      strings.isFilipino
+                                          ? 'TAPOS NA'
+                                          : 'COMPLETE',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: isDark
+                                            ? PiggyTrunkTheme.ptSuccessDark
+                                            : PiggyTrunkTheme.ptSuccess,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? PiggyTrunkTheme.ptSurfaceSoftDark
+                                      : PiggyTrunkTheme.ptSurfaceSoft,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? PiggyTrunkTheme.ptBorderDark
+                                        : PiggyTrunkTheme.ptBorder,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  _localizeStageName(
+                                    currentHogStage,
+                                    strings.isFilipino,
+                                  ),
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark
+                                        ? PiggyTrunkTheme.ptTextDark
+                                        : PiggyTrunkTheme.ptPrimary,
+                                  ),
+                                ),
                               ),
-                            ),
                           ],
                         ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          _localizeStageName(currentHogStage, strings.isFilipino),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 18),
+                        const SizedBox(height: 18),
 
-                // Stepper Timeline
-                _buildTimeline(
-                  context,
-                  stages,
-                  currentHogStage,
-                  hasInvestment,
-                  hog: h,
-                  hogName: hogTitle,
-                  isCycleCompleted: isTerminal,
-                ),
+                        // Stepper Timeline
+                        _buildTimeline(
+                          context,
+                          stages,
+                          currentHogStage,
+                          hasInvestment,
+                          hog: h,
+                          hogName: hogTitle,
+                          isCycleCompleted: isTerminal,
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+
+                if (sortedHogs.length > 4) ...[
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () => onNavigateToTab(2),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? PiggyTrunkTheme.ptSurfaceDark
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.2 : 0.02,
+                            ),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.format_list_bulleted_rounded,
+                            size: 16,
+                            color: isDark
+                                ? const Color(0xFF38BDF8)
+                                : _brandColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            strings.isFilipino
+                                ? 'Tingnan ang lahat ng ${sortedHogs.length} na baboy sa Hogs Inventory →'
+                                : 'View all ${sortedHogs.length} hogs in Hogs Inventory →',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? const Color(0xFF38BDF8)
+                                  : _brandColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ),
-          );
-        }),
+            );
+          },
+        ),
       ],
     );
   }
@@ -1535,12 +2017,20 @@ class RaiserHomeTab extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
     final textColor = isDark ? Colors.white : _brandColor;
 
-    final defaultBadgeBg = isDark ? const Color(0xFF1E2D42) : const Color(0xFFEFF6FF);
-    final defaultBadgeBorder = isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFFDBEAFE);
-    final defaultBadgeText = isDark ? const Color(0xFF38BDF8) : const Color(0xFF2563EB);
+    final defaultBadgeBg = isDark
+        ? const Color(0xFF1E2D42)
+        : const Color(0xFFEFF6FF);
+    final defaultBadgeBorder = isDark
+        ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
+        : const Color(0xFFDBEAFE);
+    final defaultBadgeText = isDark
+        ? const Color(0xFF38BDF8)
+        : const Color(0xFF2563EB);
 
     return Container(
       width: double.infinity,
@@ -1572,11 +2062,16 @@ class RaiserHomeTab extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: badgeBgColor ?? defaultBadgeBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: badgeBorderColor ?? defaultBadgeBorder),
+                  border: Border.all(
+                    color: badgeBorderColor ?? defaultBadgeBorder,
+                  ),
                 ),
                 child: Text(
                   badgeText,
@@ -1590,7 +2085,13 @@ class RaiserHomeTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          _buildTimeline(context, stages, activeStage, hasInvestment, isCycleCompleted: isBatchCycleCompleted),
+          _buildTimeline(
+            context,
+            stages,
+            activeStage,
+            hasInvestment,
+            isCycleCompleted: isBatchCycleCompleted,
+          ),
         ],
       ),
     );
@@ -1602,17 +2103,49 @@ class RaiserHomeTab extends StatelessWidget {
     required AppStrings strings,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1E293B).withValues(alpha: 0.6) : const Color(0xFFF8FAFC);
-    final cardBorder = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-    final textColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
-    final mutedColor = isDark ? const Color(0xFF64748B) : const Color(0xFF64748B);
+    final cardBg = isDark
+        ? const Color(0xFF1E293B).withValues(alpha: 0.6)
+        : const Color(0xFFF8FAFC);
+    final cardBorder = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFE2E8F0);
+    final textColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF475569);
+    final mutedColor = isDark
+        ? const Color(0xFF64748B)
+        : const Color(0xFF64748B);
 
-    final rawName = (assignment['batches']?['batch_name'] ?? assignment['batch_name'] ?? 'Batch #${assignment['batch_id']}').toString();
-    final rawType = (assignment['hog_types']?['type_name'] ?? assignment['pig_type'] ?? 'Hog').toString();
-    final isSow = rawType.toLowerCase().contains('sow') || rawType.toLowerCase().contains('breed');
+    final rawName =
+        (assignment['batches']?['batch_name'] ??
+                assignment['batch_name'] ??
+                'Batch #${assignment['batch_id']}')
+            .toString();
+    final rawType =
+        (assignment['hog_types']?['type_name'] ??
+                assignment['pig_type'] ??
+                'Hog')
+            .toString();
+    final isSow =
+        rawType.toLowerCase().contains('sow') ||
+        rawType.toLowerCase().contains('breed');
     final stages = isSow
-        ? const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Breeder', 'Lactation']
-        : const ['Booster', 'Pre-Starter', 'Starter', 'Grower', 'Finisher', 'Selling'];
+        ? const [
+            'Booster',
+            'Pre-Starter',
+            'Starter',
+            'Grower',
+            'Breeder',
+            'Lactation',
+          ]
+        : const [
+            'Booster',
+            'Pre-Starter',
+            'Starter',
+            'Grower',
+            'Finisher',
+            'Selling',
+          ];
 
     return Container(
       width: double.infinity,
@@ -1634,7 +2167,9 @@ class RaiserHomeTab extends StatelessWidget {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
+                      color: const Color(
+                        0xFF10B981,
+                      ).withValues(alpha: isDark ? 0.2 : 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -1656,7 +2191,13 @@ class RaiserHomeTab extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        isSow ? (strings.isFilipino ? 'Inahing Baboy (Sow)' : 'Sow / Breeding') : (strings.isFilipino ? 'Pangkaraniwan (Fattening)' : 'Fattening'),
+                        isSow
+                            ? (strings.isFilipino
+                                  ? 'Inahing Baboy (Sow)'
+                                  : 'Sow / Breeding')
+                            : (strings.isFilipino
+                                  ? 'Pangkaraniwan (Fattening)'
+                                  : 'Fattening'),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -1668,25 +2209,40 @@ class RaiserHomeTab extends StatelessWidget {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 3.5,
+                ),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF14291F) : const Color(0xFFECFDF5),
+                  color: isDark
+                      ? const Color(0xFF14291F)
+                      : const Color(0xFFECFDF5),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isDark ? const Color(0xFF10B981).withValues(alpha: 0.4) : const Color(0xFFA7F3D0),
+                    color: isDark
+                        ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                        : const Color(0xFFA7F3D0),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_rounded, size: 12, color: Color(0xFF10B981)),
+                    const Icon(
+                      Icons.check_rounded,
+                      size: 12,
+                      color: Color(0xFF10B981),
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Concluded',
+                      strings.isFilipino
+                          ? 'Tapos na ang Siklo'
+                          : 'Cycle Concluded',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                        color: isDark
+                            ? const Color(0xFF34D399)
+                            : const Color(0xFF059669),
                       ),
                     ),
                   ],
@@ -1707,7 +2263,9 @@ class RaiserHomeTab extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.5) : const Color(0xFFF1F5F9),
+              color: isDark
+                  ? const Color(0xFF0F172A).withValues(alpha: 0.5)
+                  : const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -1751,7 +2309,11 @@ class RaiserHomeTab extends StatelessWidget {
       activeIndex = 0;
     }
 
-    final bool isCompletedAll = isCycleCompleted || (activeIndex >= 0 && activeIndex == stages.length - 1 && isCycleCompleted);
+    final bool isCompletedAll =
+        isCycleCompleted ||
+        (activeIndex >= 0 &&
+            activeIndex == stages.length - 1 &&
+            isCycleCompleted);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1768,14 +2330,19 @@ class RaiserHomeTab extends StatelessWidget {
               right: stepWidth / 2,
               child: Row(
                 children: List.generate(stages.length - 1, (index) {
-                  final isPassed = hasInvestment && (index < activeIndex || isCompletedAll);
+                  final isPassed =
+                      hasInvestment && (index < activeIndex || isCompletedAll);
                   return Expanded(
                     child: Container(
                       height: 3,
                       decoration: BoxDecoration(
                         color: isPassed
-                            ? (isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess)
-                            : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
+                            ? (isDark
+                                  ? PiggyTrunkTheme.ptSuccessDark
+                                  : PiggyTrunkTheme.ptSuccess)
+                            : (isDark
+                                  ? PiggyTrunkTheme.ptBorderDark
+                                  : PiggyTrunkTheme.ptBorder),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1788,20 +2355,30 @@ class RaiserHomeTab extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(stages.length, (index) {
-                final bool isPassed = hasInvestment && (isCompletedAll || index < activeIndex);
-                final isActive = hasInvestment && !isCompletedAll && index == activeIndex;
+                final bool isPassed =
+                    hasInvestment && (isCompletedAll || index < activeIndex);
+                final isActive =
+                    hasInvestment && !isCompletedAll && index == activeIndex;
                 final isFuture = !isCompletedAll && index > activeIndex;
 
                 Color circleColor;
                 Widget iconWidget;
                 BoxBorder? nodeBorder;
 
-                final successColor = isDark ? PiggyTrunkTheme.ptSuccessDark : PiggyTrunkTheme.ptSuccess;
-                final activeColor = isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
+                final successColor = isDark
+                    ? PiggyTrunkTheme.ptSuccessDark
+                    : PiggyTrunkTheme.ptSuccess;
+                final activeColor = isDark
+                    ? Colors.white
+                    : PiggyTrunkTheme.ptPrimary;
 
                 if (isPassed) {
                   circleColor = successColor;
-                  iconWidget = const Icon(Icons.check_rounded, size: 16, color: Colors.white);
+                  iconWidget = const Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: Colors.white,
+                  );
                 } else if (isActive) {
                   circleColor = activeColor;
                   iconWidget = Center(
@@ -1815,15 +2392,21 @@ class RaiserHomeTab extends StatelessWidget {
                     ),
                   );
                 } else {
-                  circleColor = isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft;
+                  circleColor = isDark
+                      ? PiggyTrunkTheme.ptSurfaceSoftDark
+                      : PiggyTrunkTheme.ptSurfaceSoft;
                   nodeBorder = Border.all(
-                    color: isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder,
+                    color: isDark
+                        ? PiggyTrunkTheme.ptBorderDark
+                        : PiggyTrunkTheme.ptBorder,
                     width: 1.2,
                   );
                   iconWidget = Icon(
                     Icons.lock_outline_rounded,
                     size: 13,
-                    color: isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted,
+                    color: isDark
+                        ? PiggyTrunkTheme.ptMutedDark
+                        : PiggyTrunkTheme.ptMuted,
                   );
                 }
 
@@ -1855,7 +2438,11 @@ class RaiserHomeTab extends StatelessWidget {
                             boxShadow: isActive
                                 ? [
                                     BoxShadow(
-                                      color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.35 : 0.3),
+                                      color:
+                                          (isDark ? Colors.white : _brandColor)
+                                              .withValues(
+                                                alpha: isDark ? 0.35 : 0.3,
+                                              ),
                                       blurRadius: 10,
                                       offset: const Offset(0, 3),
                                     ),
@@ -1869,10 +2456,20 @@ class RaiserHomeTab extends StatelessWidget {
                           _localizeStageName(stages[index], strings.isFilipino),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 10.5,
-                            fontWeight: isActive ? FontWeight.w800 : (isPassed ? FontWeight.w700 : FontWeight.w600),
+                            fontWeight: isActive
+                                ? FontWeight.w800
+                                : (isPassed
+                                      ? FontWeight.w700
+                                      : FontWeight.w600),
                             color: isActive
-                                ? (isDark ? PiggyTrunkTheme.ptTextDark : PiggyTrunkTheme.ptPrimary)
-                                : (isPassed ? successColor : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted)),
+                                ? (isDark
+                                      ? PiggyTrunkTheme.ptTextDark
+                                      : PiggyTrunkTheme.ptPrimary)
+                                : (isPassed
+                                      ? successColor
+                                      : (isDark
+                                            ? PiggyTrunkTheme.ptMutedDark
+                                            : PiggyTrunkTheme.ptMuted)),
                           ),
                           textAlign: TextAlign.center,
                           maxLines: 1,
@@ -1899,9 +2496,13 @@ class RaiserHomeTab extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
-    final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
+    final cardBorder = isDark
+        ? PiggyTrunkTheme.ptBorderDark
+        : PiggyTrunkTheme.ptBorder;
     final textColor = isDark ? Colors.white : _brandColor;
-    final mutedColor = isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted;
+    final mutedColor = isDark
+        ? PiggyTrunkTheme.ptMutedDark
+        : PiggyTrunkTheme.ptMuted;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1919,12 +2520,16 @@ class RaiserHomeTab extends StatelessWidget {
             decoration: BoxDecoration(
               color: isCompleted
                   ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5))
-                  : (isDark ? const Color(0xFF78350F) : const Color(0xFFFFFBEB)),
+                  : (isDark
+                        ? const Color(0xFF78350F)
+                        : const Color(0xFFFFFBEB)),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               icon,
-              color: isCompleted ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+              color: isCompleted
+                  ? const Color(0xFF10B981)
+                  : const Color(0xFFF59E0B),
               size: 22,
             ),
           ),
@@ -1962,9 +2567,13 @@ class RaiserHomeTab extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetBg = isDark ? const Color(0xFF111C2E) : Colors.white;
     final cardBg = isDark ? const Color(0xFF18263D) : const Color(0xFFF8FAFC);
-    final cardBorder = isDark ? const Color(0xFF283A57) : const Color(0xFFE2E8F0);
+    final cardBorder = isDark
+        ? const Color(0xFF283A57)
+        : const Color(0xFFE2E8F0);
     final primaryTextColor = isDark ? const Color(0xFFF1F5F9) : _brandColor;
-    final mutedTextColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final mutedTextColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
 
     showModalBottomSheet(
       context: context,
@@ -1972,20 +2581,37 @@ class RaiserHomeTab extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final strings = AppStrings.of(ctx);
-        final bool hasActiveBatch = activeAssignments.any((a) => a['is_cycle_completed'] != true);
-        final bool isConcludedCycle = activeAssignments.isNotEmpty && !hasActiveBatch;
+        final bool hasActiveBatch = activeAssignments.any(
+          (a) => a['is_cycle_completed'] != true,
+        );
+        final bool isConcludedCycle =
+            activeAssignments.isNotEmpty && !hasActiveBatch;
 
-        final completedBatches = activeAssignments.where((a) => a['is_cycle_completed'] == true).toList();
+        final completedBatches = activeAssignments
+            .where((a) => a['is_cycle_completed'] == true)
+            .toList();
         final double histCapital = completedBatches.isNotEmpty
-            ? completedBatches.fold(0.0, (sum, a) => sum + ((a['initial_capital'] as num?)?.toDouble() ?? 0.0))
+            ? completedBatches.fold(
+                0.0,
+                (sum, a) =>
+                    sum + ((a['initial_capital'] as num?)?.toDouble() ?? 0.0),
+              )
             : initialCapital;
         final double histSpend = completedBatches.isNotEmpty
-            ? completedBatches.fold(0.0, (sum, a) => sum + ((a['stocks_spend'] as num?)?.toDouble() ?? 0.0))
+            ? completedBatches.fold(
+                0.0,
+                (sum, a) =>
+                    sum + ((a['stocks_spend'] as num?)?.toDouble() ?? 0.0),
+              )
             : stocksSpendAmount;
 
         final double totalAdminCapital = activeAssignments.fold<double>(
           0.0,
-          (sum, a) => sum + ((a['admin_capital'] as num?)?.toDouble() ?? (a['initial_capital'] as num?)?.toDouble() ?? 0.0),
+          (sum, a) =>
+              sum +
+              ((a['admin_capital'] as num?)?.toDouble() ??
+                  (a['initial_capital'] as num?)?.toDouble() ??
+                  0.0),
         );
         final double totalPartnerCapital = activeAssignments.fold<double>(
           0.0,
@@ -2002,10 +2628,15 @@ class RaiserHomeTab extends StatelessWidget {
                 (x) => (x['investment_id'] ?? '').toString() == invId,
               );
               if (existingIdx != -1) {
-                final curAmt = (allPartnerInvs[existingIdx]['amount'] as num?)?.toDouble() ?? 0.0;
+                final curAmt =
+                    (allPartnerInvs[existingIdx]['amount'] as num?)
+                        ?.toDouble() ??
+                    0.0;
                 final addAmt = (pi['amount'] as num?)?.toDouble() ?? 0.0;
                 allPartnerInvs[existingIdx]['amount'] = curAmt + addAmt;
-                final curTags = List<String>.from(allPartnerInvs[existingIdx]['target_hog_tags'] ?? []);
+                final curTags = List<String>.from(
+                  allPartnerInvs[existingIdx]['target_hog_tags'] ?? [],
+                );
                 final addTags = List<String>.from(pi['target_hog_tags'] ?? []);
                 for (var t in addTags) {
                   if (!curTags.contains(t)) curTags.add(t);
@@ -2042,7 +2673,9 @@ class RaiserHomeTab extends StatelessWidget {
                   width: 44,
                   height: 4.5,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF334A6E) : const Color(0xFFCBD5E1),
+                    color: isDark
+                        ? const Color(0xFF334A6E)
+                        : const Color(0xFFCBD5E1),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -2056,10 +2689,16 @@ class RaiserHomeTab extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.15 : 0.08),
+                        color: (isDark ? Colors.white : _brandColor).withValues(
+                          alpha: isDark ? 0.15 : 0.08,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(Icons.account_balance_wallet_rounded, color: isDark ? Colors.white : _brandColor, size: 22),
+                      child: Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: isDark ? Colors.white : _brandColor,
+                        size: 22,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -2075,7 +2714,9 @@ class RaiserHomeTab extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            strings.isFilipino ? 'Paunang Puhunan + Halaga ng Naipamahaging Stock' : 'Initial Capital + Distributed Stocks Value',
+                            strings.isFilipino
+                                ? 'Paunang Puhunan + Halaga ng Naipamahaging Stock'
+                                : 'Initial Capital + Distributed Stocks Value',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w500,
@@ -2087,7 +2728,11 @@ class RaiserHomeTab extends StatelessWidget {
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(ctx),
-                      icon: Icon(Icons.close_rounded, color: mutedTextColor, size: 22),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: mutedTextColor,
+                        size: 22,
+                      ),
                     ),
                   ],
                 ),
@@ -2138,16 +2783,23 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isConcludedCycle
-                                        ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
+                                        ? const Color(
+                                            0xFF38BDF8,
+                                          ).withValues(alpha: 0.25)
                                         : _successGreen.withValues(alpha: 0.25),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     isConcludedCycle
-                                        ? (strings.isFilipino ? 'TAPOS / SETTLED' : 'CONCLUDED / SETTLED')
+                                        ? (strings.isFilipino
+                                              ? 'TAPOS / SETTLED'
+                                              : 'CONCLUDED / SETTLED')
                                         : strings.activeStatus.toUpperCase(),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 10,
@@ -2162,7 +2814,9 @@ class RaiserHomeTab extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _formatCurrency(isConcludedCycle ? 0.0 : investedAmount),
+                              _formatCurrency(
+                                isConcludedCycle ? 0.0 : investedAmount,
+                              ),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 28,
                                 fontWeight: FontWeight.w800,
@@ -2174,11 +2828,11 @@ class RaiserHomeTab extends StatelessWidget {
                             Text(
                               isConcludedCycle
                                   ? (strings.isFilipino
-                                      ? 'Ang iyong nakaraang siklo ng pag-aalaga ay matagumpay na natapos. Naka-settle na ang puhunan at kasalukuyang naghihintay ng bagong batch mula sa Admin.'
-                                      : 'Your previous raising cycle concluded successfully. Capital is settled, awaiting next batch assignment from Admin.')
+                                        ? 'Ang iyong nakaraang siklo ng pag-aalaga ay matagumpay na natapos. Naka-settle na ang puhunan at kasalukuyang naghihintay ng bagong batch mula sa Admin.'
+                                        : 'Your previous raising cycle concluded successfully. Capital is settled, awaiting next batch assignment from Admin.')
                                   : (strings.isFilipino
-                                      ? 'Natitirang badyet o puhunan matapos ibawas ang mga naipamahaging feeds at gamot sa iyong batch.'
-                                      : 'Remaining investment budget after deducting distributed feeds and medicines for your batch.'),
+                                        ? 'Natitirang badyet o puhunan matapos ibawas ang mga naipamahaging feeds at gamot sa iyong batch.'
+                                        : 'Remaining investment budget after deducting distributed feeds and medicines for your batch.'),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11.5,
                                 color: Colors.white.withValues(alpha: 0.75),
@@ -2200,7 +2854,10 @@ class RaiserHomeTab extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: cardBg,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: cardBorder, width: 1.2),
+                                border: Border.all(
+                                  color: cardBorder,
+                                  width: 1.2,
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2210,16 +2867,26 @@ class RaiserHomeTab extends StatelessWidget {
                                       Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: const Color(
+                                            0xFF3B82F6,
+                                          ).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
-                                        child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF3B82F6), size: 16),
+                                        child: const Icon(
+                                          Icons.account_balance_wallet_outlined,
+                                          color: Color(0xFF3B82F6),
+                                          size: 16,
+                                        ),
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                          isConcludedCycle
-                                              ? (strings.isFilipino ? 'Nakaraang Puhunan' : 'Concluded Capital')
-                                              : strings.initialCapital,
+                                        isConcludedCycle
+                                            ? (strings.isFilipino
+                                                  ? 'Nakaraang Puhunan'
+                                                  : 'Concluded Capital')
+                                            : strings.initialCapital,
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -2230,7 +2897,11 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                      _formatCurrency(isConcludedCycle ? histCapital : initialCapital),
+                                    _formatCurrency(
+                                      isConcludedCycle
+                                          ? histCapital
+                                          : initialCapital,
+                                    ),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
@@ -2239,11 +2910,17 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                      isConcludedCycle
-                                          ? (strings.isFilipino ? 'Alokasyon ng batch' : 'Batch allocation')
-                                          : (totalPartnerCapital > 0
-                                              ? (strings.isFilipino ? 'Alokasyon (Admin + Partner)' : 'Admin + Partner allocation')
-                                              : (strings.isFilipino ? 'Alokasyon ng admin' : 'Admin allocation')),
+                                    isConcludedCycle
+                                        ? (strings.isFilipino
+                                              ? 'Alokasyon ng batch'
+                                              : 'Batch allocation')
+                                        : (totalPartnerCapital > 0
+                                              ? (strings.isFilipino
+                                                    ? 'Alokasyon (Admin + Partner)'
+                                                    : 'Admin + Partner allocation')
+                                              : (strings.isFilipino
+                                                    ? 'Alokasyon ng admin'
+                                                    : 'Admin allocation')),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       color: mutedTextColor,
@@ -2260,7 +2937,10 @@ class RaiserHomeTab extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: cardBg,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: cardBorder, width: 1.2),
+                                border: Border.all(
+                                  color: cardBorder,
+                                  width: 1.2,
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2270,10 +2950,18 @@ class RaiserHomeTab extends StatelessWidget {
                                       Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFEF4444).withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: const Color(
+                                            0xFFEF4444,
+                                          ).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
-                                        child: const Icon(Icons.remove_circle_outline_rounded, color: Color(0xFFEF4444), size: 16),
+                                        child: const Icon(
+                                          Icons.remove_circle_outline_rounded,
+                                          color: Color(0xFFEF4444),
+                                          size: 16,
+                                        ),
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
@@ -2288,20 +2976,33 @@ class RaiserHomeTab extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                      (isConcludedCycle ? histSpend : stocksSpendAmount) > 0
-                                          ? '-${_formatCurrency(isConcludedCycle ? histSpend : stocksSpendAmount)}'
+                                    (isConcludedCycle
+                                                ? histSpend
+                                                : stocksSpendAmount) >
+                                            0
+                                        ? '-${_formatCurrency(isConcludedCycle ? histSpend : stocksSpendAmount)}'
                                         : _formatCurrency(0.0),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
-                                        color: (isConcludedCycle ? histSpend : stocksSpendAmount) > 0 ? const Color(0xFFEF4444) : mutedTextColor,
+                                      color:
+                                          (isConcludedCycle
+                                                  ? histSpend
+                                                  : stocksSpendAmount) >
+                                              0
+                                          ? const Color(0xFFEF4444)
+                                          : mutedTextColor,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                      isConcludedCycle
-                                          ? (strings.isFilipino ? 'Ibinawas sa nakaraang batch' : 'Deducted from concluded batch')
-                                          : (strings.isFilipino ? 'Ibinawas sa badyet' : 'Deducted from budget'),
+                                    isConcludedCycle
+                                        ? (strings.isFilipino
+                                              ? 'Ibinawas sa nakaraang batch'
+                                              : 'Deducted from concluded batch')
+                                        : (strings.isFilipino
+                                              ? 'Ibinawas sa badyet'
+                                              : 'Deducted from budget'),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       color: mutedTextColor,
@@ -2318,23 +3019,32 @@ class RaiserHomeTab extends StatelessWidget {
                       const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                          color: isDark
+                              ? const Color(0xFF1E293B)
+                              : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: cardBorder),
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.calculate_outlined, size: 16, color: mutedTextColor),
+                            Icon(
+                              Icons.calculate_outlined,
+                              size: 16,
+                              color: mutedTextColor,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                  isConcludedCycle
-                                      ? (strings.isFilipino
+                                isConcludedCycle
+                                    ? (strings.isFilipino
                                           ? 'Nakaraang Siklo: ${_formatCurrency(histCapital)} (Puhunan) - ${_formatCurrency(histSpend)} (Nagamit) • Katayuan: Naka-settle na (₱0 Aktibo)'
                                           : 'Concluded Cycle: ${_formatCurrency(histCapital)} (Capital) - ${_formatCurrency(histSpend)} (Used) • Status: Concluded & Settled (₱0 Active)')
-                                      : (strings.isFilipino
+                                    : (strings.isFilipino
                                           ? '${_formatCurrency(initialCapital)} (Puhunan) - ${_formatCurrency(stocksSpendAmount)} (Bawas) = ${_formatCurrency(investedAmount)} (Natitira)'
                                           : '${_formatCurrency(initialCapital)} (Capital) - ${_formatCurrency(stocksSpendAmount)} (Deducted) = ${_formatCurrency(investedAmount)} (Remaining)'),
                                 style: GoogleFonts.plusJakartaSans(
@@ -2349,14 +3059,21 @@ class RaiserHomeTab extends StatelessWidget {
                       ),
 
                       // Funding Sources breakdown (Admin Capital & Partner Investor attribution)
-                      if (totalPartnerCapital > 0 || allPartnerInvs.isNotEmpty) ...[
+                      if (totalPartnerCapital > 0 ||
+                          allPartnerInvs.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Icon(Icons.pie_chart_outline_rounded, size: 16, color: primaryTextColor),
+                            Icon(
+                              Icons.pie_chart_outline_rounded,
+                              size: 16,
+                              color: primaryTextColor,
+                            ),
                             const SizedBox(width: 8),
                             Text(
-                              strings.isFilipino ? 'Pinagmulan ng Pondo (Funding Sources)' : 'Funding Sources Breakdown',
+                              strings.isFilipino
+                                  ? 'Pinagmulan ng Pondo (Funding Sources)'
+                                  : 'Funding Sources Breakdown',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
@@ -2382,18 +3099,27 @@ class RaiserHomeTab extends StatelessWidget {
                                   Container(
                                     padding: const EdgeInsets.all(7),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                                      color: const Color(
+                                        0xFF3B82F6,
+                                      ).withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: const Icon(Icons.business_rounded, size: 16, color: Color(0xFF3B82F6)),
+                                    child: const Icon(
+                                      Icons.business_rounded,
+                                      size: 16,
+                                      color: Color(0xFF3B82F6),
+                                    ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          strings.isFilipino ? 'Farm Admin Pondo' : 'Farm Admin Initial Capital',
+                                          strings.isFilipino
+                                              ? 'Farm Admin Pondo'
+                                              : 'Farm Admin Initial Capital',
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: 12.5,
                                             fontWeight: FontWeight.w700,
@@ -2401,7 +3127,9 @@ class RaiserHomeTab extends StatelessWidget {
                                           ),
                                         ),
                                         Text(
-                                          strings.isFilipino ? 'Panimulang badyet ng batch' : 'Base operating budget',
+                                          strings.isFilipino
+                                              ? 'Panimulang badyet ng batch'
+                                              : 'Base operating budget',
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: 11,
                                             color: mutedTextColor,
@@ -2424,22 +3152,34 @@ class RaiserHomeTab extends StatelessWidget {
                               // Partner Investors Rows
                               for (var pi in allPartnerInvs) ...[
                                 const SizedBox(height: 10),
-                                Divider(height: 1, color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                Divider(
+                                  height: 1,
+                                  color: isDark
+                                      ? Colors.white12
+                                      : const Color(0xFFE2E8F0),
+                                ),
                                 const SizedBox(height: 10),
                                 Row(
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.all(7),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                        color: const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: const Icon(Icons.handshake_rounded, size: 16, color: Color(0xFF10B981)),
+                                      child: const Icon(
+                                        Icons.handshake_rounded,
+                                        size: 16,
+                                        color: Color(0xFF10B981),
+                                      ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             '${strings.isFilipino ? 'Partner Investor' : 'Partner Investor'}: ${pi['partner_name'] ?? 'Investor'}',
@@ -2449,29 +3189,42 @@ class RaiserHomeTab extends StatelessWidget {
                                               color: primaryTextColor,
                                             ),
                                           ),
-                                          if (pi['target_hog_tags'] != null && (pi['target_hog_tags'] as List).isNotEmpty)
+                                          if (pi['target_hog_tags'] != null &&
+                                              (pi['target_hog_tags'] as List)
+                                                  .isNotEmpty)
                                             Text(
                                               'Funded ${(pi['target_hog_tags'] as List).join(', ')} • ${pi['target_pig_type'] ?? 'Hogs'}',
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 11,
-                                                color: mutedTextColor,
-                                              ),
+                                              style:
+                                                  GoogleFonts.plusJakartaSans(
+                                                    fontSize: 11,
+                                                    color: mutedTextColor,
+                                                  ),
                                             )
                                           else
                                             Text(
-                                              (pi['target_pig_type'] != null && pi['target_pig_type'].toString().isNotEmpty)
-                                                  ? pi['target_pig_type'].toString()
-                                                  : (strings.isFilipino ? 'Batch Pondo' : 'Batch Funding'),
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 11,
-                                                color: mutedTextColor,
-                                              ),
+                                              (pi['target_pig_type'] != null &&
+                                                      pi['target_pig_type']
+                                                          .toString()
+                                                          .isNotEmpty)
+                                                  ? pi['target_pig_type']
+                                                        .toString()
+                                                  : (strings.isFilipino
+                                                        ? 'Batch Pondo'
+                                                        : 'Batch Funding'),
+                                              style:
+                                                  GoogleFonts.plusJakartaSans(
+                                                    fontSize: 11,
+                                                    color: mutedTextColor,
+                                                  ),
                                             ),
                                         ],
                                       ),
                                     ),
                                     Text(
-                                      _formatCurrency((pi['amount'] as num?)?.toDouble() ?? 0.0),
+                                      _formatCurrency(
+                                        (pi['amount'] as num?)?.toDouble() ??
+                                            0.0,
+                                      ),
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 13.5,
                                         fontWeight: FontWeight.w800,
@@ -2490,10 +3243,16 @@ class RaiserHomeTab extends StatelessWidget {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Icon(Icons.layers_outlined, size: 16, color: primaryTextColor),
+                            Icon(
+                              Icons.layers_outlined,
+                              size: 16,
+                              color: primaryTextColor,
+                            ),
                             const SizedBox(width: 8),
                             Text(
-                              strings.isFilipino ? 'Alokasyon sa Bawat Batch' : 'Per-Batch Allocation',
+                              strings.isFilipino
+                                  ? 'Alokasyon sa Bawat Batch'
+                                  : 'Per-Batch Allocation',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
@@ -2503,27 +3262,51 @@ class RaiserHomeTab extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        for (final bAssign in (List<Map<String, dynamic>>.from(activeAssignments)..sort(_compareBatchTypes))) ...[
+                        for (final bAssign in (List<Map<String, dynamic>>.from(
+                          activeAssignments,
+                        )..sort(_compareBatchTypes))) ...[
                           Builder(
                             builder: (context) {
-                              final bDone = bAssign['is_cycle_completed'] == true;
-                              final bRawName = (bAssign['batches']?['batch_name'] ?? bAssign['batch_name'] ?? 'Batch #${bAssign['batch_id']}').toString();
-                              final bRawType = (bAssign['hog_types']?['type_name'] ?? bAssign['pig_type'] ?? 'Hog').toString();
-                              final bCap = (bAssign['initial_capital'] as num?)?.toDouble() ?? 0.0;
-                              final bSpend = (bAssign['stocks_spend'] as num?)?.toDouble() ?? 0.0;
-                              final bRem = (bAssign['remaining_capital'] as num?)?.toDouble() ?? (bCap - bSpend).clamp(0.0, double.infinity);
+                              final bDone =
+                                  bAssign['is_cycle_completed'] == true;
+                              final bRawName =
+                                  (bAssign['batches']?['batch_name'] ??
+                                          bAssign['batch_name'] ??
+                                          'Batch #${bAssign['batch_id']}')
+                                      .toString();
+                              final bRawType =
+                                  (bAssign['hog_types']?['type_name'] ??
+                                          bAssign['pig_type'] ??
+                                          'Hog')
+                                      .toString();
+                              final bCap =
+                                  (bAssign['initial_capital'] as num?)
+                                      ?.toDouble() ??
+                                  0.0;
+                              final bSpend =
+                                  (bAssign['stocks_spend'] as num?)
+                                      ?.toDouble() ??
+                                  0.0;
+                              final bRem =
+                                  (bAssign['remaining_capital'] as num?)
+                                      ?.toDouble() ??
+                                  (bCap - bSpend).clamp(0.0, double.infinity);
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 8),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: bDone
-                                      ? (isDark ? const Color(0xFF142032) : const Color(0xFFF8FAFC))
+                                      ? (isDark
+                                            ? const Color(0xFF142032)
+                                            : const Color(0xFFF8FAFC))
                                       : cardBg,
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
                                     color: bDone
-                                        ? (isDark ? Colors.white12 : const Color(0xFFE2E8F0))
+                                        ? (isDark
+                                              ? Colors.white12
+                                              : const Color(0xFFE2E8F0))
                                         : cardBorder,
                                     width: 1.2,
                                   ),
@@ -2535,29 +3318,42 @@ class RaiserHomeTab extends StatelessWidget {
                                       height: 36,
                                       decoration: BoxDecoration(
                                         color: bDone
-                                            ? (isDark ? Colors.white10 : const Color(0xFFE2E8F0))
-                                            : (isDark ? const Color(0xFF0F172A) : const Color(0xFFEFF6FF)),
+                                            ? (isDark
+                                                  ? Colors.white10
+                                                  : const Color(0xFFE2E8F0))
+                                            : (isDark
+                                                  ? const Color(0xFF0F172A)
+                                                  : const Color(0xFFEFF6FF)),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: Icon(
-                                        bDone ? Icons.check_circle_outline_rounded : Icons.pets_rounded,
+                                        bDone
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.pets_rounded,
                                         size: 18,
                                         color: bDone
-                                            ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
-                                            : (isDark ? const Color(0xFF38BDF8) : _brandColor),
+                                            ? (isDark
+                                                  ? const Color(0xFF94A3B8)
+                                                  : const Color(0xFF64748B))
+                                            : (isDark
+                                                  ? const Color(0xFF38BDF8)
+                                                  : _brandColor),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             '$bRawName ($bRawType)',
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 13,
                                               fontWeight: FontWeight.w700,
-                                              color: bDone ? mutedTextColor : primaryTextColor,
+                                              color: bDone
+                                                  ? mutedTextColor
+                                                  : primaryTextColor,
                                             ),
                                           ),
                                           const SizedBox(height: 2),
@@ -2572,35 +3368,69 @@ class RaiserHomeTab extends StatelessWidget {
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
                                         Text(
                                           _formatCurrency(bRem),
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: 13.5,
                                             fontWeight: FontWeight.w800,
-                                            color: bDone ? mutedTextColor : (bRem > 0 ? _successGreen : const Color(0xFFEF4444)),
+                                            color: bDone
+                                                ? mutedTextColor
+                                                : (bRem > 0
+                                                      ? _successGreen
+                                                      : const Color(
+                                                          0xFFEF4444,
+                                                        )),
                                           ),
                                         ),
                                         const SizedBox(height: 2),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1.5,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: bDone
-                                                ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
-                                                : const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
-                                            borderRadius: BorderRadius.circular(5),
+                                                ? (isDark
+                                                      ? const Color(0xFF1E293B)
+                                                      : const Color(0xFFF1F5F9))
+                                                : const Color(
+                                                    0xFF10B981,
+                                                  ).withValues(
+                                                    alpha: isDark ? 0.2 : 0.1,
+                                                  ),
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
                                           ),
                                           child: Text(
                                             bDone
-                                                ? (strings.isFilipino ? 'Tapos na' : 'Concluded')
-                                                : (strings.isFilipino ? 'Aktibo' : 'Active'),
+                                                ? (strings.isFilipino
+                                                      ? 'Tapos na'
+                                                      : 'Concluded')
+                                                : (strings.isFilipino
+                                                      ? 'Aktibo'
+                                                      : 'Active'),
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 9,
                                               fontWeight: FontWeight.w800,
                                               color: bDone
-                                                  ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
-                                                  : (isDark ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                                  ? (isDark
+                                                        ? const Color(
+                                                            0xFF94A3B8,
+                                                          )
+                                                        : const Color(
+                                                            0xFF64748B,
+                                                          ))
+                                                  : (isDark
+                                                        ? const Color(
+                                                            0xFF34D399,
+                                                          )
+                                                        : const Color(
+                                                            0xFF059669,
+                                                          )),
                                             ),
                                           ),
                                         ),
@@ -2621,7 +3451,9 @@ class RaiserHomeTab extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            strings.isFilipino ? 'Mga Naipamahaging Produkto at Pakain' : 'Distributed Products & Feeds',
+                            strings.isFilipino
+                                ? 'Mga Naipamahaging Produkto at Pakain'
+                                : 'Distributed Products & Feeds',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 14.5,
                               fontWeight: FontWeight.w800,
@@ -2629,13 +3461,19 @@ class RaiserHomeTab extends StatelessWidget {
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
-                              color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.15 : 0.08),
+                              color: (isDark ? Colors.white : _brandColor)
+                                  .withValues(alpha: isDark ? 0.15 : 0.08),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              strings.isFilipino ? '${providedStocksList.length} na item' : '${providedStocksList.length} items',
+                              strings.isFilipino
+                                  ? '${providedStocksList.length} na item'
+                                  : '${providedStocksList.length} items',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
@@ -2650,7 +3488,10 @@ class RaiserHomeTab extends StatelessWidget {
                       if (providedStocksList.isEmpty) ...[
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 24,
+                            horizontal: 16,
+                          ),
                           decoration: BoxDecoration(
                             color: cardBg,
                             borderRadius: BorderRadius.circular(16),
@@ -2658,10 +3499,16 @@ class RaiserHomeTab extends StatelessWidget {
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.inventory_2_outlined, size: 36, color: mutedTextColor.withValues(alpha: 0.5)),
+                              Icon(
+                                Icons.inventory_2_outlined,
+                                size: 36,
+                                color: mutedTextColor.withValues(alpha: 0.5),
+                              ),
                               const SizedBox(height: 8),
                               Text(
-                                strings.isFilipino ? 'Wala Pang Naipapamahaging Supply' : 'No Feeds/Supplies Distributed Yet',
+                                strings.isFilipino
+                                    ? 'Wala Pang Naipapamahaging Supply'
+                                    : 'No Feeds/Supplies Distributed Yet',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
@@ -2687,9 +3534,15 @@ class RaiserHomeTab extends StatelessWidget {
                           final pName = item['product_name'] ?? 'Feeds';
                           final pCat = (item['category'] ?? 'Feeds').toString();
                           final qty = (item['quantity'] as num?)?.toInt() ?? 1;
-                          final uPrice = (item['unit_price'] as num?)?.toDouble() ?? 1650.0;
-                          final total = (item['total_amount'] as num?)?.toDouble() ?? (qty * uPrice);
-                          final rawDate = (item['request_date'] ?? item['decision_date'])?.toString();
+                          final uPrice =
+                              (item['unit_price'] as num?)?.toDouble() ??
+                              1650.0;
+                          final total =
+                              (item['total_amount'] as num?)?.toDouble() ??
+                              (qty * uPrice);
+                          final rawDate =
+                              (item['request_date'] ?? item['decision_date'])
+                                  ?.toString();
                           final formattedDate = _formatDate(rawDate ?? '');
 
                           return Container(
@@ -2706,11 +3559,20 @@ class RaiserHomeTab extends StatelessWidget {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: (isDark ? Colors.white : _brandColor).withValues(alpha: isDark ? 0.15 : 0.08),
+                                    color: (isDark ? Colors.white : _brandColor)
+                                        .withValues(
+                                          alpha: isDark ? 0.15 : 0.08,
+                                        ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
-                                    pCat.toLowerCase().contains('med') || pCat.toLowerCase().contains('vaccine') || pCat.toLowerCase().contains('vitamin')
+                                    pCat.toLowerCase().contains('med') ||
+                                            pCat.toLowerCase().contains(
+                                              'vaccine',
+                                            ) ||
+                                            pCat.toLowerCase().contains(
+                                              'vitamin',
+                                            )
                                         ? Icons.medical_services_outlined
                                         : Icons.grain_rounded,
                                     color: isDark ? Colors.white : _brandColor,
@@ -2720,7 +3582,8 @@ class RaiserHomeTab extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         pName,
@@ -2750,18 +3613,27 @@ class RaiserHomeTab extends StatelessWidget {
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w800,
-                                        color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626),
+                                        color: isDark
+                                            ? const Color(0xFFFCA5A5)
+                                            : const Color(0xFFDC2626),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                        color: const Color(
+                                          0xFFEF4444,
+                                        ).withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        strings.isFilipino ? 'IBINAWAS' : 'DEDUCTED',
+                                        strings.isFilipino
+                                            ? 'IBINAWAS'
+                                            : 'DEDUCTED',
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 9.5,
                                           fontWeight: FontWeight.w800,
@@ -2795,7 +3667,8 @@ class RaiserHomeTab extends StatelessWidget {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final strings = AppStrings.of(context);
-    final displayName = hogName ?? (strings.isFilipino ? 'Alagang Baboy' : 'Hog');
+    final displayName =
+        hogName ?? (strings.isFilipino ? 'Alagang Baboy' : 'Hog');
 
     showDialog(
       context: context,
@@ -2803,7 +3676,9 @@ class RaiserHomeTab extends StatelessWidget {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Text(
             strings.stageProgressionTitle,
             style: GoogleFonts.plusJakartaSans(
@@ -2815,8 +3690,8 @@ class RaiserHomeTab extends StatelessWidget {
           content: Text(
             hog != null
                 ? (strings.isFilipino
-                    ? 'Gusto mo bang ilipat ang $displayName sa yugtong "$targetStage"?'
-                    : 'Advance $displayName to "$targetStage"?')
+                      ? 'Gusto mo bang ilipat ang $displayName sa yugtong "$targetStage"?'
+                      : 'Advance $displayName to "$targetStage"?')
                 : strings.advanceStagePrompt(targetStage),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 14,
@@ -2833,15 +3708,23 @@ class RaiserHomeTab extends StatelessWidget {
                     onPressed: () => Navigator.pop(dialogCtx),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      side: BorderSide(
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: Text(
                       strings.cancel,
                       style: GoogleFonts.plusJakartaSans(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
-                        color: isDark ? const Color(0xFF94A3B8) : PiggyTrunkTheme.ptMuted,
+                        color: isDark
+                            ? const Color(0xFF94A3B8)
+                            : PiggyTrunkTheme.ptMuted,
                       ),
                     ),
                   ),
@@ -2854,13 +3737,19 @@ class RaiserHomeTab extends StatelessWidget {
                       if (hog != null && hog['hog_id'] != null) {
                         final hogId = hog['hog_id'];
                         final hogType = _getHogPigType(hog, 'Fattening');
-                        final isBreeding = hogType.toLowerCase() == 'sow' ||
+                        final isBreeding =
+                            hogType.toLowerCase() == 'sow' ||
                             hogType.toLowerCase().contains('breed');
-                        final stageNum = _stageNameToId(targetStage, isBreeding);
+                        final stageNum = _stageNameToId(
+                          targetStage,
+                          isBreeding,
+                        );
 
                         try {
-                          final hogAssignId = hog['assignment_id']?.toString() ?? '';
-                          final hogTag = (hog['tag_number'] ?? hogId.toString()).toString();
+                          final hogAssignId =
+                              hog['assignment_id']?.toString() ?? '';
+                          final hogTag = (hog['tag_number'] ?? hogId.toString())
+                              .toString();
                           try {
                             final prefs = await SharedPreferences.getInstance();
                             final cacheKey = 'hog_stage_${hogAssignId}_$hogTag';
@@ -2874,7 +3763,8 @@ class RaiserHomeTab extends StatelessWidget {
                                 .from('hogs')
                                 .update({
                                   'stage_id': stageNum,
-                                  'last_updated': DateTime.now().toIso8601String(),
+                                  'last_updated': DateTime.now()
+                                      .toIso8601String(),
                                 })
                                 .eq('hog_id', hogId)
                                 .select('hog_id');
@@ -2888,31 +3778,39 @@ class RaiserHomeTab extends StatelessWidget {
                           if (!dbUpdated && hogAssignId.isNotEmpty) {
                             try {
                               final parsedAssignId = int.tryParse(hogAssignId);
-                              if (parsedAssignId != null && parsedAssignId < 900000) {
+                              if (parsedAssignId != null &&
+                                  parsedAssignId < 900000) {
                                 final insertRes = await Supabase.instance.client
                                     .from('hogs')
                                     .insert({
                                       'assignment_id': parsedAssignId,
                                       'stage_id': stageNum,
                                       'status': 'active',
-                                      'health_status': hog['health_status'] ?? 'Healthy',
-                                      'last_updated': DateTime.now().toIso8601String(),
+                                      'health_status':
+                                          hog['health_status'] ?? 'Healthy',
+                                      'last_updated': DateTime.now()
+                                          .toIso8601String(),
                                     })
                                     .select('hog_id')
                                     .maybeSingle();
-                                if (insertRes != null && insertRes['hog_id'] != null) {
+                                if (insertRes != null &&
+                                    insertRes['hog_id'] != null) {
                                   hog['hog_id'] = insertRes['hog_id'];
                                 }
                               }
                             } catch (e) {
-                              debugPrint('Notice inserting real hog row into public.hogs: $e');
+                              debugPrint(
+                                'Notice inserting real hog row into public.hogs: $e',
+                              );
                             }
                           }
 
                           onUpdateLifecycleStage(targetStage, hogId);
                           await onRefresh();
 
-                          if (stageNum >= 6 || targetStage.trim().toLowerCase() == 'selling' || targetStage.trim().toLowerCase() == 'lactation') {
+                          if (stageNum >= 6 ||
+                              targetStage.trim().toLowerCase() == 'selling' ||
+                              targetStage.trim().toLowerCase() == 'lactation') {
                             _notifyAdminFinalStageReached(targetStage, hog);
                           }
 
@@ -2930,17 +3828,22 @@ class RaiserHomeTab extends StatelessWidget {
                         }
                       } else {
                         onUpdateLifecycleStage(targetStage);
-                        if (targetStage.trim().toLowerCase() == 'selling' || targetStage.trim().toLowerCase() == 'lactation') {
+                        if (targetStage.trim().toLowerCase() == 'selling' ||
+                            targetStage.trim().toLowerCase() == 'lactation') {
                           _notifyAdminFinalStageReached(targetStage, hog);
                         }
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isDark ? Colors.white : _brandColor,
-                      foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                      foregroundColor: isDark
+                          ? const Color(0xFF0F172A)
+                          : Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: Text(
                       strings.confirm,

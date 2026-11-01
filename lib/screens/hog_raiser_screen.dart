@@ -770,12 +770,10 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
         row: _selectedRaiserForProfile!,
         onCancel: () => setState(() => _selectedRaiserForProfile = null),
         onApprove: (row) async {
-          await _approveRaiserDirectly(row);
-          if (mounted) setState(() => _selectedRaiserForProfile = null);
+          await _executeApproveRaiser(row);
         },
         onDelete: (row) async {
-          await _deleteRaiser(row);
-          if (mounted) setState(() => _selectedRaiserForProfile = null);
+          _deleteRaiser(row);
         },
         onArchive: (row) async {
           await _archiveRaiser(row);
@@ -918,6 +916,62 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     );
   }
 
+  Future<void> _executeApproveRaiser(Map<String, dynamic> row) async {
+    final id = _parseId(row['id'] ?? row['hog_raiser_id']);
+    final userId = _parseId(row['user_id']);
+    if (id == null) return;
+
+    final name = (row['name'] ?? '').toString();
+    final email = (row['email'] ?? '').toString();
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final pkCol = row['id'] != null ? 'id' : 'hog_raiser_id';
+      final List<Future> updates = [
+        _supabase.from('hog_raisers').update({
+          'status': 'Active',
+          'account_status': 'active',
+        }).eq(pkCol, id),
+      ];
+
+      if (userId != null) {
+        updates.add(
+          _supabase.from('app_users').update({
+            'status': 'active',
+          }).eq('user_id', userId),
+        );
+      }
+
+      await Future.wait(updates);
+
+      if (email.isNotEmpty) {
+        try {
+          await EmailService().sendAccountApprovalEmail(
+            recipientEmail: email,
+            recipientName: name,
+            role: 'hog_raiser',
+          );
+        } catch (_) {}
+      }
+
+      await _loadRaisers(keyword: _searchCtrl.text);
+      if (mounted) {
+        setState(() {
+          _selectedRaiserForProfile = null;
+          _inPageConfirmation = null;
+        });
+      }
+      _showThemedSnackBar('Raiser "$name" approved successfully.');
+    } catch (e) {
+      _showThemedSnackBar('Approval failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _approveRaiserDirectly(Map<String, dynamic> row) async {
     final id = _parseId(row['id'] ?? row['hog_raiser_id']);
     final userId = _parseId(row['user_id']);
@@ -995,18 +1049,30 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
     final email = (row['email'] ?? '').toString();
     final avatarUrl = (row['avatar_url'] ?? row['profile_picture'] ?? row['photo_url'] ?? row['image_url'])?.toString();
 
+    final rawStatus = (row['account_status'] ?? row['status'] ?? '').toString().toLowerCase();
+    final isPending = rawStatus == 'pending';
+
+    final title = isPending ? 'Reject Hog Raiser' : 'Delete Hog Raiser';
+    final subtitle = isPending
+        ? 'Permanently remove this pending registration.'
+        : 'Permanently delete this archived raiser record.';
+    final message = isPending
+        ? 'Are you sure you want to reject the registration for "$name"? This will permanently delete their registration record.'
+        : 'Are you sure you want to permanently delete the raiser record for "$name"? This record cannot be recovered.';
+    final confirmText = isPending ? 'Yes, Reject' : 'Yes, Delete';
+
     setState(() {
       _inPageConfirmation = InPageConfirmationView(
-        title: 'Reject Hog Raiser',
-        subtitle: 'Permanently remove this pending registration.',
-        message: 'Are you sure you want to reject the registration for "$name"? This will permanently delete their registration record.',
+        title: title,
+        subtitle: subtitle,
+        message: message,
         actionType: InPageActionType.danger,
         userName: name,
         userEmail: email.isNotEmpty ? email : null,
         userRole: 'Hog Raiser',
         avatarUrl: avatarUrl,
-        warningText: 'This action is irreversible. The user registration will be deleted immediately.',
-        confirmButtonText: 'Yes, Reject',
+        warningText: 'This action is irreversible. The record will be permanently deleted.',
+        confirmButtonText: confirmText,
         cancelButtonText: 'Cancel',
         onCancel: () => setState(() => _inPageConfirmation = null),
         onConfirm: () async {
@@ -1016,6 +1082,16 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
             _isLoading = true;
           });
           try {
+            if (isPending && email.isNotEmpty) {
+              try {
+                await EmailService().sendAccountRejectionEmail(
+                  recipientEmail: email,
+                  recipientName: name,
+                  role: 'Hog Raiser',
+                );
+              } catch (_) {}
+            }
+
             if (userId != null) {
               await _supabase.from('app_users').delete().eq('user_id', userId);
             } else {
@@ -1023,9 +1099,13 @@ class _HogRaiserScreenState extends State<HogRaiserScreen> {
               await _supabase.from('hog_raisers').delete().eq(pkCol, id);
             }
             await _loadRaisers(keyword: _searchCtrl.text);
-            _showThemedSnackBar('Raiser registration rejected successfully.');
+            _showThemedSnackBar(isPending
+                ? 'Raiser registration rejected successfully.'
+                : 'Raiser record deleted successfully.');
           } catch (e) {
-            _showThemedSnackBar('Rejection failed: $e', isError: true);
+            _showThemedSnackBar(isPending
+                ? 'Rejection failed: $e'
+                : 'Delete failed: $e', isError: true);
           } finally {
             if (mounted) setState(() => _isLoading = false);
           }

@@ -11,6 +11,7 @@ import 'package:piggytrunk/widgets/inventory/product_logs_drawer.dart';
 import 'package:piggytrunk/widgets/inventory/product_edit_drawer.dart';
 import 'package:piggytrunk/widgets/inventory/product_restock_dialog.dart';
 import 'package:piggytrunk/widgets/inventory/product_add_form.dart';
+import 'package:piggytrunk/widgets/inventory/product_qr_modal.dart';
 import 'package:piggytrunk/widgets/inventory/stock_requests_tab.dart';
 import '../../../utils/capitalization_formatters.dart';
 
@@ -75,6 +76,26 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  List<Product> get _baseSortedProducts {
+    final list = List<Product>.from(_products);
+    list.sort((a, b) {
+      final cmp = a.createdAt.compareTo(b.createdAt);
+      if (cmp != 0) return cmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
+  }
+
+  int _getSortNumber(Product p) {
+    final base = _baseSortedProducts;
+    final idx = base.indexWhere((item) => item.id == p.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  String _getProductAcronymId(Product p) {
+    return p.displayAcronymId(sortNumber: _getSortNumber(p));
   }
 
   Future<void> _loadProducts() async {
@@ -207,6 +228,7 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
 
     if (_showAddProductForm) {
       return ProductAddForm(
+        nextSortNumber: _products.length + 1,
         onCancel: () => setState(() => _showAddProductForm = false),
         onProductAdded: () {
           setState(() => _showAddProductForm = false);
@@ -389,7 +411,7 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   Widget _buildProductsCatalogView() {
     final isMobile = Responsive.isMobile(context);
 
-    final filteredProducts = _products.where((p) {
+    final filteredProducts = _baseSortedProducts.where((p) {
       if (_selectedCategory != 'All' && p.category.toLowerCase() != _selectedCategory.toLowerCase()) {
         return false;
       }
@@ -397,7 +419,11 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
       if (q.isNotEmpty) {
         final name = p.name.toLowerCase();
         final desc = p.description.toLowerCase();
-        if (!name.contains(q) && !desc.contains(q)) return false;
+        final acronymId = _getProductAcronymId(p).toLowerCase();
+        final rawBarcode = (p.barcode ?? '').trim().toLowerCase();
+        if (!name.contains(q) && !desc.contains(q) && !acronymId.contains(q) && !rawBarcode.contains(q)) {
+          return false;
+        }
       }
       return true;
     }).toList();
@@ -417,9 +443,18 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                     inputFormatters: const [CapitalizeWordsInputFormatter()],
                     style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 13.5),
                     decoration: InputDecoration(
-                      hintText: 'Search products...',
+                      hintText: 'Search by name, ID (e.g. PEWS-001), or barcode...',
                       hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 13.5),
                       prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
                       filled: true,
                       fillColor: _fieldBg,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -451,9 +486,18 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                       inputFormatters: const [CapitalizeWordsInputFormatter()],
                       style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'Search products by name or description...',
+                        hintText: 'Search by name, ID (e.g. PEWS-001), or barcode...',
                         hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
                         prefixIcon: Icon(Icons.search_rounded, color: _mutedColor, size: 20),
+                        suffixIcon: _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(Icons.clear_rounded, color: _mutedColor, size: 18),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
                         filled: true,
                         fillColor: _fieldBg,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -683,6 +727,7 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
   Widget _buildProductCard(Product product) {
     final isMobile = Responsive.isMobile(context);
     final imageSize = isMobile ? 110.0 : 155.0;
+    final acronymId = _getProductAcronymId(product);
 
     return Container(
       decoration: BoxDecoration(
@@ -743,7 +788,47 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                     _buildStockBadge(product, isMobile: isMobile),
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
+                // Acronym Barcode Badge with tap-to-view/print
+                Tooltip(
+                  message: 'Tap to view & print barcode ($acronymId)',
+                  child: InkWell(
+                    onTap: () => ProductQrModal.show(
+                      context,
+                      product,
+                      customBarcodeId: acronymId,
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: _isDark ? const Color(0xFF1E2F47) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _cardBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.qr_code_2_rounded,
+                            size: 12,
+                            color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            acronymId,
+                            style: GoogleFonts.sourceCodePro(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
                 Text(
                   product.description.isEmpty ? 'No description' : product.description,
                   maxLines: 1,
@@ -817,6 +902,7 @@ class _CashierInventoryTabState extends State<CashierInventoryTab> {
                         onPressed: () => ProductEditDrawer.show(
                           context: context,
                           existing: product,
+                          sortNumber: _getSortNumber(product),
                           onUploadImage: _uploadProductImage,
                           onInsertLog: _insertProductLog,
                           onProductUpdated: _loadProducts,

@@ -5,7 +5,7 @@ import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/responsive.dart';
 
-class RaiserProfileView extends StatelessWidget {
+class RaiserProfileView extends StatefulWidget {
   final Map<String, dynamic> row;
   final VoidCallback onCancel;
   final Future<void> Function(Map<String, dynamic> row) onApprove;
@@ -71,7 +71,21 @@ class RaiserProfileView extends StatelessWidget {
   }
 
   @override
+  State<RaiserProfileView> createState() => _RaiserProfileViewState();
+}
+
+class _RaiserProfileViewState extends State<RaiserProfileView> {
+  bool _isProcessing = false;
+  String? _processingAction;
+
+  @override
   Widget build(BuildContext context) {
+    final row = widget.row;
+    final onCancel = widget.onCancel;
+    final onApprove = widget.onApprove;
+    final onDelete = widget.onDelete;
+    final onRestore = widget.onRestore;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = Responsive.isMobile(context);
 
@@ -85,11 +99,11 @@ class RaiserProfileView extends StatelessWidget {
     final email = (row['email'] ?? 'N/A').toString();
     final phone = (row['phone'] ?? 'N/A').toString();
     final address = (row['address'] ?? 'N/A').toString();
-    final pigType = formatPigType(row['pig_type']);
+    final pigType = RaiserProfileView.formatPigType(row['pig_type']);
     final rawStatus = (row['account_status'] ?? row['status'] ?? 'Active').toString().toUpperCase();
     final isPending = rawStatus == 'PENDING';
     final isArchived = rawStatus == 'ARCHIVED';
-    final avatarUrl = _getAvatarUrl(row);
+    final avatarUrl = RaiserProfileView._getAvatarUrl(row);
 
     final statusColor = rawStatus == 'ACTIVE' || rawStatus == 'APPROVED'
         ? PiggyTrunkTheme.ptSuccess
@@ -396,7 +410,7 @@ class RaiserProfileView extends StatelessWidget {
             children: [
               if (isPending) ...[
                 OutlinedButton.icon(
-                  onPressed: () => onDelete(row),
+                  onPressed: _isProcessing ? null : () => onDelete(row),
                   icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFFF758C)),
                   label: const Text('Reject', style: TextStyle(color: Color(0xFFFF758C))),
                   style: OutlinedButton.styleFrom(
@@ -407,9 +421,32 @@ class RaiserProfileView extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
-                  onPressed: () => onApprove(row),
-                  icon: const Icon(Icons.check_rounded, size: 16),
-                  label: const Text('Approve Raiser'),
+                  onPressed: _isProcessing
+                      ? null
+                      : () async {
+                          setState(() {
+                            _isProcessing = true;
+                            _processingAction = 'approve';
+                          });
+                          try {
+                            await onApprove(row);
+                          } finally {
+                            if (mounted) {
+                              setState(() {
+                                _isProcessing = false;
+                                _processingAction = null;
+                              });
+                            }
+                          }
+                        },
+                  icon: _processingAction == 'approve'
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.check_rounded, size: 16),
+                  label: Text(_processingAction == 'approve' ? 'Approving...' : 'Approve Raiser'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: PiggyTrunkTheme.ptSuccess,
                     foregroundColor: Colors.white,
@@ -420,7 +457,7 @@ class RaiserProfileView extends StatelessWidget {
                 ),
               ] else if (isArchived && onRestore != null) ...[
                 ElevatedButton.icon(
-                  onPressed: () => onRestore!(row),
+                  onPressed: _isProcessing ? null : () => onRestore(row),
                   icon: const Icon(Icons.restore_outlined, size: 16),
                   label: const Text('Restore Raiser'),
                   style: ElevatedButton.styleFrom(

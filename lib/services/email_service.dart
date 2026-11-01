@@ -49,6 +49,7 @@ class EmailService {
         </div>
 
         <p style="font-size: 14.5px; color: #475569;">You will receive another confirmation email as soon as your account has been approved by the Admin.</p>
+        <p style="font-size: 13px; color: #64748B; background: #F1F5F9; padding: 10px 14px; border-radius: 6px; margin-top: 14px;"><strong>Tip:</strong> Please check your Gmail inbox or Spam folder. Mark this message as <em>Not Spam</em> to ensure you receive your account approval notification promptly.</p>
         
         <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 26px 0;" />
         <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">This is an automated notification from Piggy Trunk Support. Please do not reply directly to this email.</p>
@@ -101,6 +102,43 @@ class EmailService {
     return await _postEmail(
       to: recipientEmail,
       subject: '🎉 Your Piggy Trunk Account is Approved!',
+      html: htmlContent,
+    );
+  }
+
+  /// Sends an Official Rejection Notification Email when Admin declines a user registration
+  Future<bool> sendAccountRejectionEmail({
+    required String recipientEmail,
+    required String recipientName,
+    required String role,
+  }) async {
+    final roleDisplay = role.toLowerCase().contains('raiser')
+        ? 'Hog Raiser'
+        : (role.toLowerCase().contains('partner') ? 'Partner Investor' : 'Cashier');
+
+    final htmlContent = '''
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 6px 24px rgba(24, 49, 79, 0.08);">
+      <!-- Clean Corporate Header -->
+      <div style="background: linear-gradient(135deg, #18314F 0%, #0F1C2F 100%); padding: 32px 24px; text-align: center; color: white;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: 0.5px; color: #ffffff; text-transform: uppercase;">PIGGY TRUNK</h1>
+      </div>
+
+      <!-- Main Body Content -->
+      <div style="padding: 30px 28px; color: #334155; line-height: 1.65;">
+        <h2 style="color: #EF4444; margin-top: 0; font-size: 21px; font-weight: 800;">Registration Update: Application Not Approved</h2>
+        <p style="font-size: 15px; margin: 8px 0 16px 0;">Hello, <strong>$recipientName</strong>!</p>
+        <p style="font-size: 15px; margin-bottom: 18px;">Thank you for registering on <strong>Piggy Trunk</strong> as a <strong>$roleDisplay</strong>.</p>
+        <p style="font-size: 14.5px; color: #475569; margin-bottom: 20px;">After careful review of your registration details, our administrators were unable to approve your account at this time.</p>
+        
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 26px 0;" />
+        <p style="font-size: 13.5px; color: #64748B; margin: 0;">Best regards,<br/><strong style="color: #18314F; font-size: 14.5px;">Piggy Trunk Support</strong></p>
+      </div>
+    </div>
+    ''';
+
+    return await _postEmail(
+      to: recipientEmail,
+      subject: 'Registration Update: Piggy Trunk Account Not Approved',
       html: htmlContent,
     );
   }

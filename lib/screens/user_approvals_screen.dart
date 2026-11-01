@@ -317,6 +317,98 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
     }
   }
 
+  Future<void> _executeApproveUser(int userId, String name, {String? email, String? role}) async {
+    final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
+    final userEmail = email ?? targetUser['email']?.toString() ?? '';
+    final userRole = role ?? targetUser['role']?.toString() ?? 'User';
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _supabase
+          .from('app_users')
+          .update({'status': 'active'})
+          .eq('user_id', userId);
+
+      try {
+        await _supabase
+            .from('cashiers')
+            .update({'status': 'active'})
+            .eq('user_id', userId);
+      } catch (_) {}
+
+      try {
+        await _supabase
+            .from('partner_investors')
+            .update({'status': 'active'})
+            .eq('user_id', userId);
+      } catch (_) {}
+
+      try {
+        await _supabase
+            .from('hog_raisers')
+            .update({'account_status': 'active', 'status': 'Active'})
+            .eq('user_id', userId);
+      } catch (_) {}
+
+      // Trigger Account Approval Email
+      try {
+        if (userEmail.isNotEmpty) {
+          debugPrint("[UserApprovals] Sending approval email to $userEmail ($userRole)...");
+          final sent = await EmailService().sendAccountApprovalEmail(
+            recipientEmail: userEmail,
+            recipientName: name,
+            role: userRole,
+          );
+          if (sent) {
+            debugPrint("[UserApprovals] Approval email delivered successfully to $userEmail");
+          } else {
+            debugPrint("[UserApprovals] Warning: Approval email could not be delivered to $userEmail");
+          }
+        }
+      } catch (e) {
+        debugPrint("[UserApprovals] Notice: Failed to send approval email: $e");
+      }
+
+      // Transition registration notification to Approved state
+      try {
+        if (userEmail.isNotEmpty) {
+          final roleDisplay = userRole.toLowerCase().contains('raiser')
+              ? 'Hog Raiser'
+              : (userRole.toLowerCase().contains('partner')
+                  ? 'Partner Investor'
+                  : (userRole.toLowerCase().contains('cashier') ? 'Cashier' : 'User'));
+
+          await _supabase
+              .from('admin_notifications')
+              .update({
+                'is_read': true,
+                'title': 'Account Approved for $roleDisplay',
+                'message': 'User $name ($userEmail) was approved as $roleDisplay.',
+              })
+              .eq('metadata->>email', userEmail)
+              .inFilter('type', ['user_registration', 'approval_email']);
+        }
+      } catch (_) {}
+
+      await _loadUsers(keyword: _searchCtrl.text);
+
+      if (!mounted) return;
+      setState(() {
+        _selectedUserForProfile = null;
+        _inPageConfirmation = null;
+      });
+      AppToast.success(context, 'User "$name" approved successfully.');
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.error(context, 'Approval failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _approveUser(int userId, String name, {String? email, String? role}) {
     final targetUser = _users.firstWhere((u) => u['user_id'] == userId, orElse: () => <String, dynamic>{});
     final userEmail = email ?? targetUser['email']?.toString() ?? '';
@@ -336,90 +428,7 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
         confirmButtonText: 'Yes, Approve',
         cancelButtonText: 'Cancel',
         onCancel: () => setState(() => _inPageConfirmation = null),
-        onConfirm: () async {
-          setState(() {
-            _inPageConfirmation = null;
-            _selectedUserForProfile = null;
-            _isLoading = true;
-          });
-          try {
-            await _supabase
-                .from('app_users')
-                .update({'status': 'active'})
-                .eq('user_id', userId);
-
-            try {
-              await _supabase
-                  .from('cashiers')
-                  .update({'status': 'active'})
-                  .eq('user_id', userId);
-            } catch (_) {}
-
-            try {
-              await _supabase
-                  .from('partner_investors')
-                  .update({'status': 'active'})
-                  .eq('user_id', userId);
-            } catch (_) {}
-
-            try {
-              await _supabase
-                  .from('hog_raisers')
-                  .update({'account_status': 'active', 'status': 'Active'})
-                  .eq('user_id', userId);
-            } catch (_) {}
-
-            // Trigger Account Approval Email
-            try {
-              if (userEmail.isNotEmpty) {
-                debugPrint("[UserApprovals] Sending approval email to $userEmail ($userRole)...");
-                final sent = await EmailService().sendAccountApprovalEmail(
-                  recipientEmail: userEmail,
-                  recipientName: name,
-                  role: userRole,
-                );
-                if (sent) {
-                  debugPrint("[UserApprovals] Approval email delivered successfully to $userEmail");
-                } else {
-                  debugPrint("[UserApprovals] Warning: Approval email could not be delivered to $userEmail");
-                }
-              }
-            } catch (e) {
-              debugPrint("[UserApprovals] Notice: Failed to send approval email: $e");
-            }
-
-            // Transition registration notification to Approved state
-            try {
-              if (userEmail.isNotEmpty) {
-                final roleDisplay = userRole.toLowerCase().contains('raiser')
-                    ? 'Hog Raiser'
-                    : (userRole.toLowerCase().contains('partner')
-                        ? 'Partner Investor'
-                        : (userRole.toLowerCase().contains('cashier') ? 'Cashier' : 'User'));
-
-                await _supabase
-                    .from('admin_notifications')
-                    .update({
-                      'is_read': true,
-                      'title': 'Account Approved for $roleDisplay',
-                      'message': 'User $name ($userEmail) was approved as $roleDisplay.',
-                    })
-                    .eq('metadata->>email', userEmail)
-                    .inFilter('type', ['user_registration', 'approval_email']);
-              }
-            } catch (_) {}
-
-            await _loadUsers(keyword: _searchCtrl.text);
-
-            if (!mounted) return;
-            AppToast.success(context, 'User "$name" approved successfully.');
-          } catch (e) {
-            if (!mounted) return;
-            AppToast.error(context, 'Approval failed: $e');
-          } finally {
-            if (mounted) setState(() => _isLoading = false);
-          }
-        },
+        onConfirm: () => _executeApproveUser(userId, name, email: userEmail, role: userRole),
       );
     });
   }
@@ -455,6 +464,16 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                 .update({'status': 'rejected'})
                 .eq('user_id', userId);
 
+            // Sync role-specific table if Hog Raiser
+            if (userRole.toLowerCase().contains('raiser')) {
+              try {
+                await _supabase
+                    .from('hog_raisers')
+                    .update({'account_status': 'rejected', 'status': 'rejected'})
+                    .eq('email', userEmail);
+              } catch (_) {}
+            }
+
             try {
               if (userEmail.isNotEmpty) {
                 await _supabase
@@ -468,6 +487,20 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
                     .eq('type', 'user_registration');
               }
             } catch (_) {}
+
+            // Send Official Rejection Email via Resend
+            try {
+              if (userEmail.isNotEmpty) {
+                debugPrint("[UserApprovals] Sending rejection email to $userEmail ($userRole)...");
+                EmailService().sendAccountRejectionEmail(
+                  recipientEmail: userEmail,
+                  recipientName: name,
+                  role: userRole,
+                );
+              }
+            } catch (mailErr) {
+              debugPrint("[UserApprovals] Rejection email error: $mailErr");
+            }
 
             await _loadUsers(keyword: _searchCtrl.text);
 
@@ -655,12 +688,12 @@ class _UserApprovalsScreenState extends State<UserApprovalsScreen> {
       return UserProfileView(
         row: _selectedUserForProfile!,
         onCancel: () => setState(() => _selectedUserForProfile = null),
-        onApprove: (row) {
+        onApprove: (row) async {
           final userId = int.tryParse(row['user_id'].toString()) ?? 0;
           final name = (row['name'] ?? 'User').toString();
           final email = (row['email'] ?? '').toString();
           final role = (row['role'] ?? '').toString();
-          _approveUser(userId, name, email: email, role: role);
+          await _executeApproveUser(userId, name, email: email, role: role);
         },
         onReject: (row) {
           final userId = int.tryParse(row['user_id'].toString()) ?? 0;

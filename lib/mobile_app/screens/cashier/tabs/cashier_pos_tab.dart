@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/models/pos_model.dart';
+import 'package:piggytrunk/models/product_model.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:piggytrunk/screens/best_sellers_screen.dart';
 import 'package:piggytrunk/screens/demand_forecasting_screen.dart';
+import 'package:piggytrunk/widgets/inventory/product_qr_modal.dart';
 import '../../../utils/app_strings.dart';
 import '../../../utils/capitalization_formatters.dart';
 import '../widgets/cashier_empty_state.dart';
@@ -72,6 +74,26 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  List<POSProduct> get _baseSortedProducts {
+    final list = List<POSProduct>.from(widget.allProducts);
+    list.sort((a, b) {
+      final cmp = a.createdAt.compareTo(b.createdAt);
+      if (cmp != 0) return cmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
+  }
+
+  int _getSortNumber(POSProduct p) {
+    final base = _baseSortedProducts;
+    final idx = base.indexWhere((item) => item.id == p.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  String _getProductAcronymId(POSProduct p) {
+    return p.displayAcronymId(sortNumber: _getSortNumber(p));
   }
 
   String _formatCurrency(double amount) {
@@ -590,10 +612,13 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
 
       // Search filter
       if (query.isNotEmpty) {
+        final acronymId = _getProductAcronymId(p).toLowerCase();
+        final rawBarcode = (p.barcode ?? '').trim().toLowerCase();
         final matchesName = p.name.toLowerCase().contains(query);
         final matchesDesc = p.description.toLowerCase().contains(query);
         final matchesCat = p.category.toLowerCase().contains(query);
-        return matchesName || matchesDesc || matchesCat;
+        final matchesBarcode = acronymId.contains(query) || (rawBarcode.isNotEmpty && rawBarcode.contains(query));
+        return matchesName || matchesDesc || matchesCat || matchesBarcode;
       }
       return true;
     }).toList();
@@ -652,7 +677,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                             inputFormatters: const [CapitalizeWordsInputFormatter()],
                             style: GoogleFonts.plusJakartaSans(fontSize: 13, color: titleColor),
                             decoration: InputDecoration(
-                              hintText: strings.searchProducts,
+                              hintText: 'Search by name, ID (e.g. PEWS-001), or barcode...',
                               hintStyle: GoogleFonts.plusJakartaSans(color: subtitleColor, fontSize: 12),
                               prefixIcon: Icon(Icons.search, color: subtitleColor, size: 20),
                               suffixIcon: _searchCtrl.text.isNotEmpty
@@ -1073,6 +1098,7 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
   }) {
     final pillBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurfaceSoft;
     final stepperBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : Colors.white;
+    final acronymId = _getProductAcronymId(product);
 
     return Container(
       decoration: BoxDecoration(
@@ -1209,7 +1235,54 @@ class _CashierPOSTabState extends State<CashierPOSTab> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
+
+                // Acronym Barcode Badge with tap-to-view/print
+                Row(
+                  children: [
+                    Tooltip(
+                      message: 'Tap to view barcode ($acronymId)',
+                      child: InkWell(
+                        onTap: () {
+                          ProductQrModal.show(
+                            context,
+                            Product.fromJson(product.toJson()),
+                            customBarcodeId: acronymId,
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E2F47) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: cardBorder),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.qr_code_2_rounded,
+                                size: 11,
+                                color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                acronymId,
+                                style: GoogleFonts.sourceCodePro(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
 
                 // Category & Description
                 Text(

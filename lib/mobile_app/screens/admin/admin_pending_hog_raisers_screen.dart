@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:piggytrunk/services/email_service.dart';
 
 class AdminMobilePendingHogRaisersScreen extends StatefulWidget {
   final VoidCallback? onBackToDashboard;
@@ -63,6 +64,7 @@ class _AdminMobilePendingHogRaisersScreenState
             parsed.add({
               'id': r['hog_raiser_id']?.toString() ?? '',
               'name': rName,
+              'email': (user['email'] ?? r['email'] ?? '').toString(),
               'location': rAddress.toUpperCase(),
               'contact': rPhone,
               'appliedDate': DateTime.now().toLocal().toString().split(' ')[0],
@@ -127,7 +129,32 @@ class _AdminMobilePendingHogRaisersScreenState
 
   Future<void> _handleReject(Map<String, dynamic> raiser) async {
     final String raiserId = raiser['id'] as String;
+    final String email = (raiser['email'] ?? '').toString();
+    final String name = (raiser['name'] ?? 'Hog Raiser').toString();
     final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      if (raiserId.isNotEmpty) {
+        await Supabase.instance.client
+            .from('hog_raisers')
+            .update({'account_status': 'rejected', 'status': 'rejected'})
+            .eq('hog_raiser_id', raiserId);
+      }
+      if (email.isNotEmpty) {
+        await Supabase.instance.client
+            .from('app_users')
+            .update({'status': 'rejected'})
+            .eq('email', email);
+
+        EmailService().sendAccountRejectionEmail(
+          recipientEmail: email,
+          recipientName: name,
+          role: 'Hog Raiser',
+        );
+      }
+    } catch (e) {
+      debugPrint('Raiser rejection fallback: $e');
+    }
 
     if (mounted) {
       setState(() {
@@ -141,6 +168,81 @@ class _AdminMobilePendingHogRaisersScreenState
           behavior: SnackBarBehavior.floating,
         ),
       );
+    }
+  }
+
+  Future<void> _confirmReject(Map<String, dynamic> raiser) async {
+    final name = (raiser['name'] ?? 'Hog Raiser').toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _criticalRed.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.warning_amber_rounded, color: _criticalRed, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Reject Application?',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16.5,
+                  color: _brandNavy,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to reject the application for "$name"?',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13.5,
+            color: const Color(0xFF334155),
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _criticalRed,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: Text(
+              'Yes, Reject',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _handleReject(raiser);
     }
   }
 
@@ -445,7 +547,7 @@ class _AdminMobilePendingHogRaisersScreenState
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () => _handleReject(raiser),
+                        onPressed: () => _confirmReject(raiser),
                         child: Text(
                           'REJECT',
                           style: GoogleFonts.plusJakartaSans(

@@ -31,8 +31,11 @@ class ProductEditDrawer {
     }) onInsertLog,
     required VoidCallback onProductUpdated,
     required void Function(String msg, {Color? backgroundColor}) onShowSnackBar,
+    int? sortNumber,
   }) {
     final nameCtrl = TextEditingController(text: existing.name);
+    final fetchedBarcode = existing.displayAcronymId(sortNumber: sortNumber);
+    final barcodeCtrl = TextEditingController(text: fetchedBarcode);
     String selectedCategory = existing.category.isNotEmpty ? existing.category : 'Feeds';
     final priceStr = existing.price % 1 == 0
         ? existing.price.toInt().toString()
@@ -295,8 +298,11 @@ class ProductEditDrawer {
                                     controller: nameCtrl,
                                     textCapitalization: TextCapitalization.words,
                                     inputFormatters: const [CapitalizeWordsInputFormatter()],
-                                    onChanged: (_) {
-                                      if (nameError != null) setDrawerState(() => nameError = null);
+                                    onChanged: (val) {
+                                      setDrawerState(() {
+                                        if (nameError != null) nameError = null;
+                                        barcodeCtrl.text = Product.formatAcronymId(val, sortNumber: sortNumber);
+                                      });
                                     },
                                     style: GoogleFonts.plusJakartaSans(color: titleColor, fontSize: 14, fontWeight: FontWeight.w600),
                                     decoration: InputDecoration(
@@ -328,6 +334,40 @@ class ProductEditDrawer {
                                       style: GoogleFonts.plusJakartaSans(color: const Color(0xFFE53E3E), fontSize: 11.5, fontWeight: FontWeight.w600),
                                     ),
                                   ],
+                                  const SizedBox(height: 14),
+
+                                  // Product ID / Barcode Field (Auto-generated Acronym)
+                                  Text(
+                                    'PRODUCT ID / BARCODE (AUTO-GENERATED ACRONYM)',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: mutedColor,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: barcodeCtrl,
+                                    enabled: false,
+                                    style: GoogleFonts.sourceCodePro(
+                                      color: titleColor.withValues(alpha: 0.85),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    decoration: InputDecoration(
+                                      prefixIcon: Icon(Icons.qr_code_2_rounded, size: 20, color: mutedColor),
+                                      hintText: 'Auto-generated from product name (e.g., PHF-001)',
+                                      hintStyle: GoogleFonts.plusJakartaSans(color: mutedColor, fontSize: 13),
+                                      filled: true,
+                                      fillColor: isDark ? const Color(0xFF162338) : const Color(0xFFEFF3F8),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      disabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: BorderSide(color: fieldBorder.withValues(alpha: 0.6)),
+                                      ),
+                                    ),
+                                  ),
                                   const SizedBox(height: 16),
 
                                   // Row: Category & Unit Price
@@ -563,6 +603,7 @@ class ProductEditDrawer {
                                                 'category_id': selectedCategory.toLowerCase().replaceAll(' ', '_'),
                                                 'category': selectedCategory,
                                                 'description': descriptionCtrl.text.trim(),
+                                                'barcode': barcodeCtrl.text.trim().isNotEmpty ? barcodeCtrl.text.trim() : null,
                                                 'price': priceVal,
                                                 'image': imageUrl,
                                               };
@@ -575,6 +616,9 @@ class ProductEditDrawer {
                                               List<String> changes = [];
                                               if (existing.name != name) changes.add('Name: "${existing.name}" → "$name"');
                                               if (existing.category != selectedCategory) changes.add('Category: "${existing.category}" → "$selectedCategory"');
+                                              if ((existing.barcode ?? '') != barcodeCtrl.text.trim()) {
+                                                changes.add('Barcode: "${existing.barcode ?? 'none'}" → "${barcodeCtrl.text.trim()}"');
+                                              }
                                               if ((existing.price - priceVal).abs() > 0.001) {
                                                 changes.add('Price: ₱${existing.price.toStringAsFixed(2)} → ₱${priceVal.toStringAsFixed(2)}');
                                               }

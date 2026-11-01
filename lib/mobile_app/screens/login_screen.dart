@@ -664,8 +664,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return false;
     }
 
-    // 5. Account Status Verification (Pending / Inactive / Suspended)
+    // 5. Account Status Verification (Pending / Inactive / Suspended / Rejected)
     bool isApproved = statusLower == 'active' || statusLower == 'approved';
+    bool isRejected = statusLower == 'rejected';
 
     // Deep check role-specific table for Hog Raisers
     if (actualRole.toLowerCase().contains('raiser')) {
@@ -678,11 +679,23 @@ class _LoginScreenState extends State<LoginScreen> {
         if (raiser != null) {
           final accStatus = (raiser['account_status'] ?? '').toString().toLowerCase();
           final rStatus = (raiser['status'] ?? '').toString().toLowerCase();
-          if (accStatus == 'pending' || rStatus == 'pending' || accStatus == 'inactive') {
+          if (accStatus == 'rejected' || rStatus == 'rejected') {
+            isRejected = true;
+            isApproved = false;
+          } else if (accStatus == 'pending' || rStatus == 'pending' || accStatus == 'inactive') {
             isApproved = false;
           }
         }
       } catch (_) {}
+    }
+
+    if (isRejected) {
+      await Supabase.instance.client.auth.signOut();
+      await AuthSessionService().clearSession();
+      if (mounted) {
+        _showRejectedDialog();
+      }
+      return false;
     }
 
     if (!isApproved) {
@@ -715,31 +728,112 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Row(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.hourglass_top_rounded, color: Color(0xFFF59E0B), size: 28),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Account Pending Approval',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Color(0xFF18314F),
+            // Centered Amber Badge Icon
+            Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF3C7),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.hourglass_top_rounded,
+                  color: Color(0xFFD97706),
+                  size: 32,
                 ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Modal Title
+            Text(
+              'Account Pending Approval',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                fontSize: 18.5,
+                color: const Color(0xFF18314F),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Status Description
+            Text(
+              'Your account has been registered and is currently awaiting Admin approval before you can access the dashboard.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13.5,
+                color: const Color(0xFF475569),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Notification / Gmail & Spam Callout Box
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(
+                      Icons.mark_email_read_outlined,
+                      color: Color(0xFF243B53),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12.5,
+                          color: const Color(0xFF334155),
+                          height: 1.4,
+                        ),
+                        children: const [
+                          TextSpan(
+                            text: 'We will notify you once approved!\n',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF18314F),
+                            ),
+                          ),
+                          TextSpan(
+                            text: 'Please check your Gmail (including your ',
+                          ),
+                          TextSpan(
+                            text: 'Spam folder',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          TextSpan(
+                            text: ') for updates.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        content: const Text(
-          'Your account has been registered and is currently awaiting Admin approval before you can access the dashboard.\n\nWe will notify you once approved!',
-          style: TextStyle(
-            fontSize: 14,
-            color: Color(0xFF334155),
-            height: 1.45,
-          ),
-        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         actions: [
           SizedBox(
             width: double.infinity,
@@ -754,9 +848,95 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: () => Navigator.pop(context),
-              child: const Text(
+              child: Text(
                 'Got It',
-                style: TextStyle(
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Centered Coral Badge Icon
+            Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.cancel_outlined,
+                  color: Color(0xFFEF4444),
+                  size: 32,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Modal Title
+            Text(
+              'Registration Not Approved',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                fontSize: 18.5,
+                color: const Color(0xFF18314F),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Status Description
+            Text(
+              'Your account registration was reviewed and could not be approved at this time.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13.5,
+                color: const Color(0xFF475569),
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF18314F),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Got It',
+                style: GoogleFonts.plusJakartaSans(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 15,

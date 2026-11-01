@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/responsive.dart';
 
-class UserProfileView extends StatelessWidget {
+class UserProfileView extends StatefulWidget {
   final Map<String, dynamic> row;
   final VoidCallback onCancel;
   final Function(Map<String, dynamic>)? onApprove;
@@ -20,6 +20,14 @@ class UserProfileView extends StatelessWidget {
     this.onSuspend,
     this.onActivate,
   });
+
+  @override
+  State<UserProfileView> createState() => _UserProfileViewState();
+}
+
+class _UserProfileViewState extends State<UserProfileView> {
+  bool _isProcessing = false;
+  String? _processingAction;
 
   String? _getAvatarUrl(Map<String, dynamic> r) {
     if (r['avatar_url'] != null && r['avatar_url'].toString().trim().isNotEmpty) {
@@ -54,6 +62,11 @@ class UserProfileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = widget.row;
+    final onCancel = widget.onCancel;
+    final onApprove = widget.onApprove;
+    final onReject = widget.onReject;
+    final onActivate = widget.onActivate;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = Responsive.isMobile(context);
 
@@ -435,7 +448,7 @@ class UserProfileView extends StatelessWidget {
               if (isPending) ...[
                 if (onReject != null) ...[
                   OutlinedButton.icon(
-                    onPressed: () => onReject!(row),
+                    onPressed: _isProcessing ? null : () => onReject(row),
                     icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFFF758C)),
                     label: const Text('Reject', style: TextStyle(color: Color(0xFFFF758C))),
                     style: OutlinedButton.styleFrom(
@@ -448,9 +461,32 @@ class UserProfileView extends StatelessWidget {
                 ],
                 if (onApprove != null)
                   ElevatedButton.icon(
-                    onPressed: () => onApprove!(row),
-                    icon: const Icon(Icons.check_rounded, size: 16),
-                    label: const Text('Approve User'),
+                    onPressed: _isProcessing
+                        ? null
+                        : () async {
+                            setState(() {
+                              _isProcessing = true;
+                              _processingAction = 'approve';
+                            });
+                            try {
+                              await onApprove(row);
+                            } finally {
+                              if (mounted) {
+                                setState(() {
+                                  _isProcessing = false;
+                                  _processingAction = null;
+                                });
+                              }
+                            }
+                          },
+                    icon: _processingAction == 'approve'
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.check_rounded, size: 16),
+                    label: Text(_processingAction == 'approve' ? 'Approving...' : 'Approve User'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: PiggyTrunkTheme.ptSuccess,
                       foregroundColor: Colors.white,
@@ -461,7 +497,7 @@ class UserProfileView extends StatelessWidget {
                   ),
               ] else if (isSuspended && onActivate != null) ...[
                 ElevatedButton.icon(
-                  onPressed: () => onActivate!(row),
+                  onPressed: _isProcessing ? null : () => onActivate(row),
                   icon: const Icon(Icons.lock_open_rounded, size: 16),
                   label: const Text('Activate Account'),
                   style: ElevatedButton.styleFrom(
