@@ -4,13 +4,16 @@
   "min_supported_version": "1.0.0",
   "min_supported_version_code": 1,
   "release_notes": [
-    "Polished cashier mobile POS and inventory management",
-    "Enhanced order checkout and cash calculation workflows",
+    "Updated partner investment detail drawer and lifecycle stages",
+    "Enhanced cashier mobile POS and inventory barcode scanning",
     "Added automated in-app update notifications"
   ],
   "apk_url": "https://piggytrunk.site/download/apk",
-  "file_size_bytes": 28723637,
-  "file_size_mb": 27.39,
+  "file_size_bytes": 30192653,
+  "file_size_mb": 28.79,
+  "universal_apk_url": "https://piggytrunk.site/download/universal",
+  "universal_file_size_bytes": 82612031,
+  "universal_file_size_mb": 78.79,
   "force_update": false,
-  "released_at": "2026-10-20T04:21:00Z"
+  "released_at": "2026-11-02T07:30:00Z"
 }

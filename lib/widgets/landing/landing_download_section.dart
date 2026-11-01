@@ -22,15 +22,26 @@ class LandingDownloadSection extends StatefulWidget {
 class _LandingDownloadSectionState extends State<LandingDownloadSection> {
   static const String _apkUrl =
       'https://piggytrunk.site/download/apk';
+  static const String _universalApkUrl =
+      'https://piggytrunk.site/download/universal';
   static const String _webAppUrl = 'https://mobile.piggytrunk.site';
 
   String get _effectiveWebAppUrl => _webAppUrl;
 
   // 0 = Android APK, 1 = iOS Web App
   int _selectedPlatform = 0;
+  // 0 = Standard (ARM64), 1 = Universal (All ABIs)
+  int _selectedApkFlavor = 0;
+
+  String get _currentDownloadUrl {
+    if (_selectedPlatform == 0) {
+      return _selectedApkFlavor == 0 ? _apkUrl : _universalApkUrl;
+    }
+    return _effectiveWebAppUrl;
+  }
 
   Future<void> _handlePrimaryAction() async {
-    final url = _selectedPlatform == 0 ? _apkUrl : _effectiveWebAppUrl;
+    final url = _currentDownloadUrl;
     final uri = Uri.parse(url);
     try {
       if (await canLaunchUrl(uri)) {
@@ -46,12 +57,14 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
   }
 
   void _copyLink() {
-    final url = _selectedPlatform == 0 ? _apkUrl : _effectiveWebAppUrl;
+    final url = _currentDownloadUrl;
     Clipboard.setData(ClipboardData(text: url));
     AppToast.success(
       context,
       _selectedPlatform == 0
-          ? 'APK download link copied to clipboard!'
+          ? (_selectedApkFlavor == 0
+              ? 'Standard APK link copied to clipboard!'
+              : 'Universal APK link copied to clipboard!')
           : 'Web App link copied to clipboard!',
     );
   }
@@ -67,7 +80,7 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
     final cardBg = isDark ? PiggyTrunkTheme.ptSurfaceDark : PiggyTrunkTheme.ptSurface;
     final cardBorder = isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder;
 
-    final targetQrData = _selectedPlatform == 0 ? _apkUrl : _effectiveWebAppUrl;
+    final targetQrData = _currentDownloadUrl;
     final qrUrl =
         'https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${Uri.encodeComponent(targetQrData)}';
 
@@ -220,6 +233,88 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
                 },
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApkFlavorTabs(bool isDark, Color cardBorder) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cardBorder.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFlavorButton(
+            flavorIndex: 0,
+            label: 'ARM64 (28.8 MB)',
+            isDark: isDark,
+          ),
+          const SizedBox(width: 4),
+          _buildFlavorButton(
+            flavorIndex: 1,
+            label: 'Universal (78.8 MB)',
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlavorButton({
+    required int flavorIndex,
+    required String label,
+    required bool isDark,
+  }) {
+    final isSelected = _selectedApkFlavor == flavorIndex;
+    final activeColor = const Color(0xFF10B981);
+
+    return InkWell(
+      onTap: () {
+        if (_selectedApkFlavor != flavorIndex) {
+          setState(() {
+            _selectedApkFlavor = flavorIndex;
+          });
+        }
+      },
+      borderRadius: BorderRadius.circular(7),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? activeColor.withValues(alpha: 0.22) : Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(
+            color: isSelected
+                ? (isDark ? activeColor.withValues(alpha: 0.5) : const Color(0xFFCBD5E1))
+                : Colors.transparent,
+            width: 1,
+          ),
+          boxShadow: isSelected && !isDark
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected
+                ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                : (isDark ? PiggyTrunkTheme.ptMutedDark : const Color(0xFF64748B)),
           ),
         ),
       ),
@@ -397,7 +492,11 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
               ),
               const SizedBox(width: 6),
               Text(
-                isAndroid ? 'Scan to Download APK' : 'Scan to Open in Safari',
+                isAndroid
+                    ? (_selectedApkFlavor == 0
+                        ? 'Scan for Standard APK (ARM64)'
+                        : 'Scan for Universal APK')
+                    : 'Scan to Open in Safari',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w700,
@@ -428,6 +527,10 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
       children: [
         // OS Tabs
         _buildPlatformTabs(isDark, cardBorder),
+        if (isAndroid) ...[
+          const SizedBox(height: 10),
+          _buildApkFlavorTabs(isDark, cardBorder),
+        ],
         const SizedBox(height: 14),
 
         // QR Code Box
@@ -461,7 +564,11 @@ class _LandingDownloadSectionState extends State<LandingDownloadSection> {
                   size: 20,
                 ),
                 label: Text(
-                  isAndroid ? 'Download APK File' : 'Open Web App in Safari',
+                  isAndroid
+                      ? (_selectedApkFlavor == 0
+                          ? 'Download APK (ARM64 • 28.8 MB)'
+                          : 'Download Universal APK (78.8 MB)')
+                      : 'Open Web App in Safari',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,

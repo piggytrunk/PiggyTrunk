@@ -11,6 +11,21 @@
       "source": "/download/PiggyTrunkMobile.apk",
       "destination": "https://github.com/piggytrunk/PiggyTrunk/releases/latest/download/PiggyTrunkMobile.apk",
       "permanent": false
+    },
+    {
+      "source": "/download/universal",
+      "destination": "https://github.com/piggytrunk/PiggyTrunk/releases/latest/download/PiggyTrunk-Universal.apk",
+      "permanent": false
+    },
+    {
+      "source": "/download/PiggyTrunk-Universal.apk",
+      "destination": "https://github.com/piggytrunk/PiggyTrunk/releases/latest/download/PiggyTrunk-Universal.apk",
+      "permanent": false
+    },
+    {
+      "source": "/download/piggytrunkmobile-universal.apk",
+      "destination": "https://github.com/piggytrunk/PiggyTrunk/releases/latest/download/PiggyTrunk-Universal.apk",
+      "permanent": false
     }
   ],
   "rewrites": [
