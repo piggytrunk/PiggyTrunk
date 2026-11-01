@@ -3329,7 +3329,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         .toList();
     final effectiveLifecycleProjects = activePartnerProjects.isNotEmpty
         ? activePartnerProjects
-        : (_projectsList.isNotEmpty ? _projectsList : _availableBatches);
+        : _projectsList;
 
     final List<Widget> tabs = [
       PartnerHomeTab(

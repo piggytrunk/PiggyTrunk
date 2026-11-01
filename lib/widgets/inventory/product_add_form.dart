@@ -340,353 +340,384 @@ class _ProductAddFormState extends State<ProductAddForm> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
-
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(isMobile ? 12 : 20),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [_panelStart, _panelEnd],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          border: Border.all(color: _panelBorder, width: 1),
-          borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
-        ),
-        padding: EdgeInsets.symmetric(
-          horizontal: isMobile ? 14 : 24,
-          vertical: isMobile ? 16 : 26,
-        ),
-        child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildPhotoBlock(bool isMobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _formLabel('PRODUCT PHOTO'),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _isSubmitting ? null : _pickProductImage,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            height: isMobile ? 105 : 170,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: _selectedImageBytes != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Text(
-                          'Add New Product',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: _titleColor,
-                            fontSize: isMobile ? 22 : 28,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Fill in the product details to add it to your inventory.',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: _mutedColor,
-                            fontSize: isMobile ? 12 : 14,
+                        Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Change',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
+                  )
+                : Center(
+                    child: isMobile
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined, color: _mutedColor, size: 26),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Upload Image',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: _mutedColor,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined, color: _mutedColor, size: 38),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Upload Image',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: _mutedColor,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
+          ),
+        ),
+        if (_selectedImageName != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _selectedImageName!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTopInputs(bool isMobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _formLabel('PRODUCT NAME *'),
+        const SizedBox(height: 8),
+        _buildInput(
+          _nameCtrl,
+          'e.g., Premium Hog Feed',
+          textCapitalization: TextCapitalization.words,
+          inputFormatters: const [CapitalizeWordsInputFormatter()],
+          hasError: _productNameError != null,
+          onChanged: (val) {
+            setState(() {
+              if (_productNameError != null) _productNameError = null;
+              _barcodeCtrl.text = val.trim().isEmpty
+                  ? ''
+                  : Product.formatAcronymId(val, sortNumber: widget.nextSortNumber);
+            });
+          },
+        ),
+        if (_productNameError != null) _buildInlineError(_productNameError!),
+        const SizedBox(height: 12),
+        _formLabel('PRODUCT ID / BARCODE'),
+        const SizedBox(height: 8),
+        _buildInput(
+          _barcodeCtrl,
+          'Auto-generated from product name (e.g., PHF-001)',
+          textCapitalization: TextCapitalization.characters,
+          enabled: false,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _formLabel('CATEGORY *'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _categoryCtrl.text.isEmpty ? 'Feeds' : _categoryCtrl.text,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: _fieldBg,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      constraints: const BoxConstraints(minHeight: 50),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: _productCategoryError != null ? const Color(0xFFE53E3E) : _cardBorder,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: _productCategoryError != null ? const Color(0xFFE53E3E) : _fieldFocus,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                    dropdownColor: _fieldBg,
+                    borderRadius: BorderRadius.circular(12),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: _fieldText,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    items: _categoryOptions
+                        .map((c) => DropdownMenuItem<String>(
+                              value: c,
+                              child: Text(
+                                c,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _categoryCtrl.text = value;
+                        _productCategoryError = null;
+                      });
+                    },
+                  ),
+                  if (_productCategoryError != null) _buildInlineError(_productCategoryError!),
                 ],
               ),
-              const SizedBox(height: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _formLabel('STOCK *'),
+                  const SizedBox(height: 8),
+                  _buildInput(
+                    _unitsCtrl,
+                    '0',
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    minHeight: 50,
+                    withBottomPadding: false,
+                    hasError: _productStockError != null,
+                    onChanged: (_) {
+                      if (_productStockError != null) setState(() => _productStockError = null);
+                    },
+                  ),
+                  if (_productStockError != null) _buildInlineError(_productStockError!),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
-              // Form Container
-              Container(
-                decoration: BoxDecoration(
-                  color: _cardBg,
-                  border: Border.all(color: _cardBorder, width: 1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: EdgeInsets.all(isMobile ? 14 : 24),
+  Widget _buildFormCard(bool isMobile) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_panelStart, _panelEnd],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        border: Border.all(color: _panelBorder, width: 1),
+        borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 14 : 24,
+        vertical: isMobile ? 16 : 26,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Left: Photo
-                        Expanded(
-                          flex: isMobile ? 12 : 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _formLabel('PRODUCT PHOTO'),
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: _isSubmitting ? null : _pickProductImage,
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  height: 170,
-                                  decoration: BoxDecoration(
-                                    color: _fieldBg,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: _cardBorder),
-                                  ),
-                                  child: _selectedImageBytes != null
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(11),
-                                          child: Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
-                                              Positioned(
-                                                right: 8,
-                                                top: 8,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.55),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: Text(
-                                                    'Change',
-                                                    style: GoogleFonts.plusJakartaSans(
-                                                      color: Colors.white,
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w700,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        )
-                                      : Center(
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Icon(Icons.add_photo_alternate_outlined, color: _mutedColor, size: 38),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                'Upload Image',
-                                                style: GoogleFonts.plusJakartaSans(
-                                                  color: _mutedColor,
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              if (_selectedImageName != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  _selectedImageName!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-
-                        // Right: Inputs
-                        Expanded(
-                          flex: isMobile ? 12 : 6,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _formLabel('PRODUCT NAME *'),
-                              const SizedBox(height: 8),
-                              _buildInput(
-                                _nameCtrl,
-                                'e.g., Premium Hog Feed',
-                                textCapitalization: TextCapitalization.words,
-                                inputFormatters: const [CapitalizeWordsInputFormatter()],
-                                hasError: _productNameError != null,
-                                onChanged: (val) {
-                                  setState(() {
-                                    if (_productNameError != null) _productNameError = null;
-                                    _barcodeCtrl.text = val.trim().isEmpty
-                                        ? ''
-                                        : Product.formatAcronymId(val, sortNumber: widget.nextSortNumber);
-                                  });
-                                },
-                              ),
-                              if (_productNameError != null) _buildInlineError(_productNameError!),
-                                const SizedBox(height: 12),
-                                _formLabel('PRODUCT ID / BARCODE (AUTO-GENERATED ACRONYM)'),
-                              const SizedBox(height: 8),
-                              _buildInput(
-                                _barcodeCtrl,
-                                'Auto-generated from product name (e.g., PHF-001)',
-                                  textCapitalization: TextCapitalization.characters, enabled: false,
-                                ),
-                              const SizedBox(height: 12),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _formLabel('CATEGORY *'),
-                                        const SizedBox(height: 8),
-                                        DropdownButtonFormField<String>(
-                                          initialValue: _categoryCtrl.text.isEmpty ? 'Feeds' : _categoryCtrl.text,
-                                          isExpanded: true,
-                                          decoration: InputDecoration(
-                                            filled: true,
-                                            fillColor: _fieldBg,
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                                            constraints: const BoxConstraints(minHeight: 50),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(10),
-                                              borderSide: BorderSide(
-                                                color: _productCategoryError != null ? const Color(0xFFE53E3E) : _cardBorder,
-                                              ),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(10),
-                                              borderSide: BorderSide(
-                                                color: _productCategoryError != null ? const Color(0xFFE53E3E) : _fieldFocus,
-                                                width: 1.5,
-                                              ),
-                                            ),
-                                          ),
-                                          dropdownColor: _fieldBg,
-                                          borderRadius: BorderRadius.circular(12),
-                                          style: GoogleFonts.plusJakartaSans(
-                                            color: _fieldText,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          items: _categoryOptions
-                                              .map((c) => DropdownMenuItem<String>(value: c, child: Text(c)))
-                                              .toList(),
-                                          onChanged: (value) {
-                                            if (value == null) return;
-                                            setState(() {
-                                              _categoryCtrl.text = value;
-                                              _productCategoryError = null;
-                                            });
-                                          },
-                                        ),
-                                        if (_productCategoryError != null) _buildInlineError(_productCategoryError!),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _formLabel('STOCK *'),
-                                        const SizedBox(height: 8),
-                                        _buildInput(
-                                          _unitsCtrl,
-                                          '0',
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                          minHeight: 50,
-                                          withBottomPadding: false,
-                                          hasError: _productStockError != null,
-                                          onChanged: (_) {
-                                            if (_productStockError != null) setState(() => _productStockError = null);
-                                          },
-                                        ),
-                                        if (_productStockError != null) _buildInlineError(_productStockError!),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Add New Product',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: _titleColor,
+                        fontSize: isMobile ? 22 : 28,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    const SizedBox(height: 20),
-
-                    // Price
-                    _formLabel('PRICE (PHP) *'),
-                    const SizedBox(height: 8),
-                    _buildInput(
-                      _priceCtrl,
-                      '0',
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      hasError: _productPriceError != null,
-                      onChanged: (_) {
-                        if (_productPriceError != null) setState(() => _productPriceError = null);
-                      },
+                    const SizedBox(height: 4),
+                    Text(
+                      'Fill in the product details to add it to your inventory.',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: _mutedColor,
+                        fontSize: isMobile ? 12 : 14,
+                      ),
                     ),
-                    if (_productPriceError != null) _buildInlineError(_productPriceError!),
-                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isMobile ? 14 : 24),
 
-                    // Price per Kilo (Feeds) or Price per Tablet (Medicines) - optional
-                    if (_categoryCtrl.text.trim().toLowerCase() == 'feeds' ||
-                        _categoryCtrl.text.trim().toLowerCase() == 'medicines' ||
-                        _categoryCtrl.text.trim().toLowerCase() == 'medicine') ...[
-                      _formLabel(
-                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
-                            ? 'PRICE PER KILO (PHP) - OPTIONAL'
-                            : 'PRICE PER TABLET (PHP) - OPTIONAL',
+          // Form Container
+          Container(
+            decoration: BoxDecoration(
+              color: _cardBg,
+              border: Border.all(color: _cardBorder, width: 1),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            padding: EdgeInsets.all(isMobile ? 14 : 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isMobile) ...[
+                  _buildPhotoBlock(true),
+                  const SizedBox(height: 12),
+                  _buildTopInputs(true),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _buildPhotoBlock(false),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
-                            ? 'Leave blank if this feed is exclusively sold as whole sacks.'
-                            : 'Leave blank if this medicine is exclusively sold as whole boxes/packs.',
-                        style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w500),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        flex: 6,
+                        child: _buildTopInputs(false),
                       ),
-                      const SizedBox(height: 8),
-                      _buildInput(
-                        _kiloPriceCtrl,
-                        _categoryCtrl.text.trim().toLowerCase() == 'feeds'
-                            ? 'e.g., 38.00'
-                            : 'e.g., 15.00',
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                      ),
-                      const SizedBox(height: 12),
                     ],
+                  ),
+                const SizedBox(height: 16),
 
-                    // Description
-                    _formLabel('DESCRIPTION'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _descriptionCtrl,
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                      inputFormatters: const [CapitalizeSentencesInputFormatter()],
-                      style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Add product details, usage instructions, or benefits...',
-                        hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
-                        filled: true,
-                        fillColor: _fieldBg,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _cardBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _fieldFocus),
-                        ),
-                      ),
+                // Price
+                _formLabel('PRICE (PHP) *'),
+                const SizedBox(height: 8),
+                _buildInput(
+                  _priceCtrl,
+                  '0',
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  hasError: _productPriceError != null,
+                  onChanged: (_) {
+                    if (_productPriceError != null) setState(() => _productPriceError = null);
+                  },
+                ),
+                if (_productPriceError != null) _buildInlineError(_productPriceError!),
+                const SizedBox(height: 12),
+
+                // Price per Kilo (Feeds) or Price per Tablet (Medicines) - optional
+                if (_categoryCtrl.text.trim().toLowerCase() == 'feeds' ||
+                    _categoryCtrl.text.trim().toLowerCase() == 'medicines' ||
+                    _categoryCtrl.text.trim().toLowerCase() == 'medicine') ...[
+                  _formLabel(
+                    _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                        ? 'PRICE PER KILO (PHP) - OPTIONAL'
+                        : 'PRICE PER TABLET (PHP) - OPTIONAL',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                        ? 'Leave blank if this feed is exclusively sold as whole sacks.'
+                        : 'Leave blank if this medicine is exclusively sold as whole boxes/packs.',
+                    style: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInput(
+                    _kiloPriceCtrl,
+                    _categoryCtrl.text.trim().toLowerCase() == 'feeds'
+                        ? 'e.g., 38.00'
+                        : 'e.g., 15.00',
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Description
+                _formLabel('DESCRIPTION'),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _descriptionCtrl,
+                  maxLines: isMobile ? 2 : 3,
+                  textCapitalization: TextCapitalization.sentences,
+                  inputFormatters: const [CapitalizeSentencesInputFormatter()],
+                  style: GoogleFonts.plusJakartaSans(color: _fieldText, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Add product details, usage instructions, or benefits...',
+                    hintStyle: GoogleFonts.plusJakartaSans(color: _mutedColor, fontSize: 14),
+                    filled: true,
+                    fillColor: _fieldBg,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _cardBorder),
                     ),
-                    const SizedBox(height: 24),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _fieldFocus),
+                    ),
+                  ),
+                ),
 
-                    // Actions
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton(
+                // Inline Actions inside Form Card
+                const SizedBox(height: 24),
+                if (isMobile)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
                           onPressed: _isSubmitting ? null : widget.onCancel,
                           style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(120, 48),
+                            minimumSize: const Size(0, 48),
                             side: BorderSide(color: _cardBorder, width: 1.2),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
@@ -699,8 +730,10 @@ class _ProductAddFormState extends State<ProductAddForm> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
                           onPressed: _isSubmitting ? null : _submitAddProduct,
                           icon: _isSubmitting
                               ? SizedBox(
@@ -723,19 +756,86 @@ class _ProductAddFormState extends State<ProductAddForm> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                             foregroundColor: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
-                            minimumSize: const Size(150, 48),
+                            minimumSize: const Size(0, 48),
                             elevation: 0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _isSubmitting ? null : widget.onCancel,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(120, 48),
+                          side: BorderSide(color: _cardBorder, width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: _titleColor,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _isSubmitting ? null : _submitAddProduct,
+                        icon: _isSubmitting
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.add_rounded, size: 18),
+                        label: Text(
+                          _isSubmitting ? 'Saving...' : 'Add Product',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                          foregroundColor: _isDark ? PiggyTrunkTheme.ptPrimary : Colors.white,
+                          minimumSize: const Size(150, 48),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 108 : 24,
+      ),
+      child: _buildFormCard(isMobile),
+    );
   }
 }

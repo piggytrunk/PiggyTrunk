@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -363,6 +364,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                     TextField(
                       controller: _amountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: const [
+                        ThousandsSeparatorInputFormatter(),
+                      ],
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: fit.sp(22.0),
                         fontWeight: FontWeight.w800,
@@ -923,6 +927,122 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+/// Automatically formats numeric inputs with thousand separators (commas) in real-time.
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  final bool allowDecimal;
+  final int decimalDigits;
+
+  const ThousandsSeparatorInputFormatter({
+    this.allowDecimal = true,
+    this.decimalDigits = 2,
+  });
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+
+    String textToFormat = newValue.text;
+    int selectionEnd = newValue.selection.end;
+
+    // Handle backspace when the cursor was right after a comma
+    if (oldValue.text.length == newValue.text.length + 1 &&
+        oldValue.selection.end > 0 &&
+        oldValue.selection.end <= oldValue.text.length &&
+        oldValue.text[oldValue.selection.end - 1] == ',') {
+      final deleteIndex = oldValue.selection.end - 2;
+      if (deleteIndex >= 0) {
+        textToFormat = oldValue.text.substring(0, deleteIndex) +
+            oldValue.text.substring(oldValue.selection.end);
+        selectionEnd = deleteIndex;
+      }
+    }
+
+    // Filter allowed characters: only digits and at most one decimal point
+    String clean = '';
+    bool hasDot = false;
+    int decimalsCount = 0;
+
+    for (int i = 0; i < textToFormat.length; i++) {
+      final char = textToFormat[i];
+      if (char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57) {
+        if (!hasDot) {
+          clean += char;
+        } else if (decimalsCount < decimalDigits) {
+          clean += char;
+          decimalsCount++;
+        }
+      } else if (char == '.' && allowDecimal && !hasDot) {
+        hasDot = true;
+        clean += '.';
+      }
+    }
+
+    if (clean.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    // Strip extraneous leading zeros unless it is "0" or "0."
+    if (!clean.startsWith('0.') && clean.length > 1 && clean.startsWith('0')) {
+      clean = clean.replaceFirst(RegExp(r'^0+'), '');
+      if (clean.isEmpty || clean.startsWith('.')) {
+        clean = '0$clean';
+      }
+    }
+
+    // Split integer and decimal parts
+    final parts = clean.split('.');
+    String integerPart = parts[0];
+    String? decimalPart = parts.length > 1 ? parts[1] : null;
+
+    // Format integer part with commas
+    final formattedInt = integerPart.replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+
+    String formatted = formattedInt;
+    if (hasDot) {
+      formatted += '.$decimalPart';
+    }
+
+    // Map cursor position based on non-comma characters before cursor in textToFormat
+    final textBeforeCursor = textToFormat.substring(
+      0,
+      selectionEnd.clamp(0, textToFormat.length),
+    );
+    final rawCharsBeforeCursor = textBeforeCursor.replaceAll(',', '');
+
+    int newCursorPos = 0;
+    int matchedRawChars = 0;
+    for (int i = 0; i < formatted.length; i++) {
+      if (formatted[i] != ',') {
+        matchedRawChars++;
+      }
+      if (matchedRawChars == rawCharsBeforeCursor.length) {
+        newCursorPos = i + 1;
+        break;
+      }
+    }
+    if (matchedRawChars < rawCharsBeforeCursor.length) {
+      newCursorPos = formatted.length;
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: newCursorPos.clamp(0, formatted.length)),
     );
   }
 }

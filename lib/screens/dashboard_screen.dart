@@ -7,7 +7,6 @@ import '../widgets/admin_sidebar.dart';
 import '../widgets/screen_top_bar.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../widgets/dashboard/cycle_history_drawer.dart';
-import '../mobile_app/widgets/piggy_toast.dart';
 import '../utils/responsive.dart';
 import '../main.dart';
 
@@ -2353,14 +2352,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       stageForHog,
                                       ptKey,
                                       isUnassigned: false,
-                                      onStageSelected: (targetStage) {
-                                        _confirmAndChangeHogStage(
-                                          hog: h,
-                                          targetStage: targetStage,
-                                          isBreeding: hIsBreed,
-                                          raiser: raiser,
-                                        );
-                                      },
                                     ),
                                   ],
                                 ),
@@ -2522,175 +2513,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'Booster';
   }
 
-  static int _resolveStageId(String stageName, bool isBreeding) {
-    final fatteningStages = const [
-      'Booster',
-      'Pre-Starter',
-      'Starter',
-      'Grower',
-      'Finisher',
-      'Selling',
-    ];
-    final sowStages = const [
-      'Booster',
-      'Pre-Starter',
-      'Starter',
-      'Grower',
-      'Breeder',
-      'Lactation',
-    ];
-    final list = isBreeding ? sowStages : fatteningStages;
-    final idx = list.indexWhere((s) => s.toLowerCase() == stageName.trim().toLowerCase());
-    return idx >= 0 ? idx + 1 : 1;
-  }
-
-  Future<void> _confirmAndChangeHogStage({
-    required Map<String, dynamic> hog,
-    required String targetStage,
-    required bool isBreeding,
-    required Map<String, dynamic> raiser,
-  }) async {
-    final hogTag = (hog['tag_number'] ?? 'Hog').toString();
-    final typeName = isBreeding ? 'Sow / Breeding' : 'Fattening';
-    final currentStage = _resolveStageName(hog['stage_id'] ?? hog['lifecycle_stage'], isBreeding);
-
-    if (currentStage.toLowerCase() == targetStage.toLowerCase()) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: _isDark ? const Color(0xFF151F2E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.published_with_changes_rounded, color: Color(0xFF243B53), size: 22),
-            const SizedBox(width: 8),
-            Text(
-              'Update Hog Stage',
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-                color: _textDark,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Change stage of $hogTag ($typeName) from "$currentStage" to "$targetStage"?',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13.5,
-            color: _textDark,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w600,
-                color: _mutedDark,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF243B53),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-            child: Text(
-              'Update Stage',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final hogId = hog['hog_id'];
-    final stageNum = _resolveStageId(targetStage, isBreeding);
-    dynamic assignId = hog['assignment_id'];
-
-    if (assignId == null || (assignId is num && assignId >= 900000)) {
-      final rId = (raiser['hog_raiser_id'] ?? '').toString();
-      assignId = isBreeding ? raiser['sow_assign_id'] : raiser['fat_assign_id'];
-      assignId ??= _raiserLatestAssignmentMap[rId]?['assignment_id'];
-    }
-
-    if (assignId == null) {
-      if (mounted) {
-        PiggyToast.showError(
-          context,
-          'No active batch assignment found for this raiser. Please assign them to a batch first.',
-        );
-      }
-      return;
-    }
-
-    bool dbUpdated = false;
-    if (hogId != null && (hogId is! num || hogId < 900000)) {
-      try {
-        final updateRes = await _supabase
-            .from('hogs')
-            .update({
-              'stage_id': stageNum,
-              'last_updated': DateTime.now().toIso8601String(),
-            })
-            .eq('hog_id', hogId)
-            .select('hog_id');
-        if ((updateRes as List).isNotEmpty) {
-          dbUpdated = true;
-        }
-      } catch (e) {
-        debugPrint('Notice updating hog stage_id: $e');
-      }
-    }
-
-    if (!dbUpdated && assignId != null) {
-      try {
-        final parsedAssignId = int.tryParse(assignId.toString());
-        if (parsedAssignId != null && parsedAssignId < 900000) {
-          final insertRes = await _supabase
-              .from('hogs')
-              .insert({
-                'assignment_id': parsedAssignId,
-                'stage_id': stageNum,
-                'status': 'active',
-                'health_status': hog['health_status'] ?? 'Healthy',
-                'last_updated': DateTime.now().toIso8601String(),
-              })
-              .select('hog_id')
-              .maybeSingle();
-          if (insertRes != null && insertRes['hog_id'] != null) {
-            hog['hog_id'] = insertRes['hog_id'];
-            dbUpdated = true;
-          }
-        }
-      } catch (e) {
-        debugPrint('Notice inserting real hog row into public.hogs: $e');
-      }
-    }
-
-    if (mounted) {
-      PiggyToast.showSuccess(
-        context,
-        'Updated $hogTag stage to $targetStage.',
-      );
-    }
-
-    await _loadDashboardData(silent: true);
-  }
-
   Widget _buildLifecycleMap(
     String currentStage,
     String pigType, {
     bool isUnassigned = false,
-    void Function(String selectedStage)? onStageSelected,
   }) {
     final List<String> lifecycleStages = pigType.toLowerCase() == 'sow'
         ? [
@@ -2802,20 +2628,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           );
 
-          if (isUnassigned || onStageSelected == null) {
-            return content;
-          }
+          final tooltipMessage = isUnassigned
+              ? '$stage (Unassigned)'
+              : (isCurrent
+                  ? 'Current Stage: $stage'
+                  : (isDone ? 'Completed: $stage' : 'Upcoming: $stage'));
 
-          return MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => onStageSelected(stage),
-              behavior: HitTestBehavior.opaque,
-              child: Tooltip(
-                message: 'Click to set stage to $stage',
-                child: content,
-              ),
-            ),
+          return Tooltip(
+            message: tooltipMessage,
+            child: content,
           );
         }
 

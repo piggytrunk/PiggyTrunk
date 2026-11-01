@@ -296,12 +296,12 @@ class InvestmentDrawer {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF2563EB).withValues(alpha: 0.25) : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.12),
+                                    color: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.08 : 0.12),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
                                     isEdit ? Icons.edit_note_rounded : Icons.account_balance_wallet_rounded,
-                                    color: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                                    color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                                     size: 22,
                                   ),
                                 ),
@@ -394,7 +394,7 @@ class InvestmentDrawer {
                                             Icon(
                                               isUnassigned ? Icons.layers_clear_outlined : Icons.layers_outlined,
                                               size: 16,
-                                              color: isUnassigned ? hintText : (isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary),
+                                              color: isUnassigned ? hintText : (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary),
                                             ),
                                             const SizedBox(width: 8),
                                             Expanded(

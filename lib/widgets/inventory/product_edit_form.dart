@@ -245,7 +245,12 @@ class _ProductEditFormState extends State<ProductEditForm> {
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(isMobile ? 12 : 20),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 120 : 24,
+      ),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -350,15 +355,15 @@ class _ProductEditFormState extends State<ProductEditForm> {
                       child: Stack(
                         children: [
                           Container(
-                            width: 130,
-                            height: 130,
+                            width: isMobile ? 150 : 190,
+                            height: isMobile ? 150 : 190,
                             decoration: BoxDecoration(
                               color: _fieldBg,
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(22),
                               border: Border.all(color: _panelBorder, width: 1.5),
                             ),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(20),
                               child: _localImageBytes != null
                                   ? Image.memory(
                                       _localImageBytes!,
@@ -369,34 +374,41 @@ class _ProductEditFormState extends State<ProductEditForm> {
                                           widget.product.image!,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) => Center(
-                                            child: Icon(Icons.broken_image_outlined, color: _mutedColor, size: 36),
+                                            child: Icon(Icons.broken_image_outlined, color: _mutedColor, size: 44),
                                           ),
                                         )
                                       : Center(
-                                          child: Icon(Icons.image_outlined, color: _mutedColor, size: 40),
+                                          child: Icon(Icons.image_outlined, color: _mutedColor, size: 48),
                                         )),
                             ),
                           ),
                           Positioned(
-                            bottom: 4,
-                            right: 4,
+                            bottom: 6,
+                            right: 6,
                             child: InkWell(
                               onTap: _isSaving ? null : _pickImage,
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(24),
                               child: Container(
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(9),
                                 decoration: BoxDecoration(
                                   color: _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                                   shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.15),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                   border: Border.all(
                                     color: _isDark ? const Color(0xFF132238) : Colors.white,
-                                    width: 2,
+                                    width: 2.5,
                                   ),
                                 ),
                                 child: Icon(
                                   Icons.camera_alt_rounded,
                                   color: _isDark ? const Color(0xFF132238) : Colors.white,
-                                  size: 16,
+                                  size: 18,
                                 ),
                               ),
                             ),
@@ -467,7 +479,7 @@ class _ProductEditFormState extends State<ProductEditForm> {
                     ],
                     const SizedBox(height: 18),
                     Text(
-                      'PRODUCT ID / BARCODE (ACRONYM)',
+                      'PRODUCT ID / BARCODE',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,

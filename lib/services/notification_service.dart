@@ -297,8 +297,8 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
-    final String sanitizedTitle = cleanText(title);
-    final String sanitizedBody = cleanText(body);
+    final String sanitizedTitle = localizeTitle(cleanText(title));
+    final String sanitizedBody = localizeMessage(cleanText(body));
 
     if (kIsWeb) {
       debugPrint('[Web Notification] $sanitizedTitle: $sanitizedBody');
@@ -404,11 +404,14 @@ class NotificationService {
                   roleLower == 'partner_investor';
 
               if (matches) {
-                final title = newRecord['title']?.toString() ?? 'PiggyTrunk Alert';
-                final body = newRecord['message']?.toString() ??
+                final rawTitle = newRecord['title']?.toString() ?? 'PiggyTrunk Alert';
+                final rawBody = newRecord['message']?.toString() ??
                     newRecord['content']?.toString() ??
                     newRecord['body']?.toString() ??
                     'You have a new update in PiggyTrunk.';
+
+                final title = localizeTitle(cleanText(rawTitle));
+                final body = localizeMessage(cleanText(rawBody));
 
                 // Real-time deduplication / debounce to prevent redundant popups
                 final dedupeKey = '$roleLower:${title.trim()}:${body.trim()}';

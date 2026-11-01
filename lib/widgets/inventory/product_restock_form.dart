@@ -113,7 +113,12 @@ class _ProductRestockFormState extends State<ProductRestockForm> {
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(isMobile ? 12 : 20),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 12 : 20,
+        isMobile ? 120 : 24,
+      ),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(

@@ -13,6 +13,7 @@ import '../widgets/common/in_page_confirmation_view.dart';
 import '../widgets/investment/investment_form_view.dart';
 import '../widgets/investment/investment_table_view.dart';
 import '../widgets/investment/investment_detail_view.dart';
+import '../widgets/investment/partner_investment_detail_view.dart';
 import '../widgets/investment/investment_add_allocation_dialog.dart';
 import '../main.dart';
 
@@ -32,6 +33,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
   bool _showInvestmentForm = false;
   Investment? _editingInvestment;
   Investment? _selectedInvestmentForDetails;
+  Map<String, dynamic>? _selectedPartnerInvestmentForDetails;
   Widget? _inPageConfirmation;
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
@@ -849,7 +851,20 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                                 ),
                                 child: _inPageConfirmation != null
                                           ? _inPageConfirmation!
-                                          : (_selectedInvestmentForDetails != null
+                                          : (_selectedPartnerInvestmentForDetails != null
+                                              ? PartnerInvestmentDetailView(
+                                                  data: _selectedPartnerInvestmentForDetails!,
+                                                  onBack: () => setState(() => _selectedPartnerInvestmentForDetails = null),
+                                                  onApprove: (id) {
+                                                    setState(() => _selectedPartnerInvestmentForDetails = null);
+                                                    _approvePartnerInvestment(id);
+                                                  },
+                                                  onReject: (id) {
+                                                    setState(() => _selectedPartnerInvestmentForDetails = null);
+                                                    _rejectPartnerInvestment(id);
+                                                  },
+                                                )
+                                              : (_selectedInvestmentForDetails != null
                                               ? InvestmentDetailView(
                                                   investment: _selectedInvestmentForDetails!,
                                                   onBack: () => setState(() => _selectedInvestmentForDetails = null),
@@ -884,6 +899,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                                                       onRefresh: () => _loadInvestments(isRefresh: true),
                                                       isRefreshing: _isTableRefreshing,
                                                       onShowDetails: (inv) => setState(() => _selectedInvestmentForDetails = inv),
+                                                      onShowPartnerDetails: (p) => setState(() => _selectedPartnerInvestmentForDetails = p),
                                                       onAddInvestment: () => setState(() {
                                                         _showInvestmentForm = true;
                                                         _editingInvestment = null;
@@ -899,7 +915,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                                                       onDeleteInvestment: _deleteInvestment,
                                                       onApprovePartnerInvestment: _approvePartnerInvestment,
                                                       onRejectPartnerInvestment: _rejectPartnerInvestment,
-                                                    ))),
+                                                    )))),
                                 ),
                               ),
                 ),
@@ -928,7 +944,7 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                 (
                   'Total Capital',
                   Icons.monetization_on_rounded,
-                  _isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                  _isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                 ),
                 (
                   'Stocks Spend',

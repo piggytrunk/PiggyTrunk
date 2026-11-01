@@ -20,6 +20,7 @@ class InvestmentTableView extends StatefulWidget {
   final void Function(Investment item)? onCompleteInvestment;
   final void Function(Investment item)? onAddAllocation;
   final void Function(Investment item)? onShowDetails;
+  final void Function(Map<String, dynamic> p)? onShowPartnerDetails;
   final void Function(int investmentId)? onApprovePartnerInvestment;
   final void Function(int investmentId)? onRejectPartnerInvestment;
 
@@ -38,6 +39,7 @@ class InvestmentTableView extends StatefulWidget {
     this.onCompleteInvestment,
     this.onAddAllocation,
     this.onShowDetails,
+    this.onShowPartnerDetails,
     this.onApprovePartnerInvestment,
     this.onRejectPartnerInvestment,
   });
@@ -517,7 +519,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? (isDark
-                        ? const Color(0xFF60A5FA).withValues(alpha: 0.2)
+                        ? Colors.white.withValues(alpha: 0.15)
                         : PiggyTrunkTheme.ptPrimary.withValues(alpha: 0.1))
                     : (isDark
                         ? const Color(0xFF28405D).withValues(alpha: 0.5)
@@ -530,7 +532,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                   fontSize: isMobile ? 10.5 : 11.5,
                   fontWeight: FontWeight.w800,
                   color: isSelected
-                      ? (isDark ? const Color(0xFF93C5FD) : PiggyTrunkTheme.ptPrimary)
+                      ? (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary)
                       : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                 ),
               ),
@@ -550,7 +552,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             children: [
               Row(
                 children: [
-                  Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
+                  Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? Colors.white : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
                   const SizedBox(width: 10),
                   Expanded(child: _buildMetricCard('Stocks Spend', _formatCurrency(stocksSpend), Icons.inventory_2_rounded, const Color(0xFF38BDF8), isDark, isMobile)),
                 ],
@@ -568,7 +570,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
         }
         return Row(
           children: [
-            Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
+            Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? Colors.white : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
             const SizedBox(width: 14),
             Expanded(child: _buildMetricCard('Stocks Spend', _formatCurrency(stocksSpend), Icons.inventory_2_rounded, const Color(0xFF38BDF8), isDark, isMobile)),
             const SizedBox(width: 14),
@@ -1119,17 +1121,16 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
           child: Container(
             width: 32,
             height: 32,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: bgColor,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor, width: 1),
             ),
-            child: Center(
-              child: Icon(
-                icon,
-                size: 16,
-                color: iconColor,
-              ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: iconColor,
             ),
           ),
         ),
@@ -1183,9 +1184,15 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
           ),
           SizedBox(
             width: 100,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text('ACTIONS', textAlign: TextAlign.center, style: GoogleFonts.plusJakartaSans(fontSize: 11.5, fontWeight: FontWeight.w800, color: hintText)),
+            child: Center(
+              child: Text(
+                'ACTIONS',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: hintText,
+                ),
+              ),
             ),
           ),
         ],
@@ -1309,17 +1316,25 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
           ),
           SizedBox(
             width: 100,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildSquareIconButton(
-                  icon: Icons.visibility_rounded,
-                  iconColor: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
-                  bgColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFEDF4FC),
-                  borderColor: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                  tooltip: 'View Partner Investment Details',
-                  onTap: () => _showPartnerDetailModal(context, p),
-                ),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildSquareIconButton(
+                    icon: Icons.visibility_outlined,
+                    iconColor: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
+                    bgColor: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.08 : 0.1),
+                    borderColor: (isDark ? Colors.white : PiggyTrunkTheme.ptPrimary).withValues(alpha: isDark ? 0.22 : 0.3),
+                    tooltip: 'View Partner Investment Details',
+                    onTap: () {
+                      if (widget.onShowPartnerDetails != null) {
+                        widget.onShowPartnerDetails!(p);
+                      } else {
+                        _showPartnerDetailModal(context, p);
+                      }
+                    },
+                  ),
                 if (isPending && investmentId != null) ...[
                   const SizedBox(width: 6),
                   _buildSquareIconButton(
@@ -1343,6 +1358,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
               ],
             ),
           ),
+        ),
         ],
       ),
     );
@@ -1404,7 +1420,7 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                   ),
                   child: Icon(
                     Icons.account_balance_wallet_rounded,
-                    color: isDark ? const Color(0xFF60A5FA) : PiggyTrunkTheme.ptPrimary,
+                    color: isDark ? Colors.white : PiggyTrunkTheme.ptPrimary,
                     size: 18,
                   ),
                 ),

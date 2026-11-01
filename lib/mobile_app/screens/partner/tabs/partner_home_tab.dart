@@ -677,7 +677,12 @@ class PartnerHomeTab extends StatelessWidget {
                   final String hogType = (rawType.isEmpty || rawType.toUpperCase() == 'N/A') ? 'Fattening' : rawType;
                   final int hogs = (proj['selected_hogs_count'] as num?)?.toInt() ?? (proj['total_hogs'] as num?)?.toInt() ?? 0;
                   final double invAmt = (proj['invested_amount'] as num?)?.toDouble() ?? 0.0;
-                  final targetTags = (proj['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+                  final targetTags = ((proj['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [])
+                    ..sort((a, b) {
+                      final numA = int.tryParse(RegExp(r'\d+').firstMatch(a)?.group(0) ?? '') ?? 0;
+                      final numB = int.tryParse(RegExp(r'\d+').firstMatch(b)?.group(0) ?? '') ?? 0;
+                      return numA.compareTo(numB);
+                    });
 
                   return InkWell(
                     onTap: () {
@@ -752,7 +757,11 @@ class PartnerHomeTab extends StatelessWidget {
                                           if (targetTags.isNotEmpty) ...[
                                             const SizedBox(height: 2),
                                             Text(
-                                              'Funded: ${targetTags.join(', ')}',
+                                              targetTags.length >= hogs && hogs > 0
+                                                  ? 'Funded: Entire Batch (All $hogs Hogs)'
+                                                  : (targetTags.length > 3
+                                                      ? 'Funded: ${targetTags.length} Hogs (${targetTags.take(2).join(', ')}...)'
+                                                      : 'Funded: ${targetTags.join(', ')}'),
                                               style: GoogleFonts.plusJakartaSans(
                                                 fontSize: fit.sp(11.0),
                                                 fontWeight: FontWeight.w700,

@@ -68,8 +68,8 @@ begin
     insert into public.raiser_notifications (hog_raiser_id, title, message, type, metadata)
     values (
       r_id,
-      'May Bagong Pondo ang Iyong Batch!',
-      coalesce(p_name, 'Isang Partner Investor') || ' ang naglaan ng ' || formatted_amount || ' na pondo para sa ' || b_name || '.',
+      'New Funds Allocated for Your Batch!',
+      coalesce(p_name, 'A Partner Investor') || ' allocated ' || formatted_amount || ' in funds for ' || b_name || '.',
       'investment_received',
       jsonb_build_object(
         'investment_id', new.investment_id,
@@ -105,7 +105,7 @@ begin
     end;
 
     if r_id is not null and (tg_op = 'INSERT' or old.hog_raiser_id is distinct from new.hog_raiser_id) then
-      cap_text := case when new.initial_capital is not null and new.initial_capital > 0 then ' na may pondong ₱' || to_char(new.initial_capital, 'FM999,999,990.00') else '' end;
+      cap_text := case when new.initial_capital is not null and new.initial_capital > 0 then ' with a budget of ₱' || to_char(new.initial_capital, 'FM999,999,990.00') else '' end;
       
       insert into public.raiser_notifications (
         hog_raiser_id,
@@ -115,8 +115,8 @@ begin
         metadata
       ) values (
         r_id,
-        'May Bagong Investment na Na-assign sa Iyo!',
-        'Nag-assign ang Admin ng bagong investment na may ' || coalesce(new.total_hog, 0) || ' ' || coalesce(new.hog_type, 'baboy') || cap_text || ' para sa iyong pangangalaga.',
+        'New Investment Assigned to You!',
+        'Admin assigned a new investment of ' || coalesce(new.total_hog, 0) || ' ' || coalesce(new.hog_type, 'hogs') || cap_text || ' for your care.',
         'investment_assigned',
         jsonb_build_object(
           'investment_id', new.id,
@@ -167,8 +167,8 @@ begin
         metadata
       ) values (
         new.hog_raiser_id,
-        'Bagong Batch na Na-assign sa Iyo!',
-        'Na-assign sa iyo ng Admin ang ' || coalesce(b_name, 'bagong batch') || '. Maaari mo nang simulan ang pagsubaybay at pag-update ng logs.',
+        'New Batch Assigned to You!',
+        'Admin assigned ' || coalesce(b_name, 'a new batch') || ' to you. You can now start monitoring and updating logs.',
         'batch_assigned',
         jsonb_build_object(
           'assignment_id', new.assignment_id,

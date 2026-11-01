@@ -338,7 +338,7 @@ class ProductEditDrawer {
 
                                   // Product ID / Barcode Field (Auto-generated Acronym)
                                   Text(
-                                    'PRODUCT ID / BARCODE (AUTO-GENERATED ACRONYM)',
+                                    'PRODUCT ID / BARCODE',
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w800,

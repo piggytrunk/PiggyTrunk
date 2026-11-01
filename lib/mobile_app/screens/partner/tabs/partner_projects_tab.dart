@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:piggytrunk/theme/app_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -85,8 +86,12 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
   }
 
   void _setPresetAmount(double amount) {
+    final formatted = amount.toInt().toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     setState(() {
-      _amountController.text = amount.toStringAsFixed(0);
+      _amountController.text = formatted;
       _parsedAmount = amount;
       _hasAttemptedSubmit = false;
     });
@@ -320,52 +325,72 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(fit.dp(8)),
+      borderRadius: BorderRadius.circular(fit.dp(9)),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(horizontal: fit.dp(7), vertical: fit.dp(3.5)),
+        padding: EdgeInsets.symmetric(horizontal: fit.dp(9), vertical: fit.dp(6)),
         decoration: BoxDecoration(
           color: isSelected
-              ? _brandAccent.withValues(alpha: isDark ? 0.25 : 0.12)
+              ? _brandAccent.withValues(alpha: isDark ? 0.22 : 0.10)
               : (isDark ? PiggyTrunkTheme.ptSurfaceSoftDark : PiggyTrunkTheme.ptSurfaceSoft),
-          borderRadius: BorderRadius.circular(fit.dp(8)),
+          borderRadius: BorderRadius.circular(fit.dp(9)),
           border: Border.all(
             color: isSelected
                 ? _brandAccent
                 : (isDark ? PiggyTrunkTheme.ptBorderDark : PiggyTrunkTheme.ptBorder),
             width: isSelected ? 1.4 : 0.8,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: _brandAccent.withValues(alpha: isDark ? 0.2 : 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-              size: fit.dp(11),
+              size: fit.dp(14),
               color: isSelected
                   ? _brandAccent
                   : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
             ),
-            SizedBox(width: fit.dp(4)),
-            Text(
-              tag,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: fit.sp(10.5),
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected
-                    ? (isDark ? Colors.white : PiggyTrunkTheme.ptText)
-                    : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
+            SizedBox(width: fit.dp(6)),
+            Expanded(
+              child: Text(
+                tag,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: fit.sp(11.0),
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? (isDark ? Colors.white : PiggyTrunkTheme.ptText)
+                      : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptText),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            SizedBox(width: fit.dp(3)),
-            Text(
-              '($typeLabel)',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: fit.sp(9.0),
-                fontWeight: FontWeight.w600,
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: fit.dp(5), vertical: fit.dp(1.5)),
+              decoration: BoxDecoration(
                 color: isSelected
-                    ? _brandAccent
-                    : (isDark ? PiggyTrunkTheme.ptMutedDark.withValues(alpha: 0.7) : PiggyTrunkTheme.ptMuted.withValues(alpha: 0.7)),
+                    ? _brandAccent.withValues(alpha: isDark ? 0.25 : 0.15)
+                    : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04)),
+                borderRadius: BorderRadius.circular(fit.dp(5)),
+              ),
+              child: Text(
+                typeLabel,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: fit.sp(9.0),
+                  fontWeight: FontWeight.w700,
+                  color: isSelected
+                      ? _brandAccent
+                      : (isDark ? PiggyTrunkTheme.ptMutedDark : PiggyTrunkTheme.ptMuted),
+                ),
               ),
             ),
           ],
@@ -546,8 +571,17 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
         } else {
           targetPigType = (_selectedBatch?['hog_type'] ?? _selectedBatch?['pig_type'] ?? 'Fattening').toString();
         }
-        final List<String> tagsList = _selectedHogTags.toList()..sort();
-        final String tagsStr = tagsList.join(', ');
+        final List<String> tagsList = _selectedHogTags.toList()
+          ..sort((a, b) {
+            final numA = int.tryParse(RegExp(r'\d+').firstMatch(a)?.group(0) ?? '') ?? 0;
+            final numB = int.tryParse(RegExp(r'\d+').firstMatch(b)?.group(0) ?? '') ?? 0;
+            return numA.compareTo(numB);
+          });
+        final String tagsStr = tagsList.length >= total
+            ? 'All $total Hogs (Entire Batch)'
+            : (tagsList.length > 5
+                ? '${tagsList.take(3).join(', ')} (+${tagsList.length - 3} more)'
+                : tagsList.join(', '));
 
         // A. Notify Admin Portal
         try {
@@ -669,7 +703,12 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
       // 6. Only persist to local session cache as offline fallback if DB insert failed!
       if (!dbInserted) {
         try {
-          final List<String> tagsList = _selectedHogTags.toList()..sort();
+          final List<String> tagsList = _selectedHogTags.toList()
+            ..sort((a, b) {
+              final numA = int.tryParse(RegExp(r'\d+').firstMatch(a)?.group(0) ?? '') ?? 0;
+              final numB = int.tryParse(RegExp(r'\d+').firstMatch(b)?.group(0) ?? '') ?? 0;
+              return numA.compareTo(numB);
+            });
           final int count = _selectedHogTags.length;
           final int total = _currentBatchHogs.length;
           String targetPigType = 'Entire Batch';
@@ -705,11 +744,12 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
 
       if (!mounted) return;
 
+      final strings = AppStrings.of(context);
       PiggyToast.showSuccess(
         context,
-        dbInserted
-            ? 'Investment of ₱${_formatCurrency(_parsedAmount)} confirmed & synced to server!'
-            : 'Investment of ₱${_formatCurrency(_parsedAmount)} confirmed in your portfolio!',
+        strings.isFilipino
+            ? 'Matagumpay na nakumpirma ang iyong puhunan na ₱${_formatCurrency(_parsedAmount)}!'
+            : 'Investment of ₱${_formatCurrency(_parsedAmount)} confirmed successfully!',
       );
 
       await widget.onRefresh();
@@ -1021,11 +1061,19 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                         ),
                         SizedBox(height: fit.dp(6)),
 
-                        // Individual Hog Chips
-                        Wrap(
-                          spacing: fit.dp(5),
-                          runSpacing: fit.dp(5),
-                          children: _currentBatchHogs.map((hog) {
+                        // Individual Hog Selection Grid (2 aligned columns)
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _currentBatchHogs.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: fit.dp(7),
+                            crossAxisSpacing: fit.dp(7),
+                            childAspectRatio: 3.4,
+                          ),
+                          itemBuilder: (context, index) {
+                            final hog = _currentBatchHogs[index];
                             final tag = (hog['tag_number'] ?? 'HOG-${hog['hog_id']}').toString();
                             final isSelected = _selectedHogTags.contains(tag);
                             final pType = (hog['pig_type'] ?? 'Fattening').toString();
@@ -1038,7 +1086,7 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                               isSelected: isSelected,
                               onTap: () => _toggleHogTag(tag),
                             );
-                          }).toList(),
+                          },
                         ),
                         SizedBox(height: fit.dp(8)),
                         Text(
@@ -1072,6 +1120,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                         TextField(
                           controller: _amountController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: const [
+                            ThousandsSeparatorInputFormatter(),
+                          ],
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: fit.sp(20.0),
                             fontWeight: FontWeight.w800,
@@ -2111,7 +2162,12 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
     final double capital = (batch['amount'] as num?)?.toDouble() ??
         (batch['invested_amount'] as num?)?.toDouble() ??
         widget.investedAmount;
-    final List<String> targetTags = (batch['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final List<String> targetTags = ((batch['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [])
+      ..sort((a, b) {
+        final numA = int.tryParse(RegExp(r'\d+').firstMatch(a)?.group(0) ?? '') ?? 0;
+        final numB = int.tryParse(RegExp(r'\d+').firstMatch(b)?.group(0) ?? '') ?? 0;
+        return numA.compareTo(numB);
+      });
     final String targetPigType = (batch['target_pig_type'] ?? '').toString();
     final int totalHogs = (batch['total_hogs'] as num?)?.toInt() ?? ((batch['hogs'] as List?)?.length ?? 6);
     final String stage = (batch['stage'] ?? batch['lifecycle_stage'] ?? 'Finisher').toString();
@@ -2282,7 +2338,11 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
                 Expanded(
                   child: Text(
                     targetTags.isNotEmpty
-                        ? 'Funded Pigs: ${targetTags.join(', ')} • ${targetPigType.isNotEmpty ? targetPigType : 'Selected Hogs'}'
+                        ? (targetTags.length >= totalHogs && totalHogs > 0
+                            ? 'Entire Batch Funded • All $totalHogs Hogs'
+                            : (targetTags.length > 3
+                                ? 'Funded Pigs: ${targetTags.length} Hogs (${targetTags.take(2).join(', ')}...) • ${targetPigType.isNotEmpty ? targetPigType : 'Selected Hogs'}'
+                                : 'Funded Pigs: ${targetTags.join(', ')} • ${targetPigType.isNotEmpty ? targetPigType : 'Selected Hogs'}'))
                         : 'Entire Batch Funded • $totalHogs Hogs',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: fit.sp(11.5),
@@ -2390,6 +2450,121 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Automatically formats numeric inputs with thousand separators (commas) in real-time.
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  final bool allowDecimal;
+  final int decimalDigits;
+
+  const ThousandsSeparatorInputFormatter({
+    this.allowDecimal = true,
+    this.decimalDigits = 2,
+  });
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+
+    String textToFormat = newValue.text;
+    int selectionEnd = newValue.selection.end;
+
+    // Handle backspace when the cursor was right after a comma
+    if (oldValue.text.length == newValue.text.length + 1 &&
+        oldValue.selection.end > 0 &&
+        oldValue.selection.end <= oldValue.text.length &&
+        oldValue.text[oldValue.selection.end - 1] == ',') {
+      final deleteIndex = oldValue.selection.end - 2;
+      if (deleteIndex >= 0) {
+        textToFormat = oldValue.text.substring(0, deleteIndex) +
+            oldValue.text.substring(oldValue.selection.end);
+        selectionEnd = deleteIndex;
+      }
+    }
+
+    // Filter allowed characters: only digits and at most one decimal point
+    String clean = '';
+    bool hasDot = false;
+    int decimalsCount = 0;
+
+    for (int i = 0; i < textToFormat.length; i++) {
+      final char = textToFormat[i];
+      if (char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57) {
+        if (!hasDot) {
+          clean += char;
+        } else if (decimalsCount < decimalDigits) {
+          clean += char;
+          decimalsCount++;
+        }
+      } else if (char == '.' && allowDecimal && !hasDot) {
+        hasDot = true;
+        clean += '.';
+      }
+    }
+
+    if (clean.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    // Strip extraneous leading zeros unless it is "0" or "0."
+    if (!clean.startsWith('0.') && clean.length > 1 && clean.startsWith('0')) {
+      clean = clean.replaceFirst(RegExp(r'^0+'), '');
+      if (clean.isEmpty || clean.startsWith('.')) {
+        clean = '0$clean';
+      }
+    }
+
+    // Split integer and decimal parts
+    final parts = clean.split('.');
+    String integerPart = parts[0];
+    String? decimalPart = parts.length > 1 ? parts[1] : null;
+
+    // Format integer part with commas
+    final formattedInt = integerPart.replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+
+    String formatted = formattedInt;
+    if (hasDot) {
+      formatted += '.$decimalPart';
+    }
+
+    // Map cursor position based on non-comma characters before cursor in textToFormat
+    final textBeforeCursor = textToFormat.substring(
+      0,
+      selectionEnd.clamp(0, textToFormat.length),
+    );
+    final rawCharsBeforeCursor = textBeforeCursor.replaceAll(',', '');
+
+    int newCursorPos = 0;
+    int matchedRawChars = 0;
+    for (int i = 0; i < formatted.length; i++) {
+      if (formatted[i] != ',') {
+        matchedRawChars++;
+      }
+      if (matchedRawChars == rawCharsBeforeCursor.length) {
+        newCursorPos = i + 1;
+        break;
+      }
+    }
+    if (matchedRawChars < rawCharsBeforeCursor.length) {
+      newCursorPos = formatted.length;
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: newCursorPos.clamp(0, formatted.length)),
     );
   }
 }

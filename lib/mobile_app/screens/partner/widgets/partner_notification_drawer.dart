@@ -347,8 +347,8 @@ class _PartnerNotificationDrawerContentState extends State<_PartnerNotificationD
                     itemBuilder: (ctx, index) {
                       final notif = filteredList[index];
                       final notifId = (notif['notification_id'] as num?)?.toInt() ?? index;
-                      final title = NotificationService.cleanText(notif['title']?.toString() ?? 'Batch Update');
-                      final message = NotificationService.cleanText(notif['message']?.toString() ?? 'No description provided.');
+                      final title = NotificationService.localizeTitle(NotificationService.cleanText(notif['title']?.toString() ?? 'Batch Update'));
+                      final message = NotificationService.localizeMessage(NotificationService.cleanText(notif['message']?.toString() ?? 'No description provided.'));
                       final type = notif['type']?.toString() ?? 'general';
                       final isRead = notif['is_read'] == true;
                       final createdAt = notif['created_at'];

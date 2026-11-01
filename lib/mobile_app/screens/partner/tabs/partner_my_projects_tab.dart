@@ -570,15 +570,29 @@ class _PartnerMyProjectsTabState extends State<PartnerMyProjectsTab> {
                                     ),
                                   ),
                                   SizedBox(width: fit.dp(8)),
-                                  Text(
-                                    project['target_hog_tags'] is List && (project['target_hog_tags'] as List).isNotEmpty
-                                        ? '$hogType (${(project['target_hog_tags'] as List).join(", ")})'
-                                        : hogType,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: fit.sp(12.0),
-                                      fontWeight: FontWeight.w600,
-                                      color: mutedTextColor,
-                                    ),
+                                  Builder(
+                                    builder: (_) {
+                                      final tags = (project['target_hog_tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+                                      final total = (project['total_hogs'] as num?)?.toInt() ?? (project['selected_hogs_count'] as num?)?.toInt() ?? 0;
+                                      String tagLabel = hogType;
+                                      if (tags.isNotEmpty) {
+                                        if (total > 0 && tags.length >= total) {
+                                          tagLabel = '$hogType (Entire Batch)';
+                                        } else if (tags.length > 3) {
+                                          tagLabel = '$hogType (${tags.length} Hogs)';
+                                        } else {
+                                          tagLabel = '$hogType (${tags.join(", ")})';
+                                        }
+                                      }
+                                      return Text(
+                                        tagLabel,
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: fit.sp(12.0),
+                                          fontWeight: FontWeight.w600,
+                                          color: mutedTextColor,
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
