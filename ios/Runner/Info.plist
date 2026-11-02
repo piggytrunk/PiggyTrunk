@@ -67,6 +67,28 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>PiggyTrunk needs access to your photo library so admins can upload product images.</string>
+	<string>PiggyTrunk needs access to your photo library to upload hog images and documents.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PiggyTrunk needs access to your camera to take pictures of hogs, products, and scan QR codes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PiggyTrunk needs access to your microphone if recording video.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>PiggyTrunk needs your location to track farm and delivery operations.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>PiggyTrunk needs your location to track farm and delivery operations.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
 </dict>
 </plist>
