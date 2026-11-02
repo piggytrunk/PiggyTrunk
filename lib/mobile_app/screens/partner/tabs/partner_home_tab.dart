@@ -687,7 +687,7 @@ class PartnerHomeTab extends StatelessWidget {
                   return InkWell(
                     onTap: () {
                       if (onNavigateToTab != null) {
-                        onNavigateToTab!(2);
+                        onNavigateToTab!(1);
                       } else {
                         onViewProjects();
                       }

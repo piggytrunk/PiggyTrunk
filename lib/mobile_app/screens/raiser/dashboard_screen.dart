@@ -759,11 +759,20 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
             return idA.compareTo(idB);
           });
 
-        if (expectedFatCount < actualFatHogs.length) expectedFatCount = actualFatHogs.length;
-        if (expectedSowCount < actualSowHogs.length) expectedSowCount = actualSowHogs.length;
+        final int totalActualHogs = actualFatHogs.length + actualSowHogs.length;
+        final int totalExpected = expectedFatCount + expectedSowCount;
+        final bool hasAllHogsInDb = totalActualHogs >= totalExpected && totalActualHogs > 0;
 
-        final missingFat = (expectedFatCount - actualFatHogs.length).clamp(0, 9999);
-        final missingSow = (expectedSowCount - actualSowHogs.length).clamp(0, 9999);
+        if (hasAllHogsInDb) {
+          expectedFatCount = actualFatHogs.length;
+          expectedSowCount = actualSowHogs.length;
+        } else {
+          if (expectedFatCount < actualFatHogs.length) expectedFatCount = actualFatHogs.length;
+          if (expectedSowCount < actualSowHogs.length) expectedSowCount = actualSowHogs.length;
+        }
+
+        final missingFat = hasAllHogsInDb ? 0 : (expectedFatCount - actualFatHogs.length).clamp(0, 9999);
+        final missingSow = hasAllHogsInDb ? 0 : (expectedSowCount - actualSowHogs.length).clamp(0, 9999);
 
         int maxHogId = 0;
         for (var h in hogs) {
@@ -833,8 +842,8 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           });
         }
 
-        // --- DEDICATED SOW-SLOT ALLOCATION: strictly #(expectedFatCount + 1), ... ---
-        final int sowBaseTagNum = expectedFatCount;
+        // --- DEDICATED SOW-SLOT ALLOCATION: strictly continuous tag after Fattening ---
+        final int sowBaseTagNum = actualFatHogs.length + supplementedFatHogs.length;
         for (int i = 0; i < actualSowHogs.length; i++) {
           actualSowHogs[i]['tag_number'] = '#${sowBaseTagNum + i + 1}';
         }

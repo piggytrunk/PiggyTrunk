@@ -59,7 +59,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
   int _selectedProjectIndex = 0;
   int _selectedHogIndex = 0;
   bool _filterOnlyFundedHogs = false;
-  bool _isFundedTagsExpanded = false;
 
   Map<String, dynamic>? get _currentProject {
     if (widget.projectsList.isNotEmpty) {
@@ -1497,201 +1496,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                 ),
               ],
             ),
-            if (targetTags.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Builder(
-                builder: (_) {
-                  final bool isEntireBatch = (allBatchHogs.isNotEmpty && targetTags.length >= allBatchHogs.length) ||
-                      (proj?['target_pig_type'] ?? '').toString().toLowerCase() == 'entire batch';
-
-                  if (isEntireBatch) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _successGreen.withValues(alpha: isDark ? 0.18 : 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _successGreen.withValues(alpha: isDark ? 0.45 : 0.25),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: _successGreen.withValues(alpha: 0.18),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.verified_rounded, size: 16, color: _successGreen),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  strings.isFilipino ? 'Buong Batch ang Nakalaan' : 'Entire Batch Allocation',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12.0,
-                                    fontWeight: FontWeight.w800,
-                                    color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF065F46),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  strings.isFilipino
-                                      ? 'Lahat ng ${allBatchHogs.length} baboy sa batch na ito ay nakalaan sa iyo (may berdeng highlight sa ibaba)'
-                                      : 'All ${allBatchHogs.length} hogs in this batch are allocated to you (highlighted in emerald below)',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: isDark ? Colors.white70 : const Color(0xFF047857),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (targetTags.length <= 4) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
-                      decoration: BoxDecoration(
-                        color: _successGreen.withValues(alpha: isDark ? 0.18 : 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _successGreen.withValues(alpha: isDark ? 0.45 : 0.25),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.stars_rounded, size: 16, color: _successGreen),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: RichText(
-                              text: TextSpan(
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 11.5,
-                                  color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF065F46),
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: strings.isFilipino ? 'Iyong Pinondohang Baboy: ' : 'Your Funded Hogs: ',
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
-                                  ),
-                                  TextSpan(
-                                    text: targetTags.join(', '),
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
-                                  ),
-                                  TextSpan(
-                                    text: strings.isFilipino
-                                        ? ' (${targetTags.length} sa ${allBatchHogs.length} ay may berdeng highlight sa ibaba)'
-                                        : ' (${targetTags.length} of ${allBatchHogs.length} hogs highlighted in emerald below)',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: isDark ? Colors.white70 : const Color(0xFF047857),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final previewTags = targetTags.take(4).join(', ');
-                  final remainingCount = targetTags.length - 4;
-
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: _successGreen.withValues(alpha: isDark ? 0.18 : 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _successGreen.withValues(alpha: isDark ? 0.45 : 0.25),
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.stars_rounded, size: 16, color: _successGreen),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11.5,
-                                    color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF065F46),
-                                  ),
-                                  children: [
-                                    TextSpan(
-                                      text: strings.isFilipino ? 'Iyong Pinondohang Baboy: ' : 'Your Funded Hogs: ',
-                                      style: const TextStyle(fontWeight: FontWeight.w800),
-                                    ),
-                                    TextSpan(
-                                      text: _isFundedTagsExpanded ? targetTags.join(', ') : '$previewTags (+$remainingCount more)',
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
-                                    ),
-                                    TextSpan(
-                                      text: strings.isFilipino
-                                          ? ' (${targetTags.length} sa ${allBatchHogs.length} ay may berdeng highlight)'
-                                          : ' (${targetTags.length} of ${allBatchHogs.length} hogs highlighted below)',
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: isDark ? Colors.white70 : const Color(0xFF047857),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _isFundedTagsExpanded = !_isFundedTagsExpanded;
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(6),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: _successGreen.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  _isFundedTagsExpanded
-                                      ? (strings.isFilipino ? 'Itago' : 'Hide')
-                                      : (strings.isFilipino ? 'Lahat' : 'View all'),
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 10.0,
-                                    fontWeight: FontWeight.w800,
-                                    color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF065F46),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
             const SizedBox(height: 12),
 
             if (visibleHogs.isEmpty) ...[
@@ -1807,30 +1611,6 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                     letterSpacing: 0.6,
                                   ),
                                 ),
-                                const Spacer(),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.22),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.verified_rounded, size: 10.5, color: Colors.white),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        strings.isFilipino ? 'NAKA-ALLOCATE SA IYO' : 'DIRECT ALLOCATION',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: Colors.white,
-                                          letterSpacing: 0.4,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -1907,10 +1687,10 @@ class _PartnerLifecycleTabState extends State<PartnerLifecycleTab> {
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    const Icon(Icons.stars_rounded, size: 10.5, color: Colors.white),
+                                                    const Icon(Icons.verified_rounded, size: 10.5, color: Colors.white),
                                                     const SizedBox(width: 3),
                                                     Text(
-                                                      strings.isFilipino ? 'PINONDOHAN MO' : 'MY ALLOCATION',
+                                                      strings.isFilipino ? 'NAKA-ALLOCATE SA IYO' : 'DIRECT ALLOCATION',
                                                       style: GoogleFonts.plusJakartaSans(
                                                         fontSize: 9.5,
                                                         fontWeight: FontWeight.w800,

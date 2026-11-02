@@ -129,6 +129,7 @@ class _RaiserNotificationDrawerContentState extends State<_RaiserNotificationDra
 
   void _handleMarkAllAsRead() {
     widget.onMarkAllRead();
+    setState(() {});
     final strings = AppStrings.of(context);
     PiggyToast.showSuccess(
       context,
@@ -347,100 +348,105 @@ class _RaiserNotificationDrawerContentState extends State<_RaiserNotificationDra
           children: [
             // Drag handle
             Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 6),
-              width: 44,
-              height: 4.5,
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 36,
+              height: 4,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF334155) : Colors.grey[300],
-                borderRadius: BorderRadius.circular(3),
+                color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
 
             // Drawer Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 16, 12),
+              padding: const EdgeInsets.fromLTRB(20, 8, 16, 10),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(Icons.notifications_active_rounded, color: isDark ? const Color(0xFF38BDF8) : _brandBlue, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              strings.notificationsTitle,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: textColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (unreadCount > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '$unreadCount',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        Text(
-                          strings.notificationsSubtitle,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            color: mutedColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (unreadCount > 0)
-                    GestureDetector(
-                      onTap: _handleMarkAllAsRead,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE)),
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : _brandColor.withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.done_all_rounded, color: isDark ? const Color(0xFF38BDF8) : _brandBlue, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              strings.markAllRead,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? const Color(0xFF38BDF8) : _brandBlue,
-                              ),
-                            ),
-                          ],
+                        child: Icon(
+                          Icons.notifications_rounded,
+                          size: 20,
+                          color: isDark ? Colors.white : _brandColor,
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            strings.notificationsTitle,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: textColor,
+                            ),
+                          ),
+                          if (unreadCount > 0)
+                            Text(
+                              strings.isFilipino
+                                  ? '$unreadCount bagong update'
+                                  : '$unreadCount new update${unreadCount > 1 ? 's' : ''}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF10B981),
+                              ),
+                            )
+                          else
+                            Text(
+                              strings.isFilipino ? 'Lahat ay nabasa na' : 'All caught up',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: mutedColor,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      if (unreadCount > 0)
+                        TextButton(
+                          onPressed: _handleMarkAllAsRead,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            strings.markAllRead,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? const Color(0xFF38BDF8) : _brandColor,
+                            ),
+                          ),
+                        ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: isDark ? Colors.white70 : Colors.grey[700],
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        splashRadius: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

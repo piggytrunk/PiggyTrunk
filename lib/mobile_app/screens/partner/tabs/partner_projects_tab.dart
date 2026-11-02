@@ -16,6 +16,7 @@ class PartnerProjectsTab extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback? onNavigateToLifecycle;
   final VoidCallback? onNavigateToActivities;
+  final int initialSubTab;
 
   const PartnerProjectsTab({
     super.key,
@@ -25,6 +26,7 @@ class PartnerProjectsTab extends StatefulWidget {
     required this.onRefresh,
     this.onNavigateToLifecycle,
     this.onNavigateToActivities,
+    this.initialSubTab = 0,
   });
 
   @override
@@ -52,6 +54,7 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
   void initState() {
     super.initState();
     _amountController.addListener(_onAmountChanged);
+    _selectedSubTab = widget.initialSubTab;
     if (widget.fundedProjectsList.isEmpty && widget.projectsList.isNotEmpty) {
       _selectedSubTab = 1;
     }
@@ -60,7 +63,9 @@ class _PartnerProjectsTabState extends State<PartnerProjectsTab> {
   @override
   void didUpdateWidget(covariant PartnerProjectsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fundedProjectsList.isEmpty && widget.projectsList.isNotEmpty && _selectedSubTab == 0) {
+    if (widget.initialSubTab != oldWidget.initialSubTab) {
+      _selectedSubTab = widget.initialSubTab;
+    } else if (widget.fundedProjectsList.isEmpty && widget.projectsList.isNotEmpty && _selectedSubTab == 0) {
       _selectedSubTab = 1;
     }
   }

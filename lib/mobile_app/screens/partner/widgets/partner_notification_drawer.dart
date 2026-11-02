@@ -247,7 +247,7 @@ class _PartnerNotificationDrawerContentState extends State<_PartnerNotificationD
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          strings.isFilipino ? 'Mga Abiso ng Kasosyo' : 'Partner Notifications',
+                          strings.notificationsTitle,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: fit.sp(17),
                             fontWeight: FontWeight.w800,

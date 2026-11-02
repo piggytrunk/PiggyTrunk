@@ -118,14 +118,6 @@ class PartnerInvestmentDetailView extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Investment #${p['investment_id'] ?? p['id'] ?? "Direct"} • Complete breakdown of capital, batch allocation, and partner investor records.',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: mutedColor,
-                      fontSize: isMobile ? 12 : 14,
-                    ),
-                  ),
                 ],
               ),
             ),

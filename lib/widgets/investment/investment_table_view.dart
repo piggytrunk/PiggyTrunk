@@ -176,11 +176,39 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
       return idB.compareTo(idA);
     });
 
+    final bool isPartnerView = _viewMode == 'PARTNER';
+    final partnerActiveList = widget.partnerInvestments.where((p) {
+      final st = (p['status'] ?? 'active').toString().toLowerCase();
+      return st != 'archived' && st != 'rejected';
+    }).toList();
+    final double totalPartnerCapital = partnerActiveList.fold<double>(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0.0));
+    final int activePartnerCount = partnerActiveList.where((p) {
+      final st = (p['status'] ?? 'active').toString().toLowerCase();
+      return st == 'active' || st == 'approved';
+    }).length;
+    final int fundedBatchesCount = partnerActiveList.map((p) => (p['batch_id'] ?? '').toString()).where((b) => b.isNotEmpty).toSet().length;
+    final int totalPartnerHogs = partnerActiveList.fold<int>(0, (sum, p) {
+      final count = (p['selected_hogs_count'] as num?)?.toInt() ?? (p['hogs'] is List ? (p['hogs'] as List).length : 0);
+      return sum + count;
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top Metric Cards
-        _buildMetricsRow(totalCapital, totalStocksSpend, totalHogs, activeCount, pendingPartnerCount, isMobile, isDark),
+        // Top Metric Cards (Context-aware: Direct vs Partner)
+        _buildMetricsRow(
+          isPartnerView: isPartnerView,
+          capital: totalCapital,
+          stocksSpend: totalStocksSpend,
+          totalHogs: totalHogs,
+          activeCount: activeCount,
+          partnerCapital: totalPartnerCapital,
+          fundedBatches: fundedBatchesCount,
+          partnerHogs: totalPartnerHogs,
+          activePartnerCount: activePartnerCount,
+          isMobile: isMobile,
+          isDark: isDark,
+        ),
         const SizedBox(height: 24),
 
         // Main Table Card
@@ -543,7 +571,41 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
     );
   }
 
-  Widget _buildMetricsRow(double capital, double stocksSpend, int totalHogs, int activeCount, int pendingCount, bool isMobile, bool isDark) {
+  Widget _buildMetricsRow({
+    required bool isPartnerView,
+    required double capital,
+    required double stocksSpend,
+    required int totalHogs,
+    required int activeCount,
+    required double partnerCapital,
+    required int fundedBatches,
+    required int partnerHogs,
+    required int activePartnerCount,
+    required bool isMobile,
+    required bool isDark,
+  }) {
+    final card1Title = isPartnerView ? 'Partner Capital' : 'Total Capital';
+    final card1Value = isPartnerView ? _formatCurrency(partnerCapital) : _formatCurrency(capital);
+    final card1Icon = Icons.monetization_on_rounded;
+    final card1Color = isDark ? Colors.white : PiggyTrunkTheme.ptPrimary;
+
+    final card2Title = isPartnerView ? 'Funded Batches' : 'Stocks Spend';
+    final card2Value = isPartnerView
+        ? '$fundedBatches ${fundedBatches == 1 ? "batch" : "batches"}'
+        : _formatCurrency(stocksSpend);
+    final card2Icon = isPartnerView ? Icons.grid_view_rounded : Icons.inventory_2_rounded;
+    final card2Color = const Color(0xFF38BDF8);
+
+    final card3Title = isPartnerView ? 'Target Heads' : 'Total Heads';
+    final card3Value = isPartnerView ? '$partnerHogs heads' : '$totalHogs heads';
+    final card3Icon = Icons.pets_rounded;
+    final card3Color = const Color(0xFFFFAA00);
+
+    final card4Title = isPartnerView ? 'Active Investments' : 'Active Allocations';
+    final card4Value = isPartnerView ? '$activePartnerCount active' : '$activeCount active';
+    final card4Icon = Icons.check_circle_rounded;
+    final card4Color = PiggyTrunkTheme.ptSuccess;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final use2x2 = isMobile || constraints.maxWidth < 780;
@@ -552,17 +614,17 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
             children: [
               Row(
                 children: [
-                  Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? Colors.white : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
+                  Expanded(child: _buildMetricCard(card1Title, card1Value, card1Icon, card1Color, isDark, isMobile)),
                   const SizedBox(width: 10),
-                  Expanded(child: _buildMetricCard('Stocks Spend', _formatCurrency(stocksSpend), Icons.inventory_2_rounded, const Color(0xFF38BDF8), isDark, isMobile)),
+                  Expanded(child: _buildMetricCard(card2Title, card2Value, card2Icon, card2Color, isDark, isMobile)),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _buildMetricCard('Total Heads', '$totalHogs heads', Icons.pets_rounded, const Color(0xFFFFAA00), isDark, isMobile)),
+                  Expanded(child: _buildMetricCard(card3Title, card3Value, card3Icon, card3Color, isDark, isMobile)),
                   const SizedBox(width: 10),
-                  Expanded(child: _buildMetricCard('Active Allocations', '$activeCount active', Icons.check_circle_rounded, PiggyTrunkTheme.ptSuccess, isDark, isMobile)),
+                  Expanded(child: _buildMetricCard(card4Title, card4Value, card4Icon, card4Color, isDark, isMobile)),
                 ],
               ),
             ],
@@ -570,13 +632,13 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
         }
         return Row(
           children: [
-            Expanded(child: _buildMetricCard('Total Capital', _formatCurrency(capital), Icons.monetization_on_rounded, isDark ? Colors.white : PiggyTrunkTheme.ptPrimary, isDark, isMobile)),
+            Expanded(child: _buildMetricCard(card1Title, card1Value, card1Icon, card1Color, isDark, isMobile)),
             const SizedBox(width: 14),
-            Expanded(child: _buildMetricCard('Stocks Spend', _formatCurrency(stocksSpend), Icons.inventory_2_rounded, const Color(0xFF38BDF8), isDark, isMobile)),
+            Expanded(child: _buildMetricCard(card2Title, card2Value, card2Icon, card2Color, isDark, isMobile)),
             const SizedBox(width: 14),
-            Expanded(child: _buildMetricCard('Total Heads', '$totalHogs heads', Icons.pets_rounded, const Color(0xFFFFAA00), isDark, isMobile)),
+            Expanded(child: _buildMetricCard(card3Title, card3Value, card3Icon, card3Color, isDark, isMobile)),
             const SizedBox(width: 14),
-            Expanded(child: _buildMetricCard('Active Allocations', '$activeCount active', Icons.check_circle_rounded, PiggyTrunkTheme.ptSuccess, isDark, isMobile)),
+            Expanded(child: _buildMetricCard(card4Title, card4Value, card4Icon, card4Color, isDark, isMobile)),
           ],
         );
       },
@@ -1426,27 +1488,13 @@ class _InvestmentTableViewState extends State<InvestmentTableView> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Partner Investment Details',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w800,
-                          color: titleColor,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        'Investment #${p['investment_id'] ?? p['id'] ?? "Direct"}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: hintText,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Partner Investment Details',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: titleColor,
+                    ),
                   ),
                 ),
                 IconButton(

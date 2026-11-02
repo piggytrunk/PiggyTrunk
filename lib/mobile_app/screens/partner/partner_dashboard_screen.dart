@@ -34,6 +34,7 @@ class PartnerDashboardScreen extends StatefulWidget {
 
 class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   int _currentIndex = 0;
+  int _projectsSubTab = 0;
   bool _isLoading = false;
 
   // Profile Information
@@ -2301,9 +2302,6 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             return st != 'dead' && hs != 'dead';
           }).toList();
 
-          final isMixedBatch =
-              hogType.toLowerCase().contains('sow') &&
-              hogType.toLowerCase().contains('fatten');
           final half = (aliveBatchHogs.length / 2).ceil();
 
           for (int i = 0; i < aliveBatchHogs.length; i++) {
@@ -2318,15 +2316,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 hogTypeMap[rawTypeId] ??
                 (assign['pig_type'] ?? h['pig_type'] ?? '').toString().trim();
 
-            if (typeName.isEmpty ||
-                isMixedBatch ||
-                typeName.toLowerCase().contains('and')) {
-              typeName = (i < half) ? 'Fattening' : 'Sow / Breeding';
-            } else if (typeName.toLowerCase().contains('sow') ||
+            if (typeName.toLowerCase().contains('sow') ||
                 typeName.toLowerCase().contains('breed')) {
               typeName = 'Sow / Breeding';
-            } else {
+            } else if (typeName.toLowerCase().contains('fatten')) {
               typeName = 'Fattening';
+            } else {
+              typeName = (i < half) ? 'Fattening' : 'Sow / Breeding';
             }
 
             final isSow =
@@ -2656,8 +2652,31 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           debugPrint('Notice loading notifMetadata in partner dashboard: $e');
         }
 
-        if (investmentsRes.isNotEmpty) {
-          for (var inv in investmentsRes) {
+        // Deduplicate partner investment records within 48h (e.g. UTC server date vs Local client date)
+        final List<Map<String, dynamic>> dedupedInvestments = [];
+        for (var inv in (investmentsRes as List? ?? [])) {
+          if (inv is! Map) continue;
+          final invMap = Map<String, dynamic>.from(inv);
+          final pId = (invMap['partner_investor_id'] ?? '').toString();
+          final bId = (invMap['batch_id'] ?? '').toString();
+          final amt = (invMap['amount'] as num?)?.toDouble() ?? 0.0;
+          final dt = DateTime.tryParse((invMap['date_invested'] ?? '').toString()) ?? DateTime(1970);
+
+          final bool isDuplicate = dedupedInvestments.any((existing) {
+            final eId = (existing['partner_investor_id'] ?? '').toString();
+            final eBatch = (existing['batch_id'] ?? '').toString();
+            final eAmt = (existing['amount'] as num?)?.toDouble() ?? 0.0;
+            final eDt = DateTime.tryParse((existing['date_invested'] ?? '').toString()) ?? DateTime(1970);
+            return eId == pId && eBatch == bId && (eAmt - amt).abs() < 0.01 && dt.difference(eDt).inHours.abs() <= 48;
+          });
+
+          if (!isDuplicate) {
+            dedupedInvestments.add(invMap);
+          }
+        }
+
+        if (dedupedInvestments.isNotEmpty) {
+          for (var inv in dedupedInvestments) {
             final amt = (inv['amount'] as num?)?.toDouble() ?? 0.0;
             final rawStatus = (inv['status'] ?? 'pending')
                 .toString()
@@ -2976,74 +2995,6 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         });
       }
 
-      // Include individual hog stage milestones for ALL active batches funded by the Partner Investor
-      for (var pBatch in partnerProjects) {
-        final pStatus = (pBatch['status'] ?? '').toString().toLowerCase();
-        if (pStatus != 'active' && pStatus != 'approved') {
-          continue;
-        }
-
-        final rId = (pBatch['hog_raiser_id'] ?? '').toString();
-        final rawRaiserName =
-            (pBatch['assigned_raiser'] ?? pBatch['raiser_name'] ?? '')
-                .toString()
-                .trim();
-
-        // 1. STRICT VERIFICATION: If the raiser was deleted from the database or is unassigned,
-        // do NOT display ghost milestone feeds for them!
-        final bool isRaiserActiveInDb =
-            rId.isNotEmpty && raiserMap.containsKey(rId);
-        if (!isRaiserActiveInDb ||
-            rawRaiserName.isEmpty ||
-            rawRaiserName.toLowerCase() == 'unassigned' ||
-            rawRaiserName.toLowerCase().startsWith('raiser #') ||
-            rawRaiserName.toLowerCase() == 'n/a') {
-          continue;
-        }
-
-        final bRaiser = rawRaiserName;
-        final batchHogsList = List<Map<String, dynamic>>.from(
-          pBatch['hogs'] ?? [],
-        );
-        final batchCreatedTime =
-            (pBatch['created_at'] ?? pBatch['date_invested'] ?? '').toString();
-
-        // 2. Only include active hogs (exclude dead or completed hogs)
-        final activeHogs = batchHogsList.where((h) {
-          final st = (h['status'] ?? '').toString().toLowerCase();
-          final hs = (h['health_status'] ?? '').toString().toLowerCase();
-          return st != 'dead' && hs != 'dead' && st != 'completed';
-        }).toList();
-
-        for (int idx = 0; idx < activeHogs.length; idx++) {
-          final hog = activeHogs[idx];
-          final hTag = hog['tag_number'] ?? 'HOG-${idx + 1}';
-          final hType = hog['pig_type'] ?? (pBatch['hog_type'] ?? 'Fattening');
-          final hStage = hog['stage'] ?? (pBatch['stage'] ?? 'Booster');
-          liveActivities.add({
-            'report_id':
-                'stage_${pBatch['batch_id']}_${hog['hog_id'] ?? (idx + 1)}',
-            'title': '$hTag ($hType) • $hStage Stage',
-            'title_en': '$hTag ($hType) • $hStage Stage',
-            'title_fil': '$hTag ($hType) • Yugtong $hStage',
-            'description':
-                'Assigned raiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
-            'desc_en':
-                'Assigned raiser is currently managing $hTag ($hType) at the $hStage lifecycle stage.',
-            'desc_fil':
-                'Kasalukuyang inaalagaan ng nakatalagang raiser ang $hTag ($hType) sa yugtong $hStage.',
-            'date': '',
-            'date_fil': '',
-            'created_at': batchCreatedTime.isNotEmpty
-                ? batchCreatedTime
-                : DateTime.now().toIso8601String(),
-            'icon': Icons.trending_up_rounded,
-            'raiser_name': bRaiser,
-            'type': 'Lifecycle',
-          });
-        }
-      }
-
       // Sort liveActivities chronologically (newest updates first)
       liveActivities.sort((a, b) {
         final aTimeStr = (a['created_at'] ?? '').toString();
@@ -3342,10 +3293,16 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         notificationsList: _notificationsList,
         onRefresh: _fetchPartnerData,
         onSeeAllActivities: () => setState(() => _currentIndex = 3),
-        onViewProjects: () => setState(() => _currentIndex = 1),
+        onViewProjects: () => setState(() {
+          _currentIndex = 1;
+          _projectsSubTab = 1;
+        }),
         onNavigateToTab: (idx) {
           setState(() {
             _currentIndex = idx.clamp(0, 4);
+            if (idx == 1 && activePartnerProjects.isEmpty) {
+              _projectsSubTab = 1;
+            }
           });
         },
         onMarkNotificationAsRead: _markNotificationAsRead,
@@ -3358,6 +3315,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         onRefresh: _fetchPartnerData,
         onNavigateToLifecycle: () => setState(() => _currentIndex = 2),
         onNavigateToActivities: () => setState(() => _currentIndex = 3),
+        initialSubTab: _projectsSubTab,
       ),
       PartnerLifecycleTab(
         projectsList: effectiveLifecycleProjects,

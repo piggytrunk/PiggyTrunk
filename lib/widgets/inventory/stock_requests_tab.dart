@@ -1089,6 +1089,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
   Widget _buildInPageDetailsView(Map<String, dynamic> req) {
     final isDark = _isDark;
+    final isMobile = Responsive.isMobile(context);
     final drawerBg = isDark ? const Color(0xFF132238) : Colors.white;
     final borderColor = isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
@@ -1580,7 +1581,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
             // Footer Actions
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF16253B) : const Color(0xFFF8FAFC),
                 border: Border(
@@ -1589,102 +1590,206 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
               ),
               child: status == 'PENDING'
                   ? Row(
+                      mainAxisAlignment: isMobile
+                          ? MainAxisAlignment.spaceBetween
+                          : MainAxisAlignment.end,
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              _rejectionReasonController.clear();
-                              setState(() {
-                                _rejectingRequest = req;
-                                _viewingRequestDetails = null;
-                              });
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFFF758C),
-                              side: BorderSide(
-                                color: const Color(0xFFFF758C).withValues(
-                                  alpha: isDark ? 0.35 : 0.3,
+                        isMobile
+                            ? Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    _rejectionReasonController.clear();
+                                    setState(() {
+                                      _rejectingRequest = req;
+                                      _viewingRequestDetails = null;
+                                    });
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFFFF758C),
+                                    side: BorderSide(
+                                      color: const Color(0xFFFF758C).withValues(
+                                        alpha: isDark ? 0.35 : 0.3,
+                                      ),
+                                    ),
+                                    backgroundColor: const Color(0xFFFF758C).withValues(
+                                      alpha: isDark ? 0.1 : 0.08,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Reject',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : SizedBox(
+                                height: 42,
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    _rejectionReasonController.clear();
+                                    setState(() {
+                                      _rejectingRequest = req;
+                                      _viewingRequestDetails = null;
+                                    });
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFFFF758C),
+                                    side: BorderSide(
+                                      color: const Color(0xFFFF758C).withValues(
+                                        alpha: isDark ? 0.35 : 0.3,
+                                      ),
+                                    ),
+                                    backgroundColor: const Color(0xFFFF758C).withValues(
+                                      alpha: isDark ? 0.1 : 0.08,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Reject',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              backgroundColor: const Color(0xFFFF758C).withValues(
-                                alpha: isDark ? 0.1 : 0.08,
+                        const SizedBox(width: 12),
+                        isMobile
+                            ? Expanded(
+                                flex: 2,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    _approvalMsgController.clear();
+                                    setState(() {
+                                      _approvingRequest = req;
+                                      _viewingRequestDetails = null;
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.check_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  label: Text(
+                                    isGroup
+                                        ? 'Approve & Fulfill (${items.length} Items)'
+                                        : 'Approve & Fulfill',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: PiggyTrunkTheme.ptSuccess,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                ),
+                              )
+                            : SizedBox(
+                                height: 42,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    _approvalMsgController.clear();
+                                    setState(() {
+                                      _approvingRequest = req;
+                                      _viewingRequestDetails = null;
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.check_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  label: Text(
+                                    isGroup
+                                        ? 'Approve & Fulfill (${items.length} Items)'
+                                        : 'Approve & Fulfill',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: PiggyTrunkTheme.ptSuccess,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                ),
                               ),
+                      ],
+                    )
+                  : (isMobile
+                      ? SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setState(() => _viewingRequestDetails = null);
+                            },
+                            style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(color: borderColor),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
                             child: Text(
-                              'Reject',
+                              'Close & Return to List',
                               style: GoogleFonts.plusJakartaSans(
+                                color: titleColor,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13.5,
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _approvalMsgController.clear();
-                              setState(() {
-                                _approvingRequest = req;
-                                _viewingRequestDetails = null;
-                              });
-                            },
-                            icon: const Icon(
-                              Icons.check_rounded,
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                            label: Text(
-                              isGroup
-                                  ? 'Approve & Fulfill (${items.length} Items)'
-                                  : 'Approve & Fulfill',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.5,
-                                color: Colors.white,
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              height: 42,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  setState(() => _viewingRequestDetails = null);
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                                  side: BorderSide(color: borderColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: Text(
+                                  'Close & Return to List',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: titleColor,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
                               ),
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: PiggyTrunkTheme.ptSuccess,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              elevation: 0,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() => _viewingRequestDetails = null);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(color: borderColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          'Close & Return to List',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: titleColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                      ),
-                    ),
+                          ],
+                        )),
             ),
           ],
         ),
@@ -1694,6 +1799,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
   Widget _buildInPageApproveView(Map<String, dynamic> req) {
     final isDark = _isDark;
+    final isMobile = Responsive.isMobile(context);
     final drawerBg = isDark ? const Color(0xFF132238) : Colors.white;
     final borderColor = isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
@@ -2074,7 +2180,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
               // Footer
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF16253B) : const Color(0xFFF8FAFC),
                   border: Border(
@@ -2082,70 +2188,138 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
                   ),
                 ),
                 child: Row(
+                  mainAxisAlignment: isMobile
+                      ? MainAxisAlignment.spaceBetween
+                      : MainAxisAlignment.end,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() => _approvingRequest = null);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(color: borderColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: titleColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton.icon(
-                        onPressed: _isProcessingRequest
-                            ? null
-                            : () async {
-                                final msg = _approvalMsgController.text.trim();
+                    isMobile
+                        ? Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
                                 setState(() => _approvingRequest = null);
-                                await _processApproveGroupRequest(
-                                  items: items,
-                                  req: req,
-                                  raiserName: raiserName,
-                                  raiserId: raiserId,
-                                  approvalMessage: msg.isNotEmpty ? msg : null,
-                                );
                               },
-                        icon: const Icon(
-                          Icons.check_rounded,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                        label: Text(
-                          'Approve & Dispatch All',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13.5,
-                            color: Colors.white,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                side: BorderSide(color: borderColor),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: titleColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          )
+                        : SizedBox(
+                            height: 42,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                setState(() => _approvingRequest = null);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 22),
+                                side: BorderSide(color: borderColor),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: titleColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: PiggyTrunkTheme.ptSuccess,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                    const SizedBox(width: 12),
+                    isMobile
+                        ? Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              onPressed: _isProcessingRequest
+                                  ? null
+                                  : () async {
+                                      final msg = _approvalMsgController.text.trim();
+                                      setState(() => _approvingRequest = null);
+                                      await _processApproveGroupRequest(
+                                        items: items,
+                                        req: req,
+                                        raiserName: raiserName,
+                                        raiserId: raiserId,
+                                        approvalMessage: msg.isNotEmpty ? msg : null,
+                                      );
+                                    },
+                              icon: const Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              label: Text(
+                                'Approve & Dispatch All',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: PiggyTrunkTheme.ptSuccess,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          )
+                        : SizedBox(
+                            height: 42,
+                            child: ElevatedButton.icon(
+                              onPressed: _isProcessingRequest
+                                  ? null
+                                  : () async {
+                                      final msg = _approvalMsgController.text.trim();
+                                      setState(() => _approvingRequest = null);
+                                      await _processApproveGroupRequest(
+                                        items: items,
+                                        req: req,
+                                        raiserName: raiserName,
+                                        raiserId: raiserId,
+                                        approvalMessage: msg.isNotEmpty ? msg : null,
+                                      );
+                                    },
+                              icon: const Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              label: Text(
+                                'Approve & Dispatch All',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: PiggyTrunkTheme.ptSuccess,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 24),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -2555,7 +2729,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
             // Footer
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF16253B) : const Color(0xFFF8FAFC),
                 border: Border(
@@ -2563,80 +2737,158 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
                 ),
               ),
               child: Row(
+                mainAxisAlignment: isMobile
+                    ? MainAxisAlignment.spaceBetween
+                    : MainAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isProcessingRequest
-                          ? null
-                          : () {
-                              setState(() => _approvingRequest = null);
-                            },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: fieldBorder),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  isMobile
+                      ? Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isProcessingRequest
+                                ? null
+                                : () {
+                                    setState(() => _approvingRequest = null);
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              side: BorderSide(color: fieldBorder),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: titleColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
+                        )
+                      : SizedBox(
+                          height: 42,
+                          child: OutlinedButton(
+                            onPressed: _isProcessingRequest
+                                ? null
+                                : () {
+                                    setState(() => _approvingRequest = null);
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 22),
+                              side: BorderSide(color: fieldBorder),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: titleColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: titleColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: (_isProcessingRequest || !hasSufficientStock)
-                          ? null
-                          : () async {
-                              final msg = _approvalMsgController.text.trim();
-                              setState(() => _approvingRequest = null);
-                              await _processApproveRequest(
-                                requestId: requestId,
-                                product: matchedProduct,
-                                requestedUnits: requestedQuantity,
-                                raiserName: raiserName,
-                                raiserId: req['hog_raiser_id'],
-                                feedType: feedType,
-                                category: category,
-                                approvalMessage: msg.isNotEmpty ? msg : null,
-                              );
-                            },
-                      icon: _isProcessingRequest
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                  isMobile
+                      ? Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: (_isProcessingRequest || !hasSufficientStock)
+                                ? null
+                                : () async {
+                                    final msg = _approvalMsgController.text.trim();
+                                    setState(() => _approvingRequest = null);
+                                    await _processApproveRequest(
+                                      requestId: requestId,
+                                      product: matchedProduct,
+                                      requestedUnits: requestedQuantity,
+                                      raiserName: raiserName,
+                                      raiserId: req['hog_raiser_id'],
+                                      feedType: feedType,
+                                      category: category,
+                                      approvalMessage: msg.isNotEmpty ? msg : null,
+                                    );
+                                  },
+                            icon: _isProcessingRequest
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_rounded, size: 18),
+                            label: Text(
+                              _isProcessingRequest ? 'Processing...' : 'Confirm Approval',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
                                 color: Colors.white,
                               ),
-                            )
-                          : const Icon(Icons.check_rounded, size: 18),
-                      label: Text(
-                        _isProcessingRequest ? 'Processing...' : 'Confirm Approval',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                          color: Colors.white,
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        )
+                      : SizedBox(
+                          height: 42,
+                          child: ElevatedButton.icon(
+                            onPressed: (_isProcessingRequest || !hasSufficientStock)
+                                ? null
+                                : () async {
+                                    final msg = _approvalMsgController.text.trim();
+                                    setState(() => _approvingRequest = null);
+                                    await _processApproveRequest(
+                                      requestId: requestId,
+                                      product: matchedProduct,
+                                      requestedUnits: requestedQuantity,
+                                      raiserName: raiserName,
+                                      raiserId: req['hog_raiser_id'],
+                                      feedType: feedType,
+                                      category: category,
+                                      approvalMessage: msg.isNotEmpty ? msg : null,
+                                    );
+                                  },
+                            icon: _isProcessingRequest
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_rounded, size: 18),
+                            label: Text(
+                              _isProcessingRequest ? 'Processing...' : 'Confirm Approval',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -2648,6 +2900,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
   Widget _buildInPageRejectView(Map<String, dynamic> req) {
     final isDark = _isDark;
+    final isMobile = Responsive.isMobile(context);
     final drawerBg = isDark ? const Color(0xFF132238) : Colors.white;
     final borderColor = isDark ? const Color(0xFF28405D) : const Color(0xFFD7E3F3);
     final titleColor = isDark ? Colors.white : const Color(0xFF18314F);
@@ -2828,7 +3081,7 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
 
             // Footer
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF16253B) : const Color(0xFFF8FAFC),
                 border: Border(
@@ -2836,82 +3089,162 @@ class _StockRequestsTabState extends State<StockRequestsTab> {
                 ),
               ),
               child: Row(
+                mainAxisAlignment: isMobile
+                    ? MainAxisAlignment.spaceBetween
+                    : MainAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        setState(() => _rejectingRequest = null);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: fieldBorder),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: titleColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: _isProcessingRequest
-                          ? null
-                          : () async {
-                              final reasonText = _rejectionReasonController.text.trim();
+                  isMobile
+                      ? Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
                               setState(() => _rejectingRequest = null);
-                              if (req['is_group'] == true) {
-                                final items = (req['items'] as List<dynamic>?)
-                                        ?.cast<Map<String, dynamic>>() ??
-                                    [req];
-                                await _processRejectGroupRequest(
-                                  items: items,
-                                  raiserId: raiserId,
-                                  raiserName: raiserName,
-                                  rejectionReason: reasonText,
-                                );
-                              } else {
-                                await _processRejectRequest(
-                                  requestId: requestId,
-                                  raiserId: raiserId,
-                                  raiserName: raiserName,
-                                  itemDesc: itemDesc,
-                                  rejectionReason: reasonText,
-                                );
-                              }
                             },
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      label: Text(
-                        'Confirm Rejection',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                          color: Colors.white,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              side: BorderSide(color: fieldBorder),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: titleColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
+                        )
+                      : SizedBox(
+                          height: 42,
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setState(() => _rejectingRequest = null);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 22),
+                              side: BorderSide(color: fieldBorder),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: titleColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF758C),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  const SizedBox(width: 12),
+                  isMobile
+                      ? Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: _isProcessingRequest
+                                ? null
+                                : () async {
+                                    final reasonText = _rejectionReasonController.text.trim();
+                                    setState(() => _rejectingRequest = null);
+                                    if (req['is_group'] == true) {
+                                      final items = (req['items'] as List<dynamic>?)
+                                              ?.cast<Map<String, dynamic>>() ??
+                                          [req];
+                                      await _processRejectGroupRequest(
+                                        items: items,
+                                        raiserId: raiserId,
+                                        raiserName: raiserName,
+                                        rejectionReason: reasonText,
+                                      );
+                                    } else {
+                                      await _processRejectRequest(
+                                        requestId: requestId,
+                                        raiserId: raiserId,
+                                        raiserName: raiserName,
+                                        itemDesc: itemDesc,
+                                        rejectionReason: reasonText,
+                                      );
+                                    }
+                                  },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                            label: Text(
+                              'Confirm Rejection',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF758C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        )
+                      : SizedBox(
+                          height: 42,
+                          child: ElevatedButton.icon(
+                            onPressed: _isProcessingRequest
+                                ? null
+                                : () async {
+                                    final reasonText = _rejectionReasonController.text.trim();
+                                    setState(() => _rejectingRequest = null);
+                                    if (req['is_group'] == true) {
+                                      final items = (req['items'] as List<dynamic>?)
+                                              ?.cast<Map<String, dynamic>>() ??
+                                          [req];
+                                      await _processRejectGroupRequest(
+                                        items: items,
+                                        raiserId: raiserId,
+                                        raiserName: raiserName,
+                                        rejectionReason: reasonText,
+                                      );
+                                    } else {
+                                      await _processRejectRequest(
+                                        requestId: requestId,
+                                        raiserId: raiserId,
+                                        raiserName: raiserName,
+                                        itemDesc: itemDesc,
+                                        rejectionReason: reasonText,
+                                      );
+                                    }
+                                  },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                            label: Text(
+                              'Confirm Rejection',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF758C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

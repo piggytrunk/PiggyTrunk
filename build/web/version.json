@@ -9,11 +9,11 @@
     "Added automated in-app update notifications"
   ],
   "apk_url": "https://piggytrunk.site/download/apk",
-  "file_size_bytes": 30192653,
-  "file_size_mb": 28.79,
+  "file_size_bytes": 29970445,
+  "file_size_mb": 28.58,
   "universal_apk_url": "https://piggytrunk.site/download/universal",
   "universal_file_size_bytes": 82612031,
   "universal_file_size_mb": 78.79,
   "force_update": false,
-  "released_at": "2026-11-02T07:30:00Z"
+  "released_at": "2026-11-03T06:05:00Z"
 }

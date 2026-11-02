@@ -337,20 +337,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       lastNameErr = 'Last name must be at least 2 characters.';
     }
 
-    // 2. Email Address Validation (Strictly Gmail @gmail.com)
+    // 2. Email Address Validation (Supports Gmail, Google Workspace, and Institutional emails e.g. @psu.edu.ph)
     final cleanEmail = email.trim().toLowerCase();
+    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     if (cleanEmail.isEmpty) {
       emailErr = 'Please enter your email address.';
     } else if (!cleanEmail.contains('@')) {
-      emailErr = 'Please include "@" in your email address (e.g. name@gmail.com).';
-    } else if (!cleanEmail.endsWith('@gmail.com')) {
-      emailErr = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
-    } else {
-      final usernamePart = cleanEmail.substring(0, cleanEmail.indexOf('@'));
-      final gmailUserRegex = RegExp(r'^[a-zA-Z0-9.]+$');
-      if (usernamePart.isEmpty || !gmailUserRegex.hasMatch(usernamePart)) {
-        emailErr = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
-      }
+      emailErr = 'Please include "@" in your email address (e.g. name@gmail.com or name@psu.edu.ph).';
+    } else if (!emailRegex.hasMatch(cleanEmail)) {
+      emailErr = 'Please enter a valid email address (e.g. name@gmail.com or student@psu.edu.ph).';
     }
 
     // 3. Password Validation
@@ -555,7 +550,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               'Password is too weak or common. Please use a stronger combination of letters and numbers.';
         } else if (lower.contains('email') &&
             (lower.contains('invalid') || lower.contains('format'))) {
-          _emailError = 'Please enter a valid Gmail address (e.g. name@gmail.com).';
+          _emailError = 'Please enter a valid email address (e.g. name@gmail.com or student@psu.edu.ph).';
         } else if (lower.contains('rate limit') ||
             lower.contains('too many requests') ||
             lower.contains('over_email_send_rate_limit')) {
@@ -736,7 +731,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ),
                           ),
                           TextSpan(
-                            text: 'Please check your Gmail (including your ',
+                            text: 'Please check your email inbox (including your ',
                           ),
                           TextSpan(
                             text: 'Spam folder',
@@ -1289,7 +1284,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       width: 1.6,
                                     ),
                                   ),
-                                  hintText: 'e.g. juan@gmail.com',
+                                  hintText: 'e.g. name@gmail.com or student@psu.edu.ph',
                                   hintStyle: GoogleFonts.plusJakartaSans(
                                     color: const Color(0xFF64748B),
                                     fontSize: inputFontSize,

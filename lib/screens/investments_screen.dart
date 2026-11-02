@@ -620,32 +620,24 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
           loadedPartnerInv.add(pMap);
         }
 
-        // Fetch supplemental / fallback partner investments from admin_notifications
-        try {
-          for (var notif in (notifsRes as List? ?? [])) {
-            if (notif is! Map) continue;
-            final meta = notif['metadata'] as Map<String, dynamic>? ?? {};
-            final nAmt = (meta['amount'] as num?)?.toDouble() ?? 0.0;
-            if (nAmt <= 0) continue;
+        // Supplemental / fallback partner investments from admin_notifications (DISPLAY ONLY - never auto-insert)
+        // Only consulted if direct investments table returned zero rows (e.g. offline or pending RLS)
+        if (loadedPartnerInv.isEmpty) {
+          try {
+            for (var notif in (notifsRes as List? ?? [])) {
+              if (notif is! Map) continue;
+              final meta = notif['metadata'] as Map<String, dynamic>? ?? {};
+              final nAmt = (meta['amount'] as num?)?.toDouble() ?? 0.0;
+              if (nAmt <= 0) continue;
 
-            final nBatchId = (meta['batch_id'] ?? '').toString();
-            final nPartnerId = (meta['partner_investor_id'] ?? '').toString();
-            final nPartnerName = (meta['partner_name'] ?? 'Partner Investor').toString();
-            final nBatchName = (meta['batch_name'] ?? batchesMap[nBatchId] ?? 'Batch #$nBatchId').toString();
-            final nCreatedAt = notif['created_at']?.toString() ?? DateTime.now().toIso8601String();
-            final nDate = nCreatedAt.split('T').first;
-            final nNotifId = notif['notification_id'];
+              final nBatchId = (meta['batch_id'] ?? '').toString();
+              final nPartnerId = (meta['partner_investor_id'] ?? '').toString();
+              final nPartnerName = (meta['partner_name'] ?? 'Partner Investor').toString();
+              final nBatchName = (meta['batch_name'] ?? batchesMap[nBatchId] ?? 'Batch #$nBatchId').toString();
+              final nCreatedAt = notif['created_at']?.toString() ?? DateTime.now().toIso8601String();
+              final nDate = nCreatedAt.split('T').first;
+              final nNotifId = notif['notification_id'];
 
-            // Check if this investment is already in loadedPartnerInv
-            final alreadyLoaded = loadedPartnerInv.any((existing) {
-              final eBatch = (existing['batch_id'] ?? '').toString();
-              final ePartner = (existing['partner_investor_id'] ?? '').toString();
-              final eAmt = (existing['amount'] as num?)?.toDouble() ?? 0.0;
-              final eDate = (existing['date_invested'] ?? existing['created_at'] ?? '').toString().split('T').first;
-              return (eBatch == nBatchId && ePartner == nPartnerId && (eAmt - nAmt).abs() < 0.01 && eDate == nDate);
-            });
-
-            if (!alreadyLoaded) {
               loadedPartnerInv.add({
                 'investment_id': nNotifId,
                 'notification_id': nNotifId,
@@ -663,26 +655,48 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                 'target_hog_tags': meta['target_hog_tags'] ?? [],
                 'selected_hogs_count': meta['selected_hogs_count'] ?? 0,
               });
+            }
+          } catch (nErr) {
+            debugPrint('Notice loading investment notifications fallback: $nErr');
+          }
+        }
 
-              // Attempt background reconciliation into investments table (succeeds once trigger is dropped)
-              try {
-                final pInt = int.tryParse(nPartnerId);
-                final bInt = int.tryParse(nBatchId);
-                if (pInt != null && bInt != null) {
-                  _supabase.from('investments').insert({
-                    'partner_investor_id': pInt,
-                    'batch_id': bInt,
-                    'amount': nAmt,
-                    'status': 'active',
-                    'date_invested': nDate,
-                  }).then((_) {}).catchError((_) {});
-                }
-              } catch (_) {}
+        // 6. Intelligent Deduplication for Partner Investments
+        // Collapses duplicate entries for the same partner, batch, and amount within 48 hours (e.g. UTC server date vs Local client date)
+        final List<Map<String, dynamic>> dedupedPartnerInv = [];
+        for (var p in loadedPartnerInv) {
+          final pId = (p['partner_investor_id'] ?? '').toString();
+          final bId = (p['batch_id'] ?? '').toString();
+          final amt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+          final dateStr = (p['date_invested'] ?? p['created_at'] ?? '').toString();
+          final dt = DateTime.tryParse(dateStr) ?? DateTime(1970);
+
+          final duplicateIndex = dedupedPartnerInv.indexWhere((existing) {
+            final eId = (existing['partner_investor_id'] ?? '').toString();
+            final eBatch = (existing['batch_id'] ?? '').toString();
+            final eAmt = (existing['amount'] as num?)?.toDouble() ?? 0.0;
+            final eDateStr = (existing['date_invested'] ?? existing['created_at'] ?? '').toString();
+            final eDt = DateTime.tryParse(eDateStr) ?? DateTime(1970);
+
+            final bool samePartnerAndBatch = eId == pId && eBatch == bId;
+            final bool sameAmount = (eAmt - amt).abs() < 0.01;
+            final bool within48Hours = dt.difference(eDt).inHours.abs() <= 48;
+
+            return samePartnerAndBatch && sameAmount && within48Hours;
+          });
+
+          if (duplicateIndex == -1) {
+            dedupedPartnerInv.add(p);
+          } else {
+            // Keep the canonical record with the more specific local date (Nov 03 over Nov 02)
+            final existing = dedupedPartnerInv[duplicateIndex];
+            final eDateStr = (existing['date_invested'] ?? '').toString();
+            if (dateStr.compareTo(eDateStr) > 0) {
+              dedupedPartnerInv[duplicateIndex] = p;
             }
           }
-        } catch (nErr) {
-          debugPrint('Notice loading investment notifications fallback: $nErr');
         }
+        loadedPartnerInv = dedupedPartnerInv;
       } catch (pErr) {
         debugPrint('Error loading partner investments: $pErr');
       }

@@ -249,8 +249,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Also check partner investments in `investments` (and admin_notifications fallback)
       List<dynamic> partnerInvRows = [];
       try {
-        final partnerInvRes = await _supabase.from('investments').select('amount, status, batch_id');
-        partnerInvRows = partnerInvRes as List? ?? [];
+        final partnerInvRes = await _supabase
+            .from('investments')
+            .select('amount, status, batch_id, partner_investor_id, date_invested');
+        final rawRows = partnerInvRes as List? ?? [];
+
+        // Deduplicate multiple entries for same partner, batch, and amount within 48h (e.g. UTC server date vs Local client date)
+        final List<dynamic> dedupedRows = [];
+        for (var p in rawRows) {
+          if (p is! Map) continue;
+          final pId = (p['partner_investor_id'] ?? '').toString();
+          final bId = (p['batch_id'] ?? '').toString();
+          final amt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+          final dt = DateTime.tryParse((p['date_invested'] ?? '').toString()) ?? DateTime(1970);
+
+          final bool isDuplicate = dedupedRows.any((existing) {
+            if (existing is! Map) return false;
+            final eId = (existing['partner_investor_id'] ?? '').toString();
+            final eBatch = (existing['batch_id'] ?? '').toString();
+            final eAmt = (existing['amount'] as num?)?.toDouble() ?? 0.0;
+            final eDt = DateTime.tryParse((existing['date_invested'] ?? '').toString()) ?? DateTime(1970);
+            return eId == pId && eBatch == bId && (eAmt - amt).abs() < 0.01 && dt.difference(eDt).inHours.abs() <= 48;
+          });
+
+          if (!isDuplicate) {
+            dedupedRows.add(p);
+          }
+        }
+        partnerInvRows = dedupedRows;
+
         double partnerAmt = 0;
         for (var p in partnerInvRows) {
           if (p is! Map) continue;
@@ -259,7 +286,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           partnerAmt += (p['amount'] as num?)?.toDouble() ?? 0.0;
         }
 
-        // If direct investments table returned zero, check investment notifications
+        // If direct investments table returned zero, check investment notifications as display-only fallback
         if (partnerAmt == 0) {
           try {
             final notifsRes = await _supabase
@@ -761,8 +788,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
           }
 
-          final finalFatCount = fatCount > invFat ? fatCount : invFat;
-          final finalSowCount = sowCount > invSow ? sowCount : invSow;
+          final int finalFatCount;
+          final int finalSowCount;
+          if (hogsList.isNotEmpty) {
+            finalFatCount = fatCount;
+            finalSowCount = sowCount;
+          } else {
+            finalFatCount = invFat;
+            finalSowCount = invSow;
+          }
 
           copy['fattening_count'] = finalFatCount;
           copy['sow_count'] = finalSowCount;
@@ -2109,9 +2143,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   });
 
                 // Determine target counts for Fattening and Sow
+                final int totalExistingHogs = existingFatHogs.length + existingSowHogs.length;
+                final bool hasAllHogsInDb = totalExistingHogs >= totalHogs && totalExistingHogs > 0;
+
                 int targetFatHogs = fatHogs;
                 int targetSowHogs = sowHogs;
-                if (targetFatHogs == 0 && targetSowHogs == 0) {
+                if (hasAllHogsInDb) {
+                  targetFatHogs = existingFatHogs.length;
+                  targetSowHogs = existingSowHogs.length;
+                } else if (targetFatHogs == 0 && targetSowHogs == 0) {
                   final hasFat = cleanList.any((t) => t.toLowerCase().contains('fatten'));
                   final hasSow = cleanList.any((t) => t.toLowerCase().contains('sow') || t.toLowerCase().contains('breed'));
                   if (hasFat && hasSow) {
@@ -2126,8 +2166,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (targetFatHogs < existingFatHogs.length) targetFatHogs = existingFatHogs.length;
                 if (targetSowHogs < existingSowHogs.length) targetSowHogs = existingSowHogs.length;
 
-                final int missingFat = (targetFatHogs - existingFatHogs.length).clamp(0, 9999);
-                final int missingSow = (targetSowHogs - existingSowHogs.length).clamp(0, 9999);
+                final int missingFat = hasAllHogsInDb ? 0 : (targetFatHogs - existingFatHogs.length).clamp(0, 9999);
+                final int missingSow = hasAllHogsInDb ? 0 : (targetSowHogs - existingSowHogs.length).clamp(0, 9999);
 
                 // Resolve assignment IDs for this raiser's Fattening and Sow types
                 final rId = (raiser['hog_raiser_id'] ?? '').toString();
@@ -2136,7 +2176,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fatAssignId ??= raiser['fat_assign_id'] ?? _raiserLatestAssignmentMap[rId]?['assignment_id'];
                 sowAssignId ??= raiser['sow_assign_id'] ?? _raiserLatestAssignmentMap[rId]?['assignment_id'];
 
-                // --- DEDICATED FAT-SLOT ALLOCATION: strictly #1, #2, ... #targetFatHogs ---
+                // --- DEDICATED FAT-SLOT ALLOCATION: strictly #1, #2, ... #existingFatHogs.length ---
                 for (int i = 0; i < existingFatHogs.length; i++) {
                   existingFatHogs[i]['tag_number'] = '#${i + 1}';
                   existingFatHogs[i]['assignment_id'] ??= fatAssignId;
@@ -2153,8 +2193,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   });
                 }
 
-                // --- DEDICATED SOW-SLOT ALLOCATION: strictly #(targetFatHogs + 1), ... ---
-                final int sowBaseTagNum = targetFatHogs;
+                // --- DEDICATED SOW-SLOT ALLOCATION: strictly continuous tag after Fattening ---
+                final int sowBaseTagNum = existingFatHogs.length + supplementedFatHogs.length;
                 for (int i = 0; i < existingSowHogs.length; i++) {
                   existingSowHogs[i]['tag_number'] = '#${sowBaseTagNum + i + 1}';
                   existingSowHogs[i]['assignment_id'] ??= sowAssignId;

@@ -58,22 +58,41 @@ class _LoginScreenState extends State<LoginScreen> {
       _checkRedirectOAuthSession();
     });
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn && mounted) {
+      // Only handle OAuth redirect if not currently submitting password login,
+      // and only if the event came from an external Google OAuth provider.
+      final provider = data.session?.user.appMetadata['provider']?.toString().toLowerCase();
+      if (data.event == AuthChangeEvent.signedIn && mounted && !_isLoading && provider == 'google') {
         _checkRedirectOAuthSession();
       }
     });
   }
 
   Future<void> _checkRedirectOAuthSession() async {
+    // If the user is currently submitting the password form, do NOT process as OAuth
+    if (_isLoading) return;
+
     final session = Supabase.instance.client.auth.currentSession;
-    if (session != null && session.user.email != null) {
-      if (_isGoogleLoading) return;
-      setState(() => _isGoogleLoading = true);
+    if (session == null || session.user.email == null) return;
+
+    // Verify that the session is actually a Google OAuth session, NOT an email/password session!
+    final provider = session.user.appMetadata['provider']?.toString().toLowerCase();
+    if (provider != 'google') {
+      return;
+    }
+
+    if (_isGoogleLoading) return;
+    setState(() => _isGoogleLoading = true);
+
+    try {
       final result = await _googleAuthService.handleIncomingOAuthSession(targetRole: _targetRole);
       if (result != null && mounted) {
         await _processGoogleAuthResult(result);
-      } else {
-        if (mounted) setState(() => _isGoogleLoading = false);
+      }
+    } catch (e) {
+      debugPrint('Notice in _checkRedirectOAuthSession: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
       }
     }
   }

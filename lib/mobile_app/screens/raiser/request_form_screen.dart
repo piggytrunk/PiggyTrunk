@@ -433,6 +433,15 @@ class _RequestFormScreenState extends State<RequestFormScreen> {
     );
   }
 
+  String _formatCurrency(double amount) {
+    final parts = amount.toStringAsFixed(2).split('.');
+    final intPart = parts[0].replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱$intPart.${parts[1]}';
+  }
+
   String _formatAssignmentLabel(Map<String, dynamic> a) {
     final bData = a['batches'];
     String rawBatchName = '';
@@ -1357,21 +1366,51 @@ class _RequestFormScreenState extends State<RequestFormScreen> {
                                             Text(
                                               prod.name,
                                               style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 13,
+                                                fontSize: 13.5,
                                                 fontWeight: FontWeight.w700,
                                                 color: textColor,
                                               ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              '₱${prod.price.toStringAsFixed(2)} • ${prod.category}',
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 11.5,
-                                                fontWeight: FontWeight.w500,
-                                                color: mutedColor,
-                                              ),
+                                            const SizedBox(height: 4),
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 6,
+                                              children: [
+                                                Text(
+                                                  _formatCurrency(prod.price),
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    fontSize: 13.5,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                                  decoration: BoxDecoration(
+                                                    color: mutedColor.withValues(alpha: isDark ? 0.2 : 0.08),
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Text(
+                                                    prod.category,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: mutedColor,
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (qty > 1)
+                                                  Text(
+                                                    '(${_formatCurrency(prod.price * qty)})',
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 11.5,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: mutedColor,
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
                                           ],
                                         ),
@@ -1482,79 +1521,103 @@ class _RequestFormScreenState extends State<RequestFormScreen> {
                           ),
                   ),
 
-                  // Bottom Action Bar
+                  // Bottom Action Bar (Option 1: Balanced Split Row)
                   Container(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).padding.bottom + 14),
                     decoration: BoxDecoration(
                       color: surfaceBg,
                       border: Border(top: BorderSide(color: borderColor)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -3),
+                        ),
+                      ],
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              strings.isFilipino ? 'Tinatayang Halaga' : 'Estimated Value',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11.5,
-                                color: mutedColor,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              '₱${_totalCartEstimatedCost.toStringAsFixed(2)}',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: textColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
+                        // Expanded, Truly Huge Price Section
                         Expanded(
-                          child: ElevatedButton(
-                            onPressed: (_cart.isEmpty || _isSubmitting || _isCurrentBatchCompleted)
-                                ? null
-                                : () async {
-                                    Navigator.pop(modalCtx);
-                                    await _submitRequest();
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.white : _brandColor,
-                              foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                              disabledBackgroundColor: mutedColor.withValues(alpha: 0.15),
-                              disabledForegroundColor: mutedColor,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              elevation: 0,
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        _isCurrentBatchCompleted
-                                            ? (strings.isFilipino ? 'Tapos na ang Siklo ng Batch' : 'Batch Cycle Completed')
-                                            : (strings.isFilipino ? 'Isumite ang Kahilingan' : 'Submit Request'),
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      if (!_isCurrentBatchCompleted) ...[
-                                        const SizedBox(width: 6),
-                                        const Icon(Icons.arrow_forward_rounded, size: 18),
-                                      ],
-                                    ],
+                          flex: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                strings.isFilipino ? 'TINATAYANG HALAGA' : 'ESTIMATED TOTAL',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  color: mutedColor,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              FittedBox(
+                                alignment: Alignment.centerLeft,
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _formatCurrency(_totalCartEstimatedCost),
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 27,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                                    letterSpacing: -0.6,
                                   ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        // Balanced, Proportional Submit Button
+                        Expanded(
+                          flex: 5,
+                          child: SizedBox(
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: (_cart.isEmpty || _isSubmitting || _isCurrentBatchCompleted)
+                                  ? null
+                                  : () async {
+                                      Navigator.pop(modalCtx);
+                                      await _submitRequest();
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark ? Colors.white : _brandColor,
+                                foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                disabledBackgroundColor: mutedColor.withValues(alpha: 0.15),
+                                disabledForegroundColor: mutedColor,
+                                padding: const EdgeInsets.symmetric(horizontal: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          _isCurrentBatchCompleted
+                                              ? (strings.isFilipino ? 'Tapos na ang Siklo' : 'Cycle Completed')
+                                              : (strings.isFilipino ? 'Isumite ang Kahilingan' : 'Submit Request'),
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        if (!_isCurrentBatchCompleted) ...[
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward_rounded, size: 18),
+                                        ],
+                                      ],
+                                    ),
+                            ),
                           ),
                         ),
                       ],
